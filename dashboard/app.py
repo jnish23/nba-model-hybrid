@@ -81,7 +81,7 @@ def display_subgroup_metrics(df, subgroup_col, result_col, title):
 # Constants
 DB_PATH = Path(__file__).resolve().parent.parent / "data" / "nba_stats.db"
 print(DB_PATH)
-@st.cache_data
+@st.cache_data(ttl=3600)
 def load_data():
     """Loads prediction data from the sqlite database."""
     if not DB_PATH.exists():
