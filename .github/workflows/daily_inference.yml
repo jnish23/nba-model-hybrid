@@ -1,7 +1,7 @@
 name: Daily NBA Inference
 on:
   schedule:
-    - cron: '0 16 * * *' # Runs at 16:00 UTC daily
+    - cron: '0 17 15 * *' # Runs at 17:15 UTC daily
   workflow_dispatch: # Allows manual trigger
 
 jobs:
