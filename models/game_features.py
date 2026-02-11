@@ -1,0 +1,277 @@
+import pandas as pd
+import numpy as np
+import sqlite3
+import logging
+
+from pathlib import Path
+import os
+import sys
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from models.team_features import TeamFeatureBuilder
+from models.player_features import PlayerFeatureBuilder
+from models.travel_builder import TravelFeatureBuilder
+
+
+class GameFeatureBuilder:
+    def __init__(self, db_path, team_features_df=None):
+        self.db_path = db_path
+        self.team_features_df = team_features_df
+        
+    def _get_team_features(self):
+        """Get or build team features"""
+        if self.team_features_df is not None:
+            return self.team_features_df
+            
+        logging.info("Building team features from scratch...")
+        builder = TeamFeatureBuilder(self.db_path)
+        return builder.build_entire_history()
+
+    def _get_player_features(self, seasons=None):
+        logging.info("Building player features...")
+        builder = PlayerFeatureBuilder(self.db_path)
+        return builder.build_roster_features(seasons)
+
+    def _get_travel_features(self):
+        logging.info("Building Travel Features...")
+        builder = TravelFeatureBuilder(self.db_path)
+        df = builder.build_features()
+        # Drop non-feature cols
+        return df.drop(columns=['gameDate', 'venueTricode', 'lat', 'long'])
+
+
+    def _load_db_odds(self):
+        """Load odds from DB (Using Opening Odds ONLY)"""
+        with sqlite3.connect(self.db_path) as conn:
+            # Load OPENING odds as the primary source
+            try:
+                # We simply load the opening table. No need to rename with _open suffix 
+                # because we want these to be the MAIN features now.
+                opening = pd.read_sql("SELECT * FROM nba_odds_opening", conn)
+            except:
+                logging.warning("Could not load nba_odds_opening")
+                opening = pd.DataFrame()
+
+        # Helper to extract vals
+        def get_best_odds(df, suffix=""):
+            # Priority: DraftKings > FanDuel > BetMGM > Bet365 > Caesars > Avg
+            books = ['draftkings', 'fanduel', 'betmgm', 'bet365', 'caesars', 'bet_rivers_ny']
+            
+            out = pd.DataFrame(index=df.index)
+            # Base keys
+            for k in ['home_spread', 'away_spread', 'home_ml', 'away_ml', 'total']:
+                target = f"odds_{k}{suffix}"
+                # Try each book
+                found = False
+                for b in books:
+                    col = f"{k}_{b}{suffix}"
+                    if col in df.columns:
+                        if not found:
+                            out[target] = df[col]
+                            found = True
+                        else:
+                            out[target] = out[target].combine_first(df[col])
+            return out
+
+        # Process Opening
+        if not opening.empty and 'teamId_home' in opening.columns:
+            # We pass suffix="" so they map to 'odds_home_ml', etc.
+            o_vals = get_best_odds(opening, "")
+            opening_processed = pd.concat([opening[['gameDate', 'teamId_home', 'teamId_away']], o_vals], axis=1)
+        else:
+            opening_processed = pd.DataFrame()
+
+        return opening_processed
+
+    def _load_archive_odds(self, csv_path):
+        """Load archive odds (now with pre-calculated IDs)"""
+        if not csv_path or not os.path.exists(csv_path):
+            return pd.DataFrame()
+            
+        logging.info(f"Loading archive odds from {csv_path}")
+        df = pd.read_csv(csv_path)
+        
+        # Date Parsing (YYYYMMDD)
+        # 1. Convert to numeric first, coercing errors to NaN
+        df['date'] = pd.to_numeric(df['date'], errors='coerce')
+
+        # 2. Drop rows where date is missing
+        df = df.dropna(subset=['date']).copy()
+
+        # 3. Convert to datetime
+        # Using .astype(int) on the numeric column prevents scientific notation issues
+        df['gameDate'] = pd.to_datetime(df['date'].astype(int).astype(str), format='%Y%m%d')
+        
+        # Schema Mapping - SWITCH TO OPENING ONLY
+        # Note: Archive doesn't have Opening ML, so odds_home_ml will be missing for older seasons.
+        schema = {
+            'home_open_spread': 'odds_home_spread', 'away_open_spread': 'odds_away_spread',
+            'open_over_under': 'odds_total'
+        }
+        df = df.rename(columns=schema)
+
+        # VALIDATE spreads before returning
+        for col in ['odds_home_spread', 'odds_away_spread', 'odds_home_spread_open', 'odds_away_spread_open']:
+            if col in df.columns:
+                bad_mask = df[col].abs() > 25
+                if bad_mask.sum() > 0:
+                    logging.warning(f"Archive: Setting {bad_mask.sum()} invalid {col} values to NaN")
+                    df.loc[bad_mask, col] = np.nan
+
+        # Keep only relevant
+        cols = ['gameDate', 'teamId_home'] + list(schema.values())
+        cols = [c for c in cols if c in df.columns]
+        
+        return df[cols]
+
+    def build_training_set(self, seasons=None, archive_path=None):
+        """
+        Build a single-row-per-game training set. combines data from various sources.
+        """
+        # 1. Get Base Features
+        df_features = self._get_team_features().copy()
+        
+        # 1b. Travel
+        travel = self._get_travel_features()
+        df_features = df_features.merge(travel, on=['teamId', 'gameId'], how='left')
+
+        if seasons:
+            df_features = df_features[df_features['seasonYear'].isin(seasons)]
+            
+        # 2. Get Metadata (Home/Away info)
+        with sqlite3.connect(self.db_path) as conn:
+            meta = pd.read_sql("SELECT gameId, teamId, matchup, wl, points, gameDate, seasonYear FROM team_game_full", conn)
+        
+        meta = meta.rename(columns={'MATCHUP': 'matchup', 'WL': 'wl'})
+        meta['gameDate'] = pd.to_datetime(meta['gameDate'])
+        
+        df_features = df_features.merge(meta, on=['teamId', 'gameDate', 'seasonYear'], suffixes=('', '_meta'))
+        if 'gameId_meta' in df_features.columns:
+            df_features['gameId'] = df_features['gameId'].fillna(df_features['gameId_meta'])
+            df_features = df_features.drop(columns=['gameId_meta'])
+
+        # 3. Identify Home/Away
+        df_features['is_home'] = df_features['matchup'].apply(lambda x: 1 if 'vs.' in str(x) else 0)
+        
+        # 4. Filter into Home and Away sets
+        home_df = df_features[df_features['is_home'] == 1].copy()
+        away_df = df_features[df_features['is_home'] == 0].copy()
+        
+        # 5. Merge on gameId
+        game_df = pd.merge(home_df, away_df, on=['gameId', 'seasonYear', 'gameDate'], suffixes=('_home', '_away'))
+        
+        # 6. Calculate Targets
+        game_df['target_home_win'] = game_df['wl_home'].apply(lambda x: 1 if x == 'W' else 0)
+        game_df['target_point_diff'] = game_df['points_home'] - game_df['points_away']
+        game_df['target_total_pts'] = game_df['points_home'] + game_df['points_away']
+        
+        # 6b. Roster Features
+        p_feats = self._get_player_features(seasons)
+        game_df = game_df.merge(p_feats, left_on=['gameId', 'teamId_home'], right_on=['gameId', 'teamId'], how='left').rename(columns={'roster_bpm': 'roster_bpm_home'}).drop(columns=['teamId'])
+        game_df = game_df.merge(p_feats, left_on=['gameId', 'teamId_away'], right_on=['gameId', 'teamId'], how='left').rename(columns={'roster_bpm': 'roster_bpm_away'}).drop(columns=['teamId'])
+
+        # 7. Add Odds (Priority: Archive > DB)
+        logging.info("Merging Odds data (OPENING ONLY)...")
+        
+        # A. Load Archive Odds FIRST (as base/fallback)
+        archive_path = Path.cwd() / 'data' / 'nba_odds_archive.csv'
+        archive_odds = self._load_archive_odds(archive_path)
+        
+        # B. Load DB Odds (Opening)
+        db_odds = self._load_db_odds()
+        
+        if not db_odds.empty:
+            db_odds['gameDate'] = pd.to_datetime(db_odds['gameDate'])
+        
+        # Select final odds cols
+        keep_cols = ['gameDate', 'teamId_home', 'odds_home_ml', 'odds_away_ml', 
+                    'odds_home_spread', 'odds_away_spread', 'odds_total']
+        keep_cols = [c for c in keep_cols if c in db_odds.columns]
+        if not db_odds.empty:
+            db_odds = db_odds[keep_cols]
+
+        # C. Combine: Start with archive, then OVERWRITE with DB where available
+        if not archive_odds.empty:
+            final_odds = archive_odds.set_index(['gameDate', 'teamId_home'])
+        else:
+            final_odds = pd.DataFrame()
+        
+        if not db_odds.empty:
+            db_odds_indexed = db_odds.set_index(['gameDate', 'teamId_home'])
+            if final_odds.empty:
+                final_odds = db_odds_indexed
+            else:
+                # DB takes priority - use combine_first the other way
+                final_odds = db_odds_indexed.combine_first(final_odds)
+        
+        final_odds = final_odds.reset_index()
+        
+
+        # D. VALIDATE: Clean obviously bad spread values
+        for col in ['odds_home_spread', 'odds_away_spread']:
+            if col in final_odds.columns:
+                bad_mask = final_odds[col].abs() > 25
+                bad_count = bad_mask.sum()
+                if bad_count > 0:
+                    logging.warning(f"Cleaning {bad_count} invalid {col} values (abs > 25)")
+                    final_odds.loc[bad_mask, col] = np.nan
+        
+        # E. Log data source breakdown
+        if not final_odds.empty:
+            final_odds['gameDate'] = pd.to_datetime(final_odds['gameDate'])
+            for year in sorted(final_odds['gameDate'].dt.year.unique()):
+                year_data = final_odds[final_odds['gameDate'].dt.year == year]
+                spread_coverage = year_data['odds_home_spread'].notna().mean() if 'odds_home_spread' in year_data else 0
+                logging.info(f"  {year}: {len(year_data)} games, spread coverage: {spread_coverage:.1%}")
+        
+
+        # Merge into Game DF
+
+        game_df = pd.merge(game_df, final_odds, left_on=['gameDate', 'teamId_home'], right_on=['gameDate', 'teamId_home'], how='left')
+        print(f"Built training set with {len(game_df)} games. Odds coverage: {game_df.get('odds_home_ml', pd.Series()).notna().mean():.2%}")
+
+        return game_df
+
+
+    def verify_no_leakage(self, df):
+        """
+        Sanity check: roster_bpm should not be perfectly correlated with outcome.
+        """
+        print("\n" + "="*60)
+        print("LEAKAGE VERIFICATION")
+        print("="*60)
+        
+        # Correlation with target
+        if 'roster_bpm_home' in df.columns and 'target_home_win' in df.columns:
+            corr = df['roster_bpm_home'].corr(df['target_home_win'])
+            print(f"roster_bpm_home correlation with target: {corr:.4f}")
+            
+            if abs(corr) > 0.5:
+                print("⚠️  WARNING: Correlation > 0.5 suggests possible leakage!")
+            else:
+                print("✓ Correlation looks reasonable (no obvious leakage)")
+        
+        # Check if roster_bpm has same value for consecutive home games
+        # (it should, if we're using prior game correctly)
+        df_sorted = df.sort_values(['teamId_home', 'gameDate'])
+        df_sorted['roster_bpm_home_lag'] = df_sorted.groupby('teamId_home')['roster_bpm_home'].shift(1)
+        
+        # The current game's roster_bpm should equal the previous game's roster_bpm
+        # (since both are based on the game BEFORE them)
+        same_count = (df_sorted['roster_bpm_home'] == df_sorted['roster_bpm_home_lag']).sum()
+        total = df_sorted['roster_bpm_home_lag'].notna().sum()
+        
+        print(f"\nConsecutive games with identical roster_bpm: {same_count}/{total}")
+        print("(Should be LOW - if HIGH, the shift isn't working)")
+
+
+if __name__ == "__main__":
+    # Verification
+    db_path = r'c:\Users\jorda\nba-model-hybrid\data\nba_stats.db'
+    builder = GameFeatureBuilder(db_path)
+    df = builder.build_training_set()
+
+    print(df.head())
+    print(df.columns)
+    builder.verify_no_leakage(df)

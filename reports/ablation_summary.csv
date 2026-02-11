@@ -1,0 +1,6 @@
+Experiment,Status
+Raw XGBoost Baseline,Error: cannot reindex on an axis with duplicate labels
+Baseline (Basic + Ridge + Player Skill),Failed/No Bets
+Four Factors (Available),Failed/No Bets
+Bayesian (Four Factors),Failed/No Bets
+NO Player Skill (Four Factors),Failed/No Bets
