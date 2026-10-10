@@ -6,12 +6,15 @@ from sklearn.calibration import CalibratedClassifierCV, calibration_curve
 from sklearn.isotonic import IsotonicRegression
 from sklearn.model_selection import TimeSeriesSplit, cross_val_predict
 from scipy import stats
+import scipy.cluster.hierarchy as sch
+from scipy.spatial.distance import squareform
 import matplotlib.pyplot as plt
 import logging
 import joblib
 import json
 from pathlib import Path
-from flaml import AutoML
+from flaml import AutoML, tune
+from datetime import date
 
 class BaselineModel:
     def __init__(self, data_path, model_dir='models/saved'):
@@ -19,7 +22,9 @@ class BaselineModel:
         self.model_dir = Path(model_dir)
         self.model_dir.mkdir(parents=True, exist_ok=True)
         self.df = None
-        self.features = []
+        self.features = []        # legacy: union of all features
+        self.features_diff = []   # diff_* + matchup + odds (for ML/Spread)
+        self.features_sep = []    # *_home + *_away + odds, NO diff_* (for Totals)
         self.target = 'target_home_win'
 
         # Target-specific feature sets (populated after selection)
@@ -50,14 +55,32 @@ class BaselineModel:
         numeric_cols = self.df.select_dtypes(include=[np.number]).columns.tolist()
         
         if use_odds:
-            # Include odds but exclude specific raw ones if needed? 
-            # We keep them all as they contain valuable info (spread, ml, total)
-            self.features = [c for c in numeric_cols if c not in exclude_cols and not c.startswith('target_')]
-            logging.info(f"Training features: {len(self.features)} (INCLUDING ODDS)")
+            all_features = [c for c in numeric_cols if c not in exclude_cols and not c.startswith('target_')]
         else:
-            self.features = [c for c in numeric_cols if c not in exclude_cols and not c.startswith('target_') and not c.startswith('odds_')]
-            logging.info(f"Training features: {len(self.features)} (odds excluded)")
-            
+            all_features = [c for c in numeric_cols if c not in exclude_cols and not c.startswith('target_') and not c.startswith('odds_')]
+
+        # --- Build two feature pools ---
+        # 1. Diff pool (for ML / Spread): diff_*, matchup_*, odds_*, plus context cols
+        #    that are NOT per-team (e.g. roster_bpm_ewma_x/y are already differential-style)
+        self.features_diff = [
+            c for c in all_features
+            if c.startswith('diff_') or c.startswith('matchup_') or c.startswith('odds_')
+            or not (c.endswith('_home') or c.endswith('_away'))
+        ]
+
+        # 2. Sep pool (for Totals): *_home, *_away, odds_*, context cols — NO diff_*
+        self.features_sep = [
+            c for c in all_features
+            if not c.startswith('diff_') and not c.startswith('matchup_')
+        ]
+
+        # Legacy: keep union for backward compat with older methods
+        self.features = all_features
+
+        logging.info(f"Feature pools — diff (ML/Spread): {len(self.features_diff)}, "
+                     f"sep (Totals): {len(self.features_sep)}, "
+                     f"total union: {len(self.features)} "
+                     f"({'WITH' if use_odds else 'WITHOUT'} odds)")
         logging.info(f"Odds columns preserved for evaluation: {len(self.odds_cols)}")
 
     def _validate_odds_data(self):
@@ -305,241 +328,146 @@ class BaselineModel:
         print(f"Non-zero importances: {(model.feature_importances_ > 0).sum()} / {len(self.features)}")
         print(f"Top 5 importances: {sorted(model.feature_importances_, reverse=True)[:5]}")
 
-    def select_all_feature_sets(self, n_top=100):
-        """Select features for all three targets."""
-        if self.df is None:
-            self.load_data()
-            
-        logging.info("Selecting target-specific feature sets...")
-        
-        self.features_ml = self.select_features('target_home_win', n_top=n_top)
-        self.features_spread = self.select_features('target_point_diff', n_top=n_top)
-        self.features_total = self.select_features('target_total_pts', n_top=n_top)
-        
-        # Log overlap analysis
-        ml_set = set(self.features_ml)
-        spread_set = set(self.features_spread)
-        total_set = set(self.features_total)
-        
-        logging.info(f"ML features: {len(self.features_ml)}")
-        logging.info(f"Spread features: {len(self.features_spread)}")
-        logging.info(f"Total features: {len(self.features_total)}")
-        logging.info(f"ML ∩ Spread overlap: {len(ml_set & spread_set)}")
-        logging.info(f"ML ∩ Total overlap: {len(ml_set & total_set)}")
-        logging.info(f"Spread ∩ Total overlap: {len(spread_set & total_set)}")
-        logging.info(f"All three overlap: {len(ml_set & spread_set & total_set)}")
-        
+    def _get_pool_for_target(self, target: str) -> list:
+        """Return the correct feature pool for a given target."""
+        if target in ('target_home_win', 'target_point_diff'):
+            return self.features_diff   # Differences for ML / Spread
+        elif target == 'target_total_pts':
+            return self.features_sep    # Separate home/away for Totals
+        else:
+            return self.features        # Fallback: full union
+
     def get_features_for_target(self, target: str) -> list:
         """Return the appropriate feature set for a target."""
+        if self.df is None:
+            self.load_data()
         if target == 'target_home_win':
             if self.features_ml is None:
-                self.features_ml = self.select_features(target, n_top=100)
+                self.features_ml = self._select_features_from_subset(self.df, target)
             return self.features_ml
         elif target == 'target_point_diff':
             if self.features_spread is None:
-                self.features_spread = self.select_features(target, n_top=100)
+                self.features_spread = self._select_features_from_subset(self.df, target)
             return self.features_spread
         elif target == 'target_total_pts':
             if self.features_total is None:
-                self.features_total = self.select_features(target, n_top=100)
+                self.features_total = self._select_features_from_subset(self.df, target)
             return self.features_total
         else:
             raise ValueError(f"Unknown target: {target}")
 
 
-    def _select_features_from_subset(self, df_subset, target, n_top=100):
+    def _select_features_from_subset(self, df_subset, target, n_top=150, n_min=20):
         """
-        Feature selection using ONLY the provided subset (no leakage).
-        Used during walk-forward backtesting.
+        Two-Stage Feature Selection (No Leakage):
+        1. Hierarchical Clustering (Spearman) to remove highly correlated redundant features.
+        2. Null Importance Selection to filter out noise.
+        
+        Uses the target-appropriate feature pool (diff for ML/Spread, sep for Totals).
         """
-        # Use only the features that exist and are valid
-        available_features = [f for f in self.features if f in df_subset.columns]
+        # 1. Filter available/valid features from the correct pool
+        feature_pool = self._get_pool_for_target(target)
+        available_features = [f for f in feature_pool if f in df_subset.columns]
+        X = df_subset[available_features].copy().replace([np.inf, -np.inf], np.nan)
         
-        X = df_subset[available_features].copy()
-        X = X.replace([np.inf, -np.inf], np.nan)
-        
-        # Drop zero-variance columns within this subset
+        # Drop zero-variance columns
         variances = X.var()
         valid_cols = variances[variances > 1e-10].index.tolist()
         X = X[valid_cols]
-        
         y = df_subset[target]
         
+        # Initial proxy model to gauge baseline importance
         if 'win' in target:
-            model = lgb.LGBMClassifier(
-                n_estimators=100, max_depth=4, 
-                verbose=-1, random_state=42
-            )
+            model = lgb.LGBMClassifier(n_estimators=100, max_depth=4, verbose=-1, random_state=42, n_jobs=-1)
         else:
-            model = lgb.LGBMRegressor(
-                n_estimators=100, max_depth=4, 
-                verbose=-1, random_state=42
-            )
-        
+            model = lgb.LGBMRegressor(n_estimators=100, max_depth=4, verbose=-1, random_state=42, n_jobs=-1)
+            
         model.fit(X, y)
+        initial_imp = dict(zip(X.columns, model.feature_importances_))
         
-        imp_df = pd.DataFrame({
-            'feature': X.columns,
-            'importance': model.feature_importances_
-        }).sort_values('importance', ascending=False)
+        # ==========================================
+        # STAGE 1: Redundancy Filter (Clustering)
+        # ==========================================
+        # Calculate Spearman rank correlation matrix
+        corr_matrix = X.corr(method='spearman').abs()
         
-        selected = imp_df.head(n_top)['feature'].tolist()
+        # Fill NaNs with 0 (no correlation) just in case a column became effectively constant
+        corr_matrix = corr_matrix.fillna(0)
         
+        # Convert to distance matrix (clip to avoid precision issues < 0)
+        dist_matrix = np.clip(1 - corr_matrix, 0, 1)
+        dist_array = squareform(dist_matrix, checks=False)
+        
+        # Hierarchical clustering (average linkage)
+        linked = sch.linkage(dist_array, method='average')
+        
+        # Group features with < 0.15 distance (> 0.85 correlation)
+        labels = sch.fcluster(linked, t=0.15, criterion='distance')
+        
+        cluster_to_feature = {}
+        for feat, label in zip(X.columns, labels):
+            if label not in cluster_to_feature:
+                cluster_to_feature[label] = feat
+            else:
+                # Keep the one with the highest initial LightGBM importance
+                current_best = cluster_to_feature[label]
+                if initial_imp[feat] > initial_imp[current_best]:
+                    cluster_to_feature[label] = feat
+                    
+        stage1_features = list(cluster_to_feature.values())
+        logging.info(f"[{target}] Stage 1 (Clustering): Reduced from {len(X.columns)} to {len(stage1_features)} independent features.")
+        
+        # If we have very few features, just return what we have
+        if len(stage1_features) <= n_min:
+            return sorted(stage1_features, key=lambda f: initial_imp[f], reverse=True)
+            
+        # ==========================================
+        # STAGE 2: Noise Filter (Null Importance)
+        # ==========================================
+        X_stage1 = X[stage1_features]
+        n_permutations = 10
+        rng = np.random.default_rng(42)
+        null_importances = np.zeros((n_permutations, len(stage1_features)))
+        
+        for i in range(n_permutations):
+            y_shuffled = rng.permutation(y)
+            model.fit(X_stage1, y_shuffled)
+            null_importances[i, :] = model.feature_importances_
+            
+        # 90th percentile of null importances bounds the noise for each feature
+        null_p90 = np.percentile(null_importances, 90, axis=0)
+        
+        # Get actual importance using only the stage1 features
+        model.fit(X_stage1, y)
+        actual_imp = model.feature_importances_
+        
+        # Filter: Actual must be > Null P90 AND > 0
+        final_candidates = []
+        for idx, feat in enumerate(stage1_features):
+            if actual_imp[idx] > null_p90[idx] and actual_imp[idx] > 0:
+                final_candidates.append((feat, actual_imp[idx]))
+                
+        # Sort by actual importance
+        final_candidates.sort(key=lambda x: x[1], reverse=True)
+        selected = [f[0] for f in final_candidates]
+        
+        logging.info(f"[{target}] Stage 2 (Null Imp): Reduced from {len(stage1_features)} to {len(selected)} high-signal features.")
+        
+        # Enforce constraints (n_min and n_top)
+        if len(selected) > n_top:
+            selected = selected[:n_top]
+        elif len(selected) < n_min:
+            # Fallback to the top stage1 features if too many were stripped
+            logging.warning(f"[{target}] Too few features passed Null Imp. Padding to {n_min}.")
+            fallback = sorted(stage1_features, key=lambda f: initial_imp[f], reverse=True)
+            for f in fallback:
+                if f not in selected:
+                    selected.append(f)
+                if len(selected) == n_min:
+                    break
+                    
         return selected
 
-    # def backtest_walk_forward(self, start_season='2019-20', use_tuned_params=True, use_odds=False, save_suffix='_no_odds'):
-    #     """Walk-forward validation for all three models."""
-
-    #     if use_tuned_params and (self.model_dir / 'best_config_ml.json').exists():
-    #         with open(self.model_dir / 'best_config_ml.json') as f:
-    #             ml_params = json.load(f)
-    #         logging.info(f"Using tuned ML params: {ml_params}")
-    #     else:
-    #         ml_params = dict(n_estimators=1000, learning_rate=0.01, max_depth=6,
-    #                         num_leaves=31, min_child_samples=30, reg_alpha=0.5, reg_lambda=0.5)
-
-    #     if use_tuned_params and (self.model_dir / 'best_config_spread.json').exists():
-    #         with open(self.model_dir / 'best_config_spread.json') as f:
-    #             spread_params = json.load(f)
-    #         logging.info(f"Using tuned Spread params: {spread_params}")
-    #     else:
-    #         spread_params = dict(n_estimators=1000, learning_rate=0.01, max_depth=6,
-    #                             num_leaves=31, min_child_samples=30, reg_alpha=0.5, reg_lambda=0.5)
-
-    #     if use_tuned_params and (self.model_dir / 'best_config_total.json').exists():
-    #         with open(self.model_dir / 'best_config_total.json') as f:
-    #             total_params = json.load(f)
-    #         logging.info(f"Using tuned Total params: {total_params}")
-    #     else:
-    #         total_params = dict(n_estimators=1000, learning_rate=0.01, max_depth=6,
-    #                             num_leaves=31, min_child_samples=30, reg_alpha=0.5, reg_lambda=0.5)
-
-    #     # Reload data if needed or if odds flag changed (force reload to be safe or rely on caller)
-    #     # Simplest: Force reload if we want to ensure feature set matches flag
-    #     self.load_data(use_odds=use_odds)
-        
-    #     # VERIFY: Check for odds leakage
-    #     if not use_odds:
-    #         all_features = set(self.features_ml + self.features_spread + self.features_total) if self.features_ml else []
-    #         odds_in_features = [f for f in self.features if 'odds' in f.lower()]
-    #         if odds_in_features:
-    #             print(f"\n⚠️  LEAKAGE CHECK: Odds features in training: {odds_in_features}")
-    #             raise ValueError("Odds features detected in training set (but use_odds=False)")
-        
-    #     seasons = sorted(self.df['seasonYear'].unique())
-    #     start_idx = seasons.index(start_season)
-        
-    #     all_predictions = []
-    #     metrics = []
-        
-    #     for i in range(start_idx, len(seasons)):
-    #         test_season = seasons[i]
-    #         train_seasons = seasons[:i]
-            
-    #         train_df = self.df[self.df['seasonYear'].isin(train_seasons)]
-    #         test_df = self.df[self.df['seasonYear'] == test_season]
-            
-    #         if train_df.empty or test_df.empty:
-    #             continue
-            
-    #         logging.info(f"--- Season: {test_season} (train: {len(train_df)}, test: {len(test_df)}) ---")
-            
-    #         # Select features using ONLY training data
-    #         features_ml = self._select_features_from_subset(train_df, 'target_home_win', n_top=100)
-    #         features_spread = self._select_features_from_subset(train_df, 'target_point_diff', n_top=100)
-    #         features_total = self._select_features_from_subset(train_df, 'target_total_pts', n_top=100)
-        
-    #         # ===== MONEYLINE =====
-    #         X_train_ml = train_df[features_ml]
-    #         X_test_ml = test_df[features_ml]
-    #         y_train_ml = train_df['target_home_win']
-    #         y_test_ml = test_df['target_home_win']
-            
-    #         clf_ml = lgb.LGBMClassifier(**ml_params, verbosity=-1, random_state=42, importance_type='gain')
-    #         clf_ml.fit(X_train_ml, y_train_ml)
-            
-    #         ml_probs = clf_ml.predict_proba(X_test_ml)[:, 1]
-    #         ml_preds = (ml_probs > 0.5).astype(int)
-            
-    #         # ===== SPREAD =====
-    #         X_train_spread = train_df[features_spread]
-    #         X_test_spread = test_df[features_spread]
-    #         y_train_spread = train_df['target_point_diff']
-    #         y_test_spread = test_df['target_point_diff']
-            
-    #         reg_spread = lgb.LGBMRegressor(**spread_params, verbosity=-1, random_state=42, importance_type='gain')
-    #         reg_spread.fit(X_train_spread, y_train_spread)
-    #         spread_pred = reg_spread.predict(X_test_spread)
-            
-    #         # ===== TOTAL =====
-    #         X_train_total = train_df[features_total]
-    #         X_test_total = test_df[features_total]
-    #         y_train_total = train_df['target_total_pts']
-    #         y_test_total = test_df['target_total_pts']
-            
-    #         reg_total = lgb.LGBMRegressor(**total_params, verbosity=-1, random_state=42, importance_type='gain')
-    #         reg_total.fit(X_train_total, y_train_total)
-    #         total_pred = reg_total.predict(X_test_total)
-            
-    #         # ===== METRICS =====
-    #         season_metrics = {
-    #             'season': test_season,
-    #             'n_games': len(test_df),
-    #             # Moneyline
-    #             'ml_accuracy': accuracy_score(y_test_ml, ml_preds),
-    #             'ml_log_loss': log_loss(y_test_ml, ml_probs),
-    #             'ml_brier': brier_score_loss(y_test_ml, ml_probs),
-    #             # Spread
-    #             'spread_mae': np.abs(y_test_spread - spread_pred).mean(),
-    #             'spread_rmse': np.sqrt(mean_squared_error(y_test_spread, spread_pred)),
-    #             # Total
-    #             'total_mae': np.abs(y_test_total - total_pred).mean(),
-    #             'total_rmse': np.sqrt(mean_squared_error(y_test_total, total_pred)),
-    #         }
-    #         metrics.append(season_metrics)
-            
-    #         # ===== STORE PREDICTIONS FOR BETTING SIM =====
-    #         fold_preds = test_df[['gameId', 'gameDate', 'seasonYear', 
-    #                             'teamId_home', 'teamId_away']].copy()
-    #         fold_preds['ml_prob'] = ml_probs
-    #         fold_preds['ml_actual'] = y_test_ml.values
-    #         fold_preds['spread_pred'] = spread_pred
-    #         fold_preds['spread_actual'] = y_test_spread.values
-    #         fold_preds['total_pred'] = total_pred
-    #         fold_preds['total_actual'] = y_test_total.values
-            
-    #         # Include odds if available for betting sim
-    #         odds_cols = [c for c in test_df.columns if c.startswith('odds_')]
-    #         for col in odds_cols:
-    #             fold_preds[col] = test_df[col].values
-                
-    #         all_predictions.append(fold_preds)
-        
-    #     # ===== SUMMARY =====
-    #     metrics_df = pd.DataFrame(metrics)
-        
-    #     print("\n" + "="*60)
-    #     print(f"WALK-FORWARD RESULTS BY SEASON ({save_suffix})")
-    #     print("="*60)
-    #     print(metrics_df.to_string(index=False))
-        
-    #     print("\n" + "="*60)
-    #     print("AGGREGATED PERFORMANCE")
-    #     print("="*60)
-    #     if not metrics_df.empty:
-    #         print(f"Moneyline Accuracy:  {metrics_df['ml_accuracy'].mean():.4f} (±{metrics_df['ml_accuracy'].std():.4f})")
-    #         print(f"Moneyline Log Loss:  {metrics_df['ml_log_loss'].mean():.4f}")
-    #         print(f"Moneyline Brier:     {metrics_df['ml_brier'].mean():.4f}")
-    #         print(f"Spread MAE:          {metrics_df['spread_mae'].mean():.2f} pts")
-    #         print(f"Total MAE:           {metrics_df['total_mae'].mean():.2f} pts")
-        
-    #     # Save predictions for betting simulation
-    #     if all_predictions:
-    #         predictions_df = pd.concat(all_predictions, ignore_index=True)
-    #         predictions_df.to_csv(self.model_dir / f'backtest_predictions{save_suffix}.csv', index=False)
-    #         metrics_df.to_csv(self.model_dir / f'backtest_metrics{save_suffix}.csv', index=False)
-        
-    #     return metrics_df, pd.concat(all_predictions, ignore_index=True) if all_predictions else pd.DataFrame()
 
 
     def backtest_walk_forward(self, start_season='2019-20', use_tuned_params=True, 
@@ -578,9 +506,10 @@ class BaselineModel:
         self.load_data(use_odds=use_odds)
         
         if not use_odds:
-            odds_in_features = [f for f in self.features if 'odds' in f.lower()]
-            if odds_in_features:
-                raise ValueError(f"Odds features detected in training set: {odds_in_features}")
+            odds_in_diff = [f for f in self.features_diff if 'odds' in f.lower()]
+            odds_in_sep = [f for f in self.features_sep if 'odds' in f.lower()]
+            if odds_in_diff or odds_in_sep:
+                raise ValueError(f"Odds features detected in training set: diff={odds_in_diff}, sep={odds_in_sep}")
         
         seasons = sorted(self.df['seasonYear'].unique())
         start_idx = seasons.index(start_season)
@@ -588,6 +517,11 @@ class BaselineModel:
         all_predictions = []
         metrics = []
         calibration_stats = []  # Track calibration effectiveness
+
+        # ===== DIAGNOSTIC: Track previous fold features for stability check =====
+        prev_features_ml = None
+        prev_features_spread = None
+        prev_features_total = None
         
         for i in range(start_idx, len(seasons)):
             test_season = seasons[i]
@@ -613,12 +547,90 @@ class BaselineModel:
                 model_train_df = full_train_df
                 calib_df = None
                 logging.info(f"--- Season: {test_season} | train: {len(model_train_df)}, test: {len(test_df)} ---")
-            
+
+            # =====================================================================
+            # DIAGNOSTIC 1: Temporal Leakage Assertion
+            # =====================================================================
+            assert model_train_df['gameDate'].max() < test_df['gameDate'].min(), \
+                f"Temporal leak: train max {model_train_df['gameDate'].max()} >= test min {test_df['gameDate'].min()}"
+            logging.info(f"[DIAG] Temporal check PASSED: train ends {model_train_df['gameDate'].max().date()}, "
+                        f"test starts {test_df['gameDate'].min().date()}")
+
+            # =====================================================================
+            # DIAGNOSTIC (bonus): NaN Audit on training features
+            # =====================================================================
+            all_pool_features = list(set(self.features_diff + self.features_sep))
+            avail_pool = [f for f in all_pool_features if f in model_train_df.columns]
+            nan_rates = model_train_df[avail_pool].isnull().mean()
+            high_nan = nan_rates[nan_rates > 0.10]
+            if len(high_nan) > 0:
+                logging.warning(f"[DIAG] {len(high_nan)} features with >10% NaN in train: "
+                               f"{dict(high_nan.nlargest(5).round(3))}")
+            else:
+                logging.info(f"[DIAG] NaN audit PASSED: no features with >10% NaN in model_train")
+
+            # =====================================================================
+            # DIAGNOSTIC (bonus): Target Distribution Check
+            # =====================================================================
+            train_home_win_rate = model_train_df['target_home_win'].mean()
+            test_home_win_rate = test_df['target_home_win'].mean()
+            logging.info(f"[DIAG] Home win rate — train: {train_home_win_rate:.3f}, test: {test_home_win_rate:.3f}")
+            logging.info(f"[DIAG] Total pts — train mean: {model_train_df['target_total_pts'].mean():.1f}, "
+                        f"test mean: {test_df['target_total_pts'].mean():.1f}, "
+                        f"train std: {model_train_df['target_total_pts'].std():.1f}")
+
             # Feature selection on model_train only (no leakage)
-            features_ml = self._select_features_from_subset(model_train_df, 'target_home_win', n_top=100)
-            features_spread = self._select_features_from_subset(model_train_df, 'target_point_diff', n_top=100)
-            features_total = self._select_features_from_subset(model_train_df, 'target_total_pts', n_top=100)
+            features_ml = self._select_features_from_subset(model_train_df, 'target_home_win')
+            features_spread = self._select_features_from_subset(model_train_df, 'target_point_diff')
+            features_total = self._select_features_from_subset(model_train_df, 'target_total_pts')
             
+            logging.info(f"Fold {test_season} features - ML: {len(features_ml)}, Spread: {len(features_spread)}, Total: {len(features_total)}")
+
+            # =====================================================================
+            # DIAGNOSTIC 2: Feature Stability (Jaccard similarity vs previous fold)
+            # =====================================================================
+            if prev_features_ml is not None:
+                for label, curr, prev in [
+                    ('ML', features_ml, prev_features_ml),
+                    ('Spread', features_spread, prev_features_spread),
+                    ('Total', features_total, prev_features_total),
+                ]:
+                    overlap = len(set(curr) & set(prev))
+                    union = len(set(curr) | set(prev))
+                    jaccard = overlap / union if union > 0 else 0
+                    logging.info(f"[DIAG] {label} feature stability vs prev fold: "
+                                f"Jaccard={jaccard:.2f}, overlap={overlap}/{len(curr)}")
+                    if jaccard < 0.50:
+                        logging.warning(f"[DIAG] LOW {label} feature stability (Jaccard={jaccard:.2f})! "
+                                       f"Features may be unstable across folds.")
+
+            prev_features_ml = features_ml
+            prev_features_spread = features_spread
+            prev_features_total = features_total
+
+            # =====================================================================
+            # DIAGNOSTIC 7: Explicit Odds Feature Check
+            # =====================================================================
+            for label, feats in [('ML', features_ml), ('Spread', features_spread), ('Total', features_total)]:
+                odds_selected = [f for f in feats if 'odds' in f.lower()]
+                if odds_selected:
+                    logging.info(f"[DIAG] Odds features in {label} selection: {odds_selected}")
+                else:
+                    logging.info(f"[DIAG] No odds features in {label} selection")
+
+                # Also verify feature pool correctness
+                if label in ('ML', 'Spread'):
+                    home_away_leaked = [f for f in feats if (f.endswith('_home') or f.endswith('_away'))
+                                       and not f.startswith('odds_')]
+                    if home_away_leaked:
+                        logging.warning(f"[DIAG] {label} has raw home/away features (expected diff only): "
+                                       f"{home_away_leaked[:5]}...")
+                elif label == 'Total':
+                    diff_leaked = [f for f in feats if f.startswith('diff_')]
+                    if diff_leaked:
+                        logging.warning(f"[DIAG] Total has diff features (expected sep only): "
+                                       f"{diff_leaked[:5]}...")
+
             # ===== MONEYLINE =====
             X_model_train_ml = model_train_df[features_ml]
             y_model_train_ml = model_train_df['target_home_win']
@@ -630,6 +642,21 @@ class BaselineModel:
             
             # Raw predictions
             ml_probs_raw = clf_ml.predict_proba(X_test_ml)[:, 1]
+
+            # =====================================================================
+            # DIAGNOSTIC 4 (ML): Train-vs-Test Performance Gap
+            # =====================================================================
+            ml_train_probs = clf_ml.predict_proba(X_model_train_ml)[:, 1]
+            ml_train_acc = accuracy_score(y_model_train_ml, (ml_train_probs > 0.5).astype(int))
+            ml_train_logloss = log_loss(y_model_train_ml, ml_train_probs)
+            ml_test_acc_raw = accuracy_score(y_test_ml, (ml_probs_raw > 0.5).astype(int))
+            ml_test_logloss_raw = log_loss(y_test_ml, ml_probs_raw)
+            logging.info(f"[DIAG] ML train acc: {ml_train_acc:.4f}, test acc: {ml_test_acc_raw:.4f} "
+                        f"(gap: {ml_train_acc - ml_test_acc_raw:+.4f})")
+            logging.info(f"[DIAG] ML train logloss: {ml_train_logloss:.4f}, test logloss: {ml_test_logloss_raw:.4f} "
+                        f"(gap: {ml_test_logloss_raw - ml_train_logloss:+.4f})")
+            if (ml_train_acc - ml_test_acc_raw) > 0.10:
+                logging.warning(f"[DIAG] ML train-test accuracy gap > 10% — possible overfitting!")
             
             if calibrate and calib_df is not None and len(calib_df) > 150:
                 # Fit isotonic calibration on holdout
@@ -647,7 +674,32 @@ class BaselineModel:
                 iso_ml = None
             
             ml_preds = (ml_probs > 0.5).astype(int)
-            
+
+            # =====================================================================
+            # DIAGNOSTIC 3 (ML): Prediction Distribution Sanity Check
+            # =====================================================================
+            logging.info(f"[DIAG] ML prob range: [{ml_probs.min():.3f}, {ml_probs.max():.3f}], "
+                        f"std={ml_probs.std():.3f}, mean={ml_probs.mean():.3f}")
+            if ml_probs.std() < 0.01:
+                logging.warning(f"[DIAG] ML predictions are near-constant (std={ml_probs.std():.4f})! "
+                               f"Model may not be learning meaningful patterns.")
+
+            # =====================================================================
+            # DIAGNOSTIC 6 (ML): Feature Importance Consistency — Top 5
+            # =====================================================================
+            ml_imp = pd.Series(clf_ml.feature_importances_, index=features_ml).sort_values(ascending=False)
+            top5_ml = ml_imp.head(5)
+            logging.info(f"[DIAG] ML Top 5 features by importance:")
+            for feat, imp in top5_ml.items():
+                feat_vals = X_model_train_ml[feat]
+                logging.info(f"  {feat}: importance={imp:.1f}, "
+                            f"mean={feat_vals.mean():.4f}, std={feat_vals.std():.4f}, "
+                            f"NaN%={feat_vals.isnull().mean():.1%}, "
+                            f"range=[{feat_vals.min():.3f}, {feat_vals.max():.3f}]")
+                if feat_vals.std() < 1e-6:
+                    logging.warning(f"[DIAG] Top ML feature '{feat}' has near-zero variance! "
+                                   f"Data pipeline issue suspected.")
+
             # ===== SPREAD =====
             X_model_train_spread = model_train_df[features_spread]
             y_model_train_spread = model_train_df['target_point_diff']
@@ -658,7 +710,38 @@ class BaselineModel:
             reg_spread.fit(X_model_train_spread, y_model_train_spread)
             
             spread_pred = reg_spread.predict(X_test_spread)
-            
+
+            # =====================================================================
+            # DIAGNOSTIC 4 (Spread): Train-vs-Test Performance Gap
+            # =====================================================================
+            spread_train_pred = reg_spread.predict(X_model_train_spread)
+            spread_train_mae = np.abs(y_model_train_spread - spread_train_pred).mean()
+            spread_test_mae = np.abs(y_test_spread - spread_pred).mean()
+            logging.info(f"[DIAG] Spread train MAE: {spread_train_mae:.2f}, test MAE: {spread_test_mae:.2f} "
+                        f"(gap: {spread_test_mae - spread_train_mae:+.2f})")
+            if (spread_test_mae - spread_train_mae) > 3.0:
+                logging.warning(f"[DIAG] Spread train-test MAE gap > 3 pts — possible overfitting!")
+
+            # =====================================================================
+            # DIAGNOSTIC 3 (Spread): Prediction Distribution Sanity Check
+            # =====================================================================
+            logging.info(f"[DIAG] Spread pred range: [{spread_pred.min():.1f}, {spread_pred.max():.1f}], "
+                        f"std={spread_pred.std():.1f}, mean={spread_pred.mean():.1f}")
+
+            # =====================================================================
+            # DIAGNOSTIC 6 (Spread): Feature Importance — Top 5
+            # =====================================================================
+            spread_imp = pd.Series(reg_spread.feature_importances_, index=features_spread).sort_values(ascending=False)
+            top5_spread = spread_imp.head(5)
+            logging.info(f"[DIAG] Spread Top 5 features by importance:")
+            for feat, imp in top5_spread.items():
+                feat_vals = X_model_train_spread[feat]
+                logging.info(f"  {feat}: importance={imp:.1f}, "
+                            f"mean={feat_vals.mean():.4f}, std={feat_vals.std():.4f}, "
+                            f"NaN%={feat_vals.isnull().mean():.1%}")
+                if feat_vals.std() < 1e-6:
+                    logging.warning(f"[DIAG] Top Spread feature '{feat}' has near-zero variance!")
+
             # Estimate prediction uncertainty from calibration set
             if calibrate and calib_df is not None and len(calib_df) > 50:
                 X_calib_spread = calib_df[features_spread]
@@ -681,6 +764,40 @@ class BaselineModel:
             reg_total.fit(X_model_train_total, y_model_train_total)
             
             total_pred = reg_total.predict(X_test_total)
+
+            # =====================================================================
+            # DIAGNOSTIC 4 (Total): Train-vs-Test Performance Gap
+            # =====================================================================
+            total_train_pred = reg_total.predict(X_model_train_total)
+            total_train_mae = np.abs(y_model_train_total - total_train_pred).mean()
+            total_test_mae = np.abs(y_test_total - total_pred).mean()
+            logging.info(f"[DIAG] Total train MAE: {total_train_mae:.2f}, test MAE: {total_test_mae:.2f} "
+                        f"(gap: {total_test_mae - total_train_mae:+.2f})")
+            if (total_test_mae - total_train_mae) > 5.0:
+                logging.warning(f"[DIAG] Total train-test MAE gap > 5 pts — possible overfitting!")
+
+            # =====================================================================
+            # DIAGNOSTIC 3 (Total): Prediction Distribution Sanity Check
+            # =====================================================================
+            logging.info(f"[DIAG] Total pred range: [{total_pred.min():.1f}, {total_pred.max():.1f}], "
+                        f"std={total_pred.std():.1f}, mean={total_pred.mean():.1f}")
+            if total_pred.std() < 1.0:
+                logging.warning(f"[DIAG] Total predictions have very low variance (std={total_pred.std():.2f})! "
+                               f"Model may be predicting near-constant values.")
+
+            # =====================================================================
+            # DIAGNOSTIC 6 (Total): Feature Importance — Top 5
+            # =====================================================================
+            total_imp = pd.Series(reg_total.feature_importances_, index=features_total).sort_values(ascending=False)
+            top5_total = total_imp.head(5)
+            logging.info(f"[DIAG] Total Top 5 features by importance:")
+            for feat, imp in top5_total.items():
+                feat_vals = X_model_train_total[feat]
+                logging.info(f"  {feat}: importance={imp:.1f}, "
+                            f"mean={feat_vals.mean():.4f}, std={feat_vals.std():.4f}, "
+                            f"NaN%={feat_vals.isnull().mean():.1%}")
+                if feat_vals.std() < 1e-6:
+                    logging.warning(f"[DIAG] Top Total feature '{feat}' has near-zero variance!")
             
             if calibrate and calib_df is not None and len(calib_df) > 50:
                 X_calib_total = calib_df[features_total]
@@ -692,6 +809,47 @@ class BaselineModel:
             else:
                 total_std = None
                 total_bias = 0
+
+            # =====================================================================
+            # DIAGNOSTIC 5: Per-Fold Calibration Plot
+            # =====================================================================
+            try:
+                fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+                fig.suptitle(f'Fold {test_season} — Diagnostics', fontsize=14)
+
+                # ML Calibration
+                frac_pos, mean_pred = calibration_curve(y_test_ml, ml_probs, n_bins=8, strategy='uniform')
+                axes[0].plot(mean_pred, frac_pos, 's-', label='Calibrated' if iso_ml else 'Raw')
+                if iso_ml:
+                    frac_pos_raw, mean_pred_raw = calibration_curve(y_test_ml, ml_probs_raw, n_bins=8, strategy='uniform')
+                    axes[0].plot(mean_pred_raw, frac_pos_raw, 'd--', alpha=0.5, label='Raw')
+                axes[0].plot([0, 1], [0, 1], 'k:', alpha=0.5)
+                axes[0].set_title(f'ML Reliability (Brier={brier_score_loss(y_test_ml, ml_probs):.4f})')
+                axes[0].set_xlabel('Predicted Probability')
+                axes[0].set_ylabel('Observed Frequency')
+                axes[0].legend(fontsize=8)
+
+                # Spread Error Distribution
+                spread_test_errors = y_test_spread.values - spread_pred
+                axes[1].hist(spread_test_errors, bins=25, alpha=0.7, color='steelblue', density=True)
+                axes[1].axvline(0, color='red', linestyle='--', alpha=0.7)
+                axes[1].set_title(f'Spread Errors (MAE={np.abs(spread_test_errors).mean():.1f})')
+                axes[1].set_xlabel('Actual - Predicted')
+
+                # Total Error Distribution
+                total_test_errors = y_test_total.values - total_pred
+                axes[2].hist(total_test_errors, bins=25, alpha=0.7, color='coral', density=True)
+                axes[2].axvline(0, color='red', linestyle='--', alpha=0.7)
+                axes[2].set_title(f'Total Errors (MAE={np.abs(total_test_errors).mean():.1f})')
+                axes[2].set_xlabel('Actual - Predicted')
+
+                plt.tight_layout()
+                plot_path = self.model_dir / f'diagnostics_fold_{test_season}{save_suffix}.png'
+                plt.savefig(plot_path, dpi=100)
+                plt.close(fig)
+                logging.info(f"[DIAG] Saved fold diagnostics plot: {plot_path.name}")
+            except Exception as e:
+                logging.warning(f"[DIAG] Could not generate fold plot: {e}")
             
             # ===== METRICS =====
             season_metrics = {
@@ -713,6 +871,13 @@ class BaselineModel:
                 'total_rmse': np.sqrt(mean_squared_error(y_test_total, total_pred)),
                 'total_std_est': total_std,
                 'total_bias_est': total_bias,
+                # Diagnostic: train-test gaps
+                'ml_train_acc': ml_train_acc,
+                'ml_train_test_gap': ml_train_acc - ml_test_acc_raw,
+                'spread_train_mae': spread_train_mae,
+                'spread_train_test_gap': spread_test_mae - spread_train_mae,
+                'total_train_mae': total_train_mae,
+                'total_train_test_gap': total_test_mae - total_train_mae,
             }
             metrics.append(season_metrics)
             
@@ -735,6 +900,8 @@ class BaselineModel:
                 fold_preds[col] = test_df[col].values
                 
             all_predictions.append(fold_preds)
+
+            logging.info(f"[DIAG] === Fold {test_season} complete ===\n")
         
         # ===== SUMMARY =====
         metrics_df = pd.DataFrame(metrics)
@@ -761,6 +928,19 @@ class BaselineModel:
             print(f"Spread Std (avg):    {metrics_df['spread_std_est'].dropna().mean():.2f} pts")
             print(f"Total MAE:           {metrics_df['total_mae'].mean():.2f} pts")
             print(f"Total Std (avg):     {metrics_df['total_std_est'].dropna().mean():.2f} pts")
+
+            # =====================================================================
+            # DIAGNOSTIC SUMMARY: Overfitting Report
+            # =====================================================================
+            print("\n" + "="*60)
+            print("OVERFITTING REPORT (Train-Test Gaps)")
+            print("="*60)
+            print(f"ML Accuracy Gap (avg):   {metrics_df['ml_train_test_gap'].mean():+.4f} "
+                  f"(per-fold: {metrics_df['ml_train_test_gap'].tolist()})")
+            print(f"Spread MAE Gap (avg):    {metrics_df['spread_train_test_gap'].mean():+.2f} pts "
+                  f"(per-fold: {[f'{v:.1f}' for v in metrics_df['spread_train_test_gap']]})")
+            print(f"Total MAE Gap (avg):     {metrics_df['total_train_test_gap'].mean():+.2f} pts "
+                  f"(per-fold: {[f'{v:.1f}' for v in metrics_df['total_train_test_gap']]})")
         
         # Save
         if all_predictions:
@@ -803,35 +983,7 @@ class BaselineModel:
         fold_imp_df.to_csv(self.model_dir / 'feature_importance_by_fold.csv')
 
 
-    def select_features(self, target, n_top=100):
-        """Train a proxy model to select the top N features for a specific target."""
-        if self.df is None: self.load_data()
-        
-        logging.info(f"Selecting top {n_top} features for target: {target}...")
-        
-        # Use full dataset for selection (or could sample)
-        X = self.clean_features(self.df[self.features])
-
-        self.features = X.columns.tolist()
-
-        y = self.df[target]
-        
-        # Proxy Model (Fast)
-        if 'win' in target:
-             model = lgb.LGBMClassifier(n_estimators=200, learning_rate=0.05, max_depth=6, random_state=42, n_jobs=-1)
-        else:
-             model = lgb.LGBMRegressor(n_estimators=200, learning_rate=0.05, max_depth=6, random_state=42, n_jobs=-1)
-             
-        model.fit(X, y)
-        
-        imp_df = pd.DataFrame({
-            'feature': self.features,
-            'importance': model.feature_importances_
-        }).sort_values('importance', ascending=False)
-        
-        selected = imp_df.head(n_top)['feature'].tolist()
-        logging.info(f"Top 5 Selection: {selected[:5]}")
-        return selected
+ 
 
     def save_model(self, model, filename):
         path = self.model_dir / filename
@@ -878,7 +1030,7 @@ class BaselineModel:
         logging.info(f"Split Sizes - Train: {len(train_df)}, Calib: {len(cal_df)}, Test: {len(test_df)}")
 
         # SELECT FEATURES FROM TRAIN ONLY (no leakage)
-        features = self._select_features_from_subset(train_df, 'target_home_win', n_top=100)
+        features = self._select_features_from_subset(train_df, 'target_home_win')
         
         X_train = train_df[features]
         y_train = train_df['target_home_win']
@@ -963,8 +1115,7 @@ class BaselineModel:
         # 1. Spread (Point Diff)
         
         # SELECT FEATURES FROM TRAIN ONLY
-        features_spread = self._select_features_from_subset(train_df, 'target_point_diff', n_top=100)
-        features_total = self._select_features_from_subset(train_df, 'target_total_pts', n_top=100)
+        features_spread = self._select_features_from_subset(train_df, 'target_point_diff')
         
         X_train_spread = train_df[features_spread]
         X_test_spread = test_df[features_spread]
@@ -984,7 +1135,7 @@ class BaselineModel:
         calib_meta['spread_mean'] = float(mean_s)
         
         # 2. Total (Points)
-        features_total = self.get_features_for_target('target_total_pts')
+        features_total = self._select_features_from_subset(train_df, 'target_total_pts')
         
         X_train_total = train_df[features_total]
         X_test_total = test_df[features_total]    
@@ -1032,123 +1183,6 @@ class BaselineModel:
         logging.info("Saved error_distribution.png")
 
 
-    # def train_and_save_all(self, use_odds=False, save_suffix=''):
-    #     """Train final models on ALL available data and save them."""
-    #     # Force reload to ensure correct feature set
-    #     self.load_data(use_odds=use_odds)
-        
-    #     # Use temporal split for feature selection too
-    #     n_feature_select = int(len(self.df) * 0.7)  # Use first 70% for feature selection
-    #     feature_select_df = self.df.iloc[:n_feature_select]
-        
-    #     # Select features from historical portion only
-    #     self.features_ml = self._select_features_from_subset(feature_select_df, 'target_home_win', n_top=100)
-    #     self.features_spread = self._select_features_from_subset(feature_select_df, 'target_point_diff', n_top=100)
-    #     self.features_total = self._select_features_from_subset(feature_select_df, 'target_total_pts', n_top=100)
-            
-    #     # Save feature config
-    #     feature_config = {
-    #         'ml': self.features_ml,
-    #         'spread': self.features_spread,
-    #         'total': self.features_total
-    #     }
-    #     with open(self.model_dir / f'feature_config{save_suffix}.json', 'w') as f:
-    #         json.dump(feature_config, f)
-
-    #     # ===== MONEYLINE =====
-    #     X_ml = self.df[self.features_ml]
-    #     y_ml = self.df['target_home_win']
-        
-    #     # Temporal split for FLAML validation
-    #     n_train = int(len(X_ml) * 0.8)
-        
-    #     logging.info("Training FLAML AutoML for Moneyline...")
-    #     automl_ml = AutoML()
-    #     automl_ml.fit(
-    #         X_ml.iloc[:n_train], y_ml.iloc[:n_train],
-    #         task="classification",
-    #         time_budget=300,
-    #         metric='log_loss',
-    #         estimator_list=['lgbm'],
-    #         X_val=X_ml.iloc[n_train:],
-    #         y_val=y_ml.iloc[n_train:],
-    #         verbose=0
-    #     )
-    #     logging.info(f"Best ML Config: {automl_ml.best_config}")
-        
-    #     # Refit on full data with best params
-    #     best_ml_params = automl_ml.best_config.copy()
-    #     final_ml = lgb.LGBMClassifier(**best_ml_params, verbosity=-1, random_state=42)
-    #     final_ml.fit(X_ml, y_ml)
-    #     self.save_model(final_ml, f'latest_baseline{save_suffix}.pkl')
-        
-    #     # Save best config for backtest consistency
-    #     with open(self.model_dir / f'best_config_ml{save_suffix}.json', 'w') as f:
-    #         json.dump(best_ml_params, f)
-
-    #         # ===== SPREAD =====
-    #     X_spread = self.df[self.features_spread]
-    #     y_spread = self.df['target_point_diff']
-        
-    #     # Temporal split for FLAML validation
-    #     n_train = int(len(X_spread) * 0.8)
-        
-    #     logging.info("Training FLAML AutoML for Spread...")
-    #     automl_spread = AutoML()
-    #     automl_spread.fit(
-    #         X_spread.iloc[:n_train], y_spread.iloc[:n_train],
-    #         task="regression",
-    #         time_budget=300,
-    #         metric='mse',
-    #         estimator_list=['lgbm'],
-    #         X_val=X_spread.iloc[n_train:],
-    #         y_val=y_spread.iloc[n_train:],
-    #         verbose=0
-    #     )
-    #     logging.info(f"Best Spread Config: {automl_spread.best_config}")
-        
-    #     # Refit on full data with best params
-    #     best_spread_params = automl_spread.best_config.copy()
-    #     final_spread = lgb.LGBMRegressor(**best_spread_params, verbosity=-1, random_state=42)
-    #     final_spread.fit(X_spread, y_spread)
-    #     self.save_model(final_spread, f'latest_spread{save_suffix}.pkl')
-        
-    #     # Save best config for backtest consistency
-    #     with open(self.model_dir / f'best_config_spread{save_suffix}.json', 'w') as f:
-    #         json.dump(best_spread_params, f)
-
-    #         # ===== TOTAL =====
-    #     X_total = self.df[self.features_total]
-    #     y_total = self.df['target_total_pts']
-        
-    #     # Temporal split for FLAML validation
-    #     n_train = int(len(X_total) * 0.8)
-        
-    #     logging.info("Training FLAML AutoML for Total...")
-    #     automl_total = AutoML()
-    #     automl_total.fit(
-    #         X_total.iloc[:n_train], y_total.iloc[:n_train],
-    #         task="regression",
-    #         time_budget=300,
-    #         metric='mse',
-    #         estimator_list=['lgbm'],
-    #         X_val=X_total.iloc[n_train:],
-    #         y_val=y_total.iloc[n_train:],
-    #         verbose=0
-    #     )
-    #     logging.info(f"Best Total Config: {automl_total.best_config}")
-        
-    #     # Refit on full data with best params
-    #     best_total_params = automl_total.best_config.copy()
-    #     final_total = lgb.LGBMRegressor(**best_total_params, verbosity=-1, random_state=42)
-    #     final_total.fit(X_total, y_total)
-    #     self.save_model(final_total, f'latest_total{save_suffix}.pkl')
-        
-    #     # Save best config for backtest consistency
-    #     with open(self.model_dir / f'best_config_total{save_suffix}.json', 'w') as f:
-    #         json.dump(best_total_params, f)
-
-
     def train_and_save_all(self, use_odds=False, save_suffix='', calib_holdout_frac=0.2):
         """
         Train final models on ALL available data and save them, including calibrators.
@@ -1170,9 +1204,9 @@ class BaselineModel:
         logging.info(f"Final training split: model_train={len(model_train_df)}, calib={len(calib_df)}")
         
         # Select features from model_train only (no leakage)
-        self.features_ml = self._select_features_from_subset(model_train_df, 'target_home_win', n_top=100)
-        self.features_spread = self._select_features_from_subset(model_train_df, 'target_point_diff', n_top=100)
-        self.features_total = self._select_features_from_subset(model_train_df, 'target_total_pts', n_top=100)
+        self.features_ml = self._select_features_from_subset(model_train_df, 'target_home_win')
+        self.features_spread = self._select_features_from_subset(model_train_df, 'target_point_diff')
+        self.features_total = self._select_features_from_subset(model_train_df, 'target_total_pts')
         
         # Save feature config
         feature_config = {
@@ -1185,6 +1219,16 @@ class BaselineModel:
         logging.info(f"Saved feature config with {len(self.features_ml)}/{len(self.features_spread)}/{len(self.features_total)} features")
 
         calibration_meta = {}
+
+        custom_hp = {
+            "lgbm": {
+                "reg_alpha": {"domain": tune.loguniform(lower=0.01, upper=50.0)},
+                "reg_lambda": {"domain": tune.loguniform(lower=0.01, upper=50.0)},
+                "colsample_bytree": {"domain": tune.uniform(lower=0.4, upper=0.9)},
+                "min_child_samples": {"domain": tune.randint(lower=20, upper=100)},
+                "n_estimators": {"domain": 1000},
+            }
+        }
 
         # ===== MONEYLINE =====
         X_model_train_ml = model_train_df[self.features_ml]
@@ -1200,9 +1244,10 @@ class BaselineModel:
         automl_ml.fit(
             X_model_train_ml.iloc[:n_flaml_train], y_model_train_ml.iloc[:n_flaml_train],
             task="classification",
-            time_budget=300,
+            time_budget=600,
             metric='log_loss',
             estimator_list=['lgbm'],
+            custom_hp=custom_hp,
             X_val=X_model_train_ml.iloc[n_flaml_train:],
             y_val=y_model_train_ml.iloc[n_flaml_train:],
             verbose=0
@@ -1248,9 +1293,10 @@ class BaselineModel:
         automl_spread.fit(
             X_model_train_spread.iloc[:n_flaml_train], y_model_train_spread.iloc[:n_flaml_train],
             task="regression",
-            time_budget=300,
+            time_budget=600,
             metric='mse',
             estimator_list=['lgbm'],
+            custom_hp=custom_hp,
             X_val=X_model_train_spread.iloc[n_flaml_train:],
             y_val=y_model_train_spread.iloc[n_flaml_train:],
             verbose=0
@@ -1292,9 +1338,10 @@ class BaselineModel:
         automl_total.fit(
             X_model_train_total.iloc[:n_flaml_train], y_model_train_total.iloc[:n_flaml_train],
             task="regression",
-            time_budget=300,
+            time_budget=600,
             metric='mse',
             estimator_list=['lgbm'],
+            custom_hp=custom_hp,
             X_val=X_model_train_total.iloc[n_flaml_train:],
             y_val=y_model_train_total.iloc[n_flaml_train:],
             verbose=0
@@ -1351,14 +1398,16 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     
     # Assuming script run from project root
-    data_path = Path('data/processed/training_set_v4.csv')
+    # Latest dated training set written by scripts/generate_training_set.py (ISO dates sort lexically)
+    data_path = max(Path('data/processed').glob('training_set_v1_reduced_*.csv'))
     
     model = BaselineModel(data_path)
     
+    date = date.today()
 
     metrics, preds = model.backtest_walk_forward(
         start_season='2019-20',
-        use_odds=True,
+        use_odds=False,
         calibrate=True,
         save_suffix = '_calibrated'
         )
@@ -1366,7 +1415,7 @@ if __name__ == "__main__":
     model.evaluate_vs_market(preds)
 
     print("\n" + "="*80)
-    print("TRAINING FINAL MODELS (WITH ODDS)")
+    print("TRAINING FINAL MODELS (NO ODDS)")
     print("="*80)
-    model.train_and_save_all(use_odds=True, save_suffix='_with_odds_v3')
+    model.train_and_save_all(use_odds=False, save_suffix=f'_no_odds_{date}')
     

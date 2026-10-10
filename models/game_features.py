@@ -46,14 +46,39 @@ class GameFeatureBuilder:
         with sqlite3.connect(self.db_path) as conn:
             # Load OPENING odds as the primary source
             try:
-                # We simply load the opening table. No need to rename with _open suffix 
-                # because we want these to be the MAIN features now.
                 opening = pd.read_sql("SELECT * FROM nba_odds_opening", conn)
             except:
                 logging.warning("Could not load nba_odds_opening")
                 opening = pd.DataFrame()
 
-        # Helper to extract vals
+            # Build team name → teamId lookup to fill missing IDs
+            # (the scraper often omits teamId for newer seasons)
+            try:
+                team_map_df = pd.read_sql(
+                    "SELECT DISTINCT teamId, teamName FROM team_basic_stats WHERE teamId IS NOT NULL",
+                    conn
+                )
+                name_to_id = dict(zip(team_map_df['teamName'].str.strip(), team_map_df['teamId']))
+            except Exception as e:
+                logging.warning(f"Could not build team name→ID map: {e}")
+                name_to_id = {}
+
+        # Fill missing teamId_home / teamId_away from team name columns
+        if not opening.empty and name_to_id:
+            if 'teamId_home' in opening.columns and 'home_team' in opening.columns:
+                missing_home = opening['teamId_home'].isna()
+                if missing_home.any():
+                    filled = opening.loc[missing_home, 'home_team'].str.strip().map(name_to_id)
+                    opening.loc[missing_home, 'teamId_home'] = filled
+                    logging.info(f"Filled {filled.notna().sum()} missing teamId_home values from team name lookup")
+
+            if 'teamId_away' in opening.columns and 'away_team' in opening.columns:
+                missing_away = opening['teamId_away'].isna()
+                if missing_away.any():
+                    filled = opening.loc[missing_away, 'away_team'].str.strip().map(name_to_id)
+                    opening.loc[missing_away, 'teamId_away'] = filled
+
+        # Helper to extract best odds across books
         def get_best_odds(df, suffix=""):
             # Priority: DraftKings > FanDuel > BetMGM > Bet365 > Caesars > Avg
             books = ['draftkings', 'fanduel', 'betmgm', 'bet365', 'caesars', 'bet_rivers_ny']
@@ -76,6 +101,11 @@ class GameFeatureBuilder:
 
         # Process Opening
         if not opening.empty and 'teamId_home' in opening.columns:
+            # Drop rows still missing teamId_home (can't merge without a key)
+            opening = opening.dropna(subset=['teamId_home'])
+            opening['teamId_home'] = opening['teamId_home'].astype(int)
+            opening['teamId_away'] = pd.to_numeric(opening['teamId_away'], errors='coerce').astype('Int64')
+
             # We pass suffix="" so they map to 'odds_home_ml', etc.
             o_vals = get_best_odds(opening, "")
             opening_processed = pd.concat([opening[['gameDate', 'teamId_home', 'teamId_away']], o_vals], axis=1)
@@ -191,26 +221,32 @@ class GameFeatureBuilder:
         if not db_odds.empty:
             db_odds = db_odds[keep_cols]
 
-        # C. Combine: Start with archive, then OVERWRITE with DB where available
+        # C. Combine: DB takes full priority; archive fills in older seasons
+        # Use concat+drop_duplicates so DB-only rows (e.g. 2026) are NOT dropped.
+        # combine_first only fills NaN values in the *left* index — rows that don't
+        # exist in the archive (any date after 2023) were silently dropped.
+        odds_frames = []
+        if not db_odds.empty:
+            odds_frames.append(db_odds)       # DB first = higher priority
         if not archive_odds.empty:
-            final_odds = archive_odds.set_index(['gameDate', 'teamId_home'])
+            # Align archive columns to DB schema (may be missing odds_home_ml etc.)
+            archive_aligned = archive_odds.reindex(columns=db_odds.columns if not db_odds.empty else archive_odds.columns)
+            odds_frames.append(archive_aligned)
+
+        if odds_frames:
+            combined = pd.concat(odds_frames, ignore_index=True)
+            combined['gameDate'] = pd.to_datetime(combined['gameDate'])
+            # Per game, take the first non-null value per column: DB wins (first in the list),
+            # archive fills cells the DB is missing
+            final_odds = combined.groupby(['gameDate', 'teamId_home'], as_index=False, sort=False, dropna=False).first()
         else:
             final_odds = pd.DataFrame()
-        
-        if not db_odds.empty:
-            db_odds_indexed = db_odds.set_index(['gameDate', 'teamId_home'])
-            if final_odds.empty:
-                final_odds = db_odds_indexed
-            else:
-                # DB takes priority - use combine_first the other way
-                final_odds = db_odds_indexed.combine_first(final_odds)
-        
-        final_odds = final_odds.reset_index()
         
 
         # D. VALIDATE: Clean obviously bad spread values
         for col in ['odds_home_spread', 'odds_away_spread']:
             if col in final_odds.columns:
+                final_odds[col] = pd.to_numeric(final_odds[col], errors='coerce')
                 bad_mask = final_odds[col].abs() > 25
                 bad_count = bad_mask.sum()
                 if bad_count > 0:
