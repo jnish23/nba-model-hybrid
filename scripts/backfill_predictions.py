@@ -14,11 +14,12 @@ logging.basicConfig(level=logging.INFO)
 
 def backfill_logs():
     db_path = Path.cwd() / 'data' / 'nba_stats.db'
-    data_path = Path('data/processed/training_set_v4.csv')
-    
-    if not data_path.exists():
+    data_dir = Path('data/processed')
+    if not data_dir.exists():
         # Fallback
-        data_path = Path(r'c:\Users\jorda\nba-model-hybrid\data\processed\training_set_v4.csv')
+        data_dir = Path(r'c:\Users\jorda\nba-model-hybrid\data\processed')
+    # Latest dated training set written by scripts/generate_training_set.py (ISO dates sort lexically)
+    data_path = max(data_dir.glob('training_set_v1_reduced_*.csv'))
         
     logging.info("Initializing Baseline Model for Backfill...")
     model = BaselineModel(data_path)
@@ -34,7 +35,7 @@ def backfill_logs():
         return
 
     logging.info(f"Backfilling {len(predictions_df)} predictions to logs...")
-    logger = PredictionLogger(db_path, log_path='predictions/predictions_2025-26.csv')
+    logger = PredictionLogger(db_path, log_path='predictions/predictions_2025-26_v2.csv')
     
     # Needs team names for the log entry text (optional, but good for 'matchup' field)
     # The training set has team IDs. We need a mapping.
@@ -90,10 +91,10 @@ def backfill_logs():
             'line_spread': row.get('odds_home_spread', 0),
             'line_total': row.get('odds_total', 0),
             
-            'model_version': 'backfill_v1'
+            'model_version': 'backfill_v2'
         }
         
-        logger.log_prediction(entry)
+        logger.log_prediction(entry, overwrite=False)
         count += 1
         
     logging.info(f"Successfully logged {count} historic predictions.")

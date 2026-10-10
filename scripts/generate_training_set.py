@@ -3,12 +3,13 @@ import pandas as pd
 import logging
 import sys
 import os
+from datetime import date
 
 # Add project root to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from pathlib import Path
-from models.game_features import GameFeatureBuilder
+from models.game_features_v2 import GameFeatureBuilder
 
 # Setup logging
 logging.basicConfig(
@@ -36,7 +37,8 @@ def main():
     df = builder.build_training_set(seasons, archive_path=archive_path)
     
     # Save to CSV
-    output_path = output_dir / 'training_set_v4.csv'
+    today = date.today()
+    output_path = output_dir / f'training_set_v1_reduced_{today}.csv'
     df.to_csv(output_path, index=False)
     
     logging.info(f"Training set saved to {output_path}")

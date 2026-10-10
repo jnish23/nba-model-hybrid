@@ -35,7 +35,7 @@ class PredictionLogger:
                 )
             """)
             
-    def log_prediction(self, prediction: dict):
+    def log_prediction(self, prediction: dict, overwrite: bool = True):
         """
         Log a prediction (UPSERT).
         """
@@ -71,17 +71,32 @@ class PredictionLogger:
             with sqlite3.connect(self.db_path) as conn:
                 cols = ', '.join(row.keys())
                 placeholders = ', '.join(['?'] * len(row))
-                sql = f"INSERT OR REPLACE INTO predictions_log_v2 ({cols}) VALUES ({placeholders})"
+                verb = "INSERT OR REPLACE" if overwrite else "INSERT OR IGNORE"
+                sql = f"{verb} INTO predictions_log_v2 ({cols}) VALUES ({placeholders})"
                 conn.execute(sql, list(row.values()))
         except Exception as e:
             logging.error(f"Failed to log prediction to DB: {e}")
             
-        # 2. Save to CSV (Append)
+        # 2. Save to CSV (mirroring DB behavior to avoid duplicates)
         df_row = pd.DataFrame([row])
         if self.log_path.exists():
-            df_row.to_csv(self.log_path, mode='a', header=False, index=False)
+            # Read the CSV's game_ids once per logger, not on every call
+            if getattr(self, '_csv_game_ids', None) is None:
+                self._csv_game_ids = set(pd.read_csv(self.log_path, dtype=str, usecols=['game_id'])['game_id'])
+            already_exists = row['game_id'] in self._csv_game_ids
+            if not already_exists:
+                df_row.to_csv(self.log_path, mode='a', header=False, index=False)
+            elif overwrite:
+                # Replace existing row (same as INSERT OR REPLACE) — only rewrite the file in this case
+                existing = pd.read_csv(self.log_path, dtype=str)
+                existing = existing[existing['game_id'] != row['game_id']]
+                updated = pd.concat([existing, df_row.astype(str)], ignore_index=True)
+                updated.to_csv(self.log_path, index=False)
+            # else: skip (same as INSERT OR IGNORE)
         else:
             df_row.to_csv(self.log_path, index=False)
+            self._csv_game_ids = set()
+        self._csv_game_ids.add(row['game_id'])
             
         logging.info(f"Logged prediction for {row['matchup']}")
 
