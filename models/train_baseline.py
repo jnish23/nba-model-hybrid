@@ -1183,7 +1183,7 @@ class BaselineModel:
         logging.info("Saved error_distribution.png")
 
 
-    def train_and_save_all(self, use_odds=False, save_suffix='', calib_holdout_frac=0.2):
+    def train_and_save_all(self, use_odds=False, save_suffix='', calib_holdout_frac=0.2, time_budget=600):
         """
         Train final models on ALL available data and save them, including calibrators.
         
@@ -1244,7 +1244,7 @@ class BaselineModel:
         automl_ml.fit(
             X_model_train_ml.iloc[:n_flaml_train], y_model_train_ml.iloc[:n_flaml_train],
             task="classification",
-            time_budget=600,
+            time_budget=time_budget,
             metric='log_loss',
             estimator_list=['lgbm'],
             custom_hp=custom_hp,
@@ -1293,7 +1293,7 @@ class BaselineModel:
         automl_spread.fit(
             X_model_train_spread.iloc[:n_flaml_train], y_model_train_spread.iloc[:n_flaml_train],
             task="regression",
-            time_budget=600,
+            time_budget=time_budget,
             metric='mse',
             estimator_list=['lgbm'],
             custom_hp=custom_hp,
@@ -1338,7 +1338,7 @@ class BaselineModel:
         automl_total.fit(
             X_model_train_total.iloc[:n_flaml_train], y_model_train_total.iloc[:n_flaml_train],
             task="regression",
-            time_budget=600,
+            time_budget=time_budget,
             metric='mse',
             estimator_list=['lgbm'],
             custom_hp=custom_hp,

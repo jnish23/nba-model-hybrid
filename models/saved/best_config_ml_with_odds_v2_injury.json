@@ -1,0 +1,1 @@
+{"num_leaves": 4, "learning_rate": 0.012581806339166899, "log_max_bin": 6, "n_estimators": 1000, "min_child_samples": 90, "colsample_bytree": 0.5399949245790405, "reg_alpha": 15.854199592714053, "reg_lambda": 0.06635135678395225}

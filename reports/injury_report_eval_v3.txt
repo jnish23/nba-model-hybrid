@@ -1,0 +1,131 @@
+INFO: 0 PDFs, 0 to parse
+WARNING: Unmatched team names: ['Non-NBA Team']
+INFO: Linked: team 100.0%, game 99.7%, player 99.0% of player rows (801 via fuzzy match)
+INFO: Calculating Rolling BPM (Strict 2.0)...
+INFO: Reliability: min=0.000, median=1.000, max=1.000
+INFO: Raw BPM (unweighted): -158.6 to 115.7
+INFO: Raw BPM (weighted):   -8.6 to 38.1
+INFO: Dropped closing odds for 201 games in contaminated window 2019-10-22..2019-11-19
+INFO: Dropped closing odds for 266 games in contaminated window 2021-10-19..2021-11-23
+INFO: Clean odds: 8815 games matched to results (8799 with opening spread, 8321 with closing spread)
+INFO: Calculating Rolling BPM (Strict 2.0)...
+INFO: Reliability: min=0.000, median=1.000, max=1.000
+INFO: Raw BPM (unweighted): -158.6 to 115.7
+INFO: Raw BPM (weighted):   -8.6 to 38.1
+INFO: Availability features: 17650 team-games, 61.3% with a fresh absence
+INFO: 16 games with 10:xx/11:xx tips at non-western home teams treated as AM
+INFO: [night_before_8pm] team-games with a report: 69.9%
+INFO: 16 games with 10:xx/11:xx tips at non-western home teams treated as AM
+INFO: [game_day_noon] team-games with a report: 83.6%
+INFO: 16 games with 10:xx/11:xx tips at non-western home teams treated as AM
+INFO: [game_day_6pm] team-games with a report: 99.8%
+INFO: 16 games with 10:xx/11:xx tips at non-western home teams treated as AM
+INFO: [tip_minus_30m] team-games with a report: 99.8%
+
+=== Snapshot coverage (games with open+close odds)
+        snapshot  games  with both reports  share
+night_before_8pm   8318               4590  0.552
+   game_day_noon   8318               5888  0.708
+    game_day_6pm   8318               8215  0.988
+   tip_minus_30m   8318               8216  0.988
+
+=== A/B. Regressions on home-minus-away reported lost value (b = points per unit)
+    'open_error | +oracle': reported + realized features together; oracle_t_new = realized fresh-absence t after controlling for the report
+        snapshot               target    n     R2   b_new    t_new   b_old    t_old  oracle_t_new  oracle_only_R2
+night_before_8pm                 move 4590 0.0627 -0.1295 -15.1388 -0.0465 -10.3120           NaN             NaN
+night_before_8pm           open_error 4590 0.0027 -0.0836  -1.3745 -0.1076  -3.3563           NaN             NaN
+night_before_8pm          close_error 4590 0.0010  0.0458   0.7598 -0.0612  -1.9231           NaN             NaN
+night_before_8pm open_error | +oracle 4590 0.0054  0.1239   1.4645 -0.1247  -2.5818       -3.5190          0.0035
+   game_day_noon                 move 5888 0.0730 -0.1352 -18.8835 -0.0476 -12.0552           NaN             NaN
+   game_day_noon           open_error 5888 0.0033 -0.1192  -2.3079 -0.1133  -3.9798           NaN             NaN
+   game_day_noon          close_error 5888 0.0010  0.0160   0.3120 -0.0657  -2.3279           NaN             NaN
+   game_day_noon open_error | +oracle 5888 0.0060  0.0912   1.2346 -0.1187  -2.7625       -3.9765          0.0044
+    game_day_6pm                 move 8215 0.2052 -0.2088 -43.0555 -0.0636 -19.6975           NaN             NaN
+    game_day_6pm           open_error 8215 0.0070 -0.2245  -6.3148 -0.1113  -4.7010           NaN             NaN
+    game_day_6pm          close_error 8215 0.0005 -0.0157  -0.4462 -0.0477  -2.0330           NaN             NaN
+    game_day_6pm open_error | +oracle 8215 0.0092  0.0157   0.2358 -0.1181  -3.1703       -4.2523          0.0079
+   tip_minus_30m                 move 8216 0.2540 -0.2197 -49.2500 -0.0709 -22.8163           NaN             NaN
+   tip_minus_30m           open_error 8216 0.0080 -0.2311  -6.8506 -0.1152  -4.9023           NaN             NaN
+   tip_minus_30m          close_error 8216 0.0004 -0.0114  -0.3416 -0.0443  -1.9020           NaN             NaN
+   tip_minus_30m open_error | +oracle 8216 0.0094  0.0091   0.1144 -0.1348  -3.5009       -3.3486          0.0079
+
+=== C. Walk-forward betting simulation (fit on prior seasons; bets from 2020-21 on)
+    Break-even at -110 = 52.38%. @open assumes you got the opening number; @close is the lower bound.
+        snapshot        fit  threshold  bets  win% @open  ROI% @open  win% @close  ROI% @close  CLV pts  CLV t
+night_before_8pm open_error        0.5   719       53.87        2.81        51.41        -1.82     0.35   3.94
+night_before_8pm open_error        1.0   186       49.46       -5.52        47.80        -8.55     0.43   2.22
+night_before_8pm open_error        1.5    62       43.55      -16.86        42.62       -18.33     0.25   0.60
+night_before_8pm open_error        2.0    21       28.57      -45.45        25.00       -49.78    -0.21  -0.40
+night_before_8pm open_error        3.0     1        0.00     -100.00         0.00      -100.00    -2.50    NaN
+night_before_8pm       move        0.5   639       53.77        2.65        50.95        -2.72     1.02  10.47
+night_before_8pm       move        1.0   125       52.80        0.80        49.60        -5.31     1.81   6.15
+night_before_8pm       move        1.5    33       51.52       -1.65        42.42       -19.01     2.83   3.93
+night_before_8pm       move        2.0    12       50.00       -4.55        41.67       -20.45     4.06   2.47
+night_before_8pm       move        3.0     0         NaN         NaN          NaN          NaN      NaN    NaN
+   game_day_noon open_error        0.5  1353       53.43        1.99        50.67        -3.21     0.76  12.57
+   game_day_noon open_error        1.0   371       55.68        6.27        51.36        -1.94     1.12   8.40
+   game_day_noon open_error        1.5   124       47.58       -9.16        42.74       -18.40     1.44   5.42
+   game_day_noon open_error        2.0    51       33.33      -36.36        31.37       -40.11     1.49   3.24
+   game_day_noon open_error        3.0     8       50.00       -4.55        37.50       -28.41     0.94   0.88
+   game_day_noon       move        0.5   927       53.74        2.58        50.27        -3.99     1.04  12.73
+   game_day_noon       move        1.0   202       52.97        1.13        47.52        -9.27     1.78   8.34
+   game_day_noon       move        1.5    51       56.86        8.56        52.94         1.07     2.52   4.93
+   game_day_noon       move        2.0    20       35.00      -33.18        30.00       -42.73     3.44   3.16
+   game_day_noon       move        3.0     0         NaN         NaN          NaN          NaN      NaN    NaN
+    game_day_6pm open_error        0.5  3115       53.46        2.03        49.66        -5.15     1.11  26.22
+    game_day_6pm open_error        1.0  1503       55.47        5.84        49.93        -4.63     1.67  25.08
+    game_day_6pm open_error        1.5   786       57.38        9.46        50.13        -4.29     2.25  22.27
+    game_day_6pm open_error        2.0   419       61.63       17.57        53.35         1.84     2.91  19.32
+    game_day_6pm open_error        3.0   108       58.33       11.36        50.47        -3.62     4.29  12.60
+    game_day_6pm       move        0.5  2843       54.71        4.40        50.52        -3.52     1.23  27.15
+    game_day_6pm       move        1.0  1313       55.83        6.54        50.00        -4.51     1.80  24.36
+    game_day_6pm       move        1.5   663       57.16        9.04        50.00        -4.54     2.44  21.42
+    game_day_6pm       move        2.0   330       60.74       15.76        52.58         0.39     3.12  17.78
+    game_day_6pm       move        3.0    90       57.78       10.30        47.78        -8.79     4.69  11.61
+   tip_minus_30m open_error        0.5  3172       54.28        3.57        50.14        -4.23     1.24  30.41
+   tip_minus_30m open_error        1.0  1611       55.98        6.81        50.00        -4.50     1.89  30.55
+   tip_minus_30m open_error        1.5   877       57.49        9.65        50.80        -3.00     2.44  26.84
+   tip_minus_30m open_error        2.0   472       61.19       16.72        52.24        -0.27     3.12  23.31
+   tip_minus_30m open_error        3.0   137       61.03       16.39        50.37        -3.78     4.34  14.95
+   tip_minus_30m       move        0.5  3031       54.90        4.76        50.30        -3.93     1.33  31.61
+   tip_minus_30m       move        1.0  1509       56.25        7.32        50.03        -4.44     1.97  30.34
+   tip_minus_30m       move        1.5   850       58.38       11.34        50.65        -3.28     2.57  27.49
+   tip_minus_30m       move        2.0   454       63.03       20.10        52.99         1.16     3.19  22.83
+   tip_minus_30m       move        3.0   130       57.69       10.14        48.44        -7.41     4.48  14.47
+
+=== D. PRIMARY TEST: fit=move, |predicted move| > 1.0 pt
+    Chosen after seeing the grid above (not pre-registered). Bootstrap resamples dates.
+
+--- each snapshot's own games: per season
+snapshot  game_day_6pm  game_day_noon  night_before_8pm  tip_minus_30m
+season                                                                
+2020-21           52.2           46.7              75.0           52.1
+2021-22           60.7           68.8              50.0           59.9
+2022-23           53.5           50.0              53.3           53.3
+2023-24           54.7           55.8              62.5           52.9
+2024-25           57.1           48.6              52.2           60.0
+2025-26           56.9           52.2              47.2           58.7
+ALL               55.8           53.0              52.8           56.2
+--- each snapshot's own games: overall with bootstrap 95% CI
+        snapshot  bets  win% @open   CI95 @open  P(@open <= 52.38%)  win% @close  CI95 @close  CLV pts     CI95 CLV
+night_before_8pm   125       52.80 (43.3, 61.9)                0.46        49.60 (39.8, 59.5)     1.81 (1.14, 2.58)
+   game_day_noon   202       52.97 (46.0, 59.6)                0.43        47.52 (40.3, 54.6)     1.78 (1.25, 2.33)
+    game_day_6pm  1313       55.83 (53.1, 58.6)                0.01        50.00 (47.2, 52.7)     1.80 (1.65, 1.97)
+   tip_minus_30m  1509       56.25 (53.6, 58.9)                0.00        50.03 (47.4, 52.6)     1.97 (1.84, 2.11)
+
+--- common games covered by all snapshots (n=4590): per season
+snapshot  game_day_6pm  game_day_noon  night_before_8pm  tip_minus_30m
+season                                                                
+2020-21           47.5           62.5              75.0           47.7
+2021-22           56.1           64.3              50.0           59.8
+2022-23           49.5           41.2              53.3           50.0
+2023-24           53.4           55.6              62.5           51.2
+2024-25           52.0           50.0              52.2           57.2
+2025-26           56.6           49.2              47.2           58.4
+ALL               53.2           51.8              52.8           54.6
+--- common games covered by all snapshots (n=4590): overall with bootstrap 95% CI
+        snapshot  bets  win% @open   CI95 @open  P(@open <= 52.38%)  win% @close  CI95 @close  CLV pts     CI95 CLV
+night_before_8pm   125       52.80 (43.3, 61.9)                0.46        49.60 (39.8, 59.5)     1.81 (1.14, 2.58)
+   game_day_noon   166       51.81 (44.0, 59.2)                0.55        47.59 (39.9, 55.7)     1.82 (1.22, 2.47)
+    game_day_6pm   669       53.23 (49.3, 57.1)                0.32        48.87 (45.0, 52.4)     1.49 (1.27, 1.72)
+   tip_minus_30m   785       54.62 (51.1, 58.0)                0.11        49.55 (46.1, 52.9)     1.70 (1.53, 1.87)

@@ -68,8 +68,23 @@ class PlayerFeatureBuilder:
         features = grouped[['gameId', 'teamId', 'roster_bpm', 'roster_bpm_ewma']]
         
         logging.info(f"Aggregated {len(features)} team-games (leak-free).")
+        self._grouped = grouped
         
         return features
+
+    def next_game_roster_features(self, seasons=None):
+        """
+        roster_bpm / roster_bpm_ewma for each team's NEXT (unplayed) game, computed exactly as
+        build_roster_features computes them for a historical game: the previous game's roster BPM
+        and the EWMA (span 10) of roster BPM through the previous game. Use this for live
+        inference so features match training. Returns a DataFrame indexed by teamId.
+        """
+        self.build_roster_features(seasons)
+        g = self._grouped.sort_values(['teamId', 'gameDate'])
+        out = g.groupby('teamId').agg(roster_bpm=('roster_bpm_current', 'last'))
+        out['roster_bpm_ewma'] = g.groupby('teamId')['roster_bpm_current'].apply(
+            lambda x: x.ewm(span=10, adjust=False).mean().iloc[-1])
+        return out
 
 if __name__ == "__main__":
     pfb = PlayerFeatureBuilder(r'c:\Users\jorda\nba-model-hybrid\data\nba_stats.db')

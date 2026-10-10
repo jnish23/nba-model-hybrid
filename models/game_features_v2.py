@@ -15,9 +15,15 @@ from models.travel_builder import TravelFeatureBuilder
 
 
 class GameFeatureBuilder:
-    def __init__(self, db_path, team_features_df=None):
+    # Injury-report snapshot used for inj_* features. Must match when live inference runs
+    # (see models/injury_report_features.SNAPSHOT_CUTOFFS); recorded in the training-set log.
+    INJURY_SNAPSHOT = 'game_day_noon'
+    INJURY_FIRST_SEASON = '2019-20'  # official report archive coverage
+
+    def __init__(self, db_path, team_features_df=None, injury_snapshot=None):
         self.db_path = db_path
         self.team_features_df = team_features_df
+        self.injury_snapshot = injury_snapshot or self.INJURY_SNAPSHOT
         
     def _get_team_features(self):
         """Get or build team features"""
@@ -229,6 +235,14 @@ class GameFeatureBuilder:
         p_feats = self._get_player_features(seasons)
         game_df = game_df.merge(p_feats, left_on=['gameId', 'teamId_home'], right_on=['gameId', 'teamId'], how='left').rename(columns={'roster_bpm': 'roster_bpm_home'}).drop(columns=['teamId'])
         game_df = game_df.merge(p_feats, left_on=['gameId', 'teamId_away'], right_on=['gameId', 'teamId'], how='left').rename(columns={'roster_bpm': 'roster_bpm_away'}).drop(columns=['teamId'])
+
+        # 6c. Injury report features (point-in-time; NaN before report coverage)
+        inj_seasons = sorted(s for s in game_df['seasonYear'].unique() if s >= self.INJURY_FIRST_SEASON)
+        if inj_seasons:
+            from models.injury_report_features import build_injury_features, add_injury_features
+            logging.info(f"Adding injury report features (snapshot={self.injury_snapshot}) for {inj_seasons}")
+            inj = build_injury_features(self.db_path, inj_seasons, snapshot_name=self.injury_snapshot)
+            game_df = add_injury_features(game_df, inj)
 
         # 7. Add Odds (Priority: Archive > DB)
         logging.info("Merging Odds data (OPENING ONLY)...")
