@@ -27,12 +27,7 @@ from nba_api.stats.endpoints import scoreboardv3
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-def season_for_date(d):
-    """NBA season string for a date: Oct-Dec -> 'YYYY-YY+1', Jan-Sep -> previous year's season."""
-    d = pd.Timestamp(d)
-    start = d.year if d.month >= 10 else d.year - 1
-    return f"{start}-{(start + 1) % 100:02d}"
-
+from models.season_utils import season_for_date
 
 current_season = season_for_date(datetime.date.today())
 
@@ -929,7 +924,7 @@ if __name__ == "__main__":
 
     p = Path(__file__).parent.parent / 'models' / 'saved' / 'model_ml_with_odds_v2_injury.pkl'
     
-    seasons_to_check = ['2025-26']
+    seasons_to_check = [current_season]
     db_path = Path.cwd() / 'data' / 'nba_stats.db'
     
     syncer = NBADatabaseSync(db_path)

@@ -168,17 +168,73 @@ def _game_results(conn):
     return games
 
 
+def _closing_from_snapshots(conn):
+    """
+    Closing lines from the timestamped odds_snapshots table (scripts/snapshot_odds.py): for each
+    game and book, the last 'current' line fetched before the game started (in_game = 0), pivoted
+    to the same wide per-book layout as nba_odds. Empty if the table does not exist yet.
+    """
+    try:
+        snap = pd.read_sql("SELECT * FROM odds_snapshots WHERE line_type = 'current' AND in_game = 0", conn)
+    except Exception:
+        return pd.DataFrame()
+    if snap.empty:
+        return snap
+    snap = snap.sort_values('fetched_at_et').drop_duplicates(['game_date', 'home_team', 'away_team', 'book'], keep='last')
+    fields = ['home_spread', 'home_spread_odds', 'away_spread', 'away_spread_odds', 'home_ml', 'away_ml',
+              'total', 'over_odds', 'under_odds']
+    wide = snap.pivot_table(index=['game_date', 'home_team', 'away_team'], columns='book', values=fields, aggfunc='last')
+    wide.columns = [f'{f}_{b}' for f, b in wide.columns]
+    wide = wide.reset_index().rename(columns={'game_date': 'gameDate'})
+    for f in fields:
+        for b in BOOKS:
+            wide.setdefault(f'{f}_{b}', np.nan)
+    wide['status'] = ''
+    wide['teamId_home'] = np.nan
+    wide['teamId_away'] = np.nan
+    return wide
+
+
+def check_closing_contamination(odds, window_days=14, ratio_alert=0.85, min_games=40):
+    """
+    Warn about date windows where the closing line looks impossibly accurate relative to the
+    opener - the signature of in-game "closing" lines (see CLOSING_BAD_WINDOWS). Uses results, so it
+    is a monitor for a human to review, not an automatic filter. Returns the flagged windows.
+    """
+    d = odds.dropna(subset=['open_home_spread', 'close_home_spread', 'open_total', 'close_total']).copy()
+    if d.empty:
+        return pd.DataFrame()
+    margin = d['home_score'] - d['away_score']
+    total = d['home_score'] + d['away_score']
+    d['err_open'] = (margin + d['open_home_spread']).abs() + (total - d['open_total']).abs()
+    d['err_close'] = (margin + d['close_home_spread']).abs() + (total - d['close_total']).abs()
+    d['n'] = 1
+    daily = d.groupby(pd.to_datetime(d['gameDate']))[['err_open', 'err_close', 'n']].sum().sort_index()
+    roll = daily.rolling(f'{window_days}D').sum()
+    roll['ratio'] = roll['err_close'] / roll['err_open']
+    flagged = roll[(roll['ratio'] < ratio_alert) & (roll['n'] >= min_games)]
+    if len(flagged):
+        logging.warning(f"Closing lines look contaminated (close/open error ratio < {ratio_alert}, normal ~0.97) "
+                        f"in {window_days}-day windows ending {flagged.index.min():%Y-%m-%d}..{flagged.index.max():%Y-%m-%d}; "
+                        f"review and add to CLOSING_BAD_WINDOWS")
+    return flagged
+
+
 def load_clean_odds(db_path, min_date='2019-10-01'):
     """
     Return one row per game with cleaned opening + closing consensus odds, gameId and scores.
     Book-level odds only exist from the 2019-20 season on, hence the default `min_date`.
+    Closing lines come from the timestamped odds_snapshots table where available (last pre-game
+    snapshot, clean by construction), else from nba_odds (scraped after the game).
     """
     with sqlite3.connect(db_path) as conn:
         opening = _load_table(conn, 'nba_odds_opening')
         closing = _load_table(conn, 'nba_odds')
+        snap_close = _closing_from_snapshots(conn)
         games = _game_results(conn)
 
-    _fill_team_ids([opening, closing])
+    frames = [opening, closing] + ([snap_close] if len(snap_close) else [])
+    _fill_team_ids(frames)
     key = ['gameDate', 'teamId_home', 'teamId_away']
 
     snapshots = []
@@ -193,7 +249,21 @@ def load_clean_odds(db_path, min_date='2019-10-01'):
         bad = odds['gameDate'].between(lo, hi)
         odds.loc[bad, close_cols] = np.nan
         logging.info(f"Dropped closing odds for {bad.sum()} games in contaminated window {lo}..{hi}")
+
+    if len(snap_close):
+        sc = snap_close.dropna(subset=['teamId_home', 'teamId_away']).drop_duplicates(subset=key, keep='last')
+        sc = pd.concat([sc[key].reset_index(drop=True), _consensus(sc.reset_index(drop=True), 'close_')], axis=1)
+        sc['close_source'] = 'snapshot'
+        odds = odds.merge(sc, on=key, how='outer', suffixes=('', '_snap'))
+        use = odds['close_source'].eq('snapshot')
+        for c in close_cols:
+            odds.loc[use, c] = odds.loc[use, f'{c}_snap']
+        odds = odds.drop(columns=[f'{c}_snap' for c in close_cols])
+        logging.info(f"Closing lines from timestamped snapshots for {int(use.sum())} games")
+    odds['close_source'] = odds.get('close_source', pd.Series(index=odds.index, dtype=object)).fillna('nba_odds')
+
     out = games.merge(odds, on=key, how='inner')
+    check_closing_contamination(out[out['close_source'] == 'nba_odds'])
     logging.info(f"Clean odds: {len(out)} games matched to results "
                  f"({out['open_home_spread'].notna().sum()} with opening spread, "
                  f"{out['close_home_spread'].notna().sum()} with closing spread)")

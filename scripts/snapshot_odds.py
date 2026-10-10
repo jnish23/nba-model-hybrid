@@ -95,7 +95,9 @@ def fetch(date, current_line):
     from sbrscrape import Scoreboard
     sb = Scoreboard(sport='NBA', date=date, current_line=current_line)  # swallows its own errors
     if not hasattr(sb, 'games'):
-        logging.warning(f"SBR scrape failed for {date} (current_line={current_line}); see message above")
+        # sbrscrape returns without setting .games both when no games are listed and on some errors
+        logging.info(f"SBR returned no games for {date} (current_line={current_line}); "
+                     "expected on off days, otherwise check for an error printed above")
     return getattr(sb, 'games', None) or []
 
 

@@ -1,0 +1,22 @@
+name: Checks
+# Production inference runs locally on a Windows Task Scheduler job (scripts/run_daily_inference.bat,
+# daily 9:15 AM PT from 2026-10-20): it needs data/nba_stats.db and the injury-report archive, which
+# are gitignored and too large for the repo. This workflow only checks that the code imports and
+# that key date/cutoff logic is correct - no database or network needed.
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python -m compileall -q models scripts
+      - run: python scripts/smoke_check.py
