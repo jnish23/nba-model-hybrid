@@ -5,7 +5,10 @@ import logging
 import sqlite3
 
 class PredictionLogger:
-    def __init__(self, db_path, log_path='predictions/predictions_2025-26.csv'):
+    def __init__(self, db_path, log_path=None):
+        if log_path is None:
+            from models.season_utils import season_for_date
+            log_path = f'predictions/predictions_{season_for_date()}.csv'
         self.db_path = db_path
         self.log_path = Path(log_path)
         self.log_path.parent.mkdir(parents=True, exist_ok=True)

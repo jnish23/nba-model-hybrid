@@ -25,12 +25,11 @@ def main():
     logging.info("Initializing GameFeatureBuilder...")
     builder = GameFeatureBuilder(db_path)
     
-    # Define seasons to include
-    seasons = [
-        '2013-14', '2014-15', '2015-16', '2016-17', '2017-18', 
-        '2018-19', '2019-20', '2020-21', '2021-22', '2022-23', 
-        '2023-24', '2024-25', '2025-26'
-    ]
+    # All seasons in the database from 2013-14 on (new seasons are picked up automatically)
+    import sqlite3
+    with sqlite3.connect(db_path) as conn:
+        seasons = sorted(pd.read_sql("SELECT DISTINCT seasonYear FROM team_game_full", conn)['seasonYear'])
+    seasons = [s for s in seasons if s >= '2013-14']
     
     logging.info(f"Generating training set for seasons: {seasons}")
     archive_path = Path.cwd() / 'data' / 'nba_odds_archive.csv'
