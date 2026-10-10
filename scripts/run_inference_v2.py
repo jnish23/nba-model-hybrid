@@ -929,7 +929,14 @@ if __name__ == "__main__":
     
     syncer = NBADatabaseSync(db_path)
 
-    syncer.sync_database(seasons_to_check)
+    try:
+        syncer.sync_database(seasons_to_check)
+    except Exception as e:
+        # Predict anyway, but make the staleness visible in the log
+        with sqlite3.connect(db_path) as conn:
+            last = conn.execute("SELECT MAX(gameDate) FROM team_game_full").fetchone()[0]
+        logging.error(f"DATABASE SYNC FAILED ({e}). Predicting with data through {last}; "
+                      f"features may be stale.")
 
     engine = InferenceEngine(db_path, p)
 

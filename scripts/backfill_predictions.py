@@ -19,7 +19,8 @@ def backfill_logs():
         # Fallback
         data_dir = Path(r'c:\Users\jorda\nba-model-hybrid\data\processed')
     # Latest dated training set written by scripts/generate_training_set.py (ISO dates sort lexically)
-    data_path = max(data_dir.glob('training_set_v1_reduced_*.csv'))
+    from models.data_paths import latest_training_set
+    data_path = latest_training_set(data_dir)
         
     logging.info("Initializing Baseline Model for Backfill...")
     model = BaselineModel(data_path)

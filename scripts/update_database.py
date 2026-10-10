@@ -2,11 +2,11 @@ import sqlite3
 import numpy as np
 import pandas as pd
 import time
+import json
 import random
 import logging
 import backoff
 from pathlib import Path
-from pandas.core.window import ewm
 from requests.exceptions import RequestException, Timeout
 from datetime import datetime
 from typing import Set, Tuple, Optional, Dict, List
@@ -36,12 +36,17 @@ from models.prediction_logger import PredictionLogger
 
 def custom_backoff_generator(**kwargs):
     """
-    Custom backoff generator that yields fixed delays
-    Yields: int: Delay in seconds
+    Fixed retry delays for stats.nba.com / SBR calls (seconds). Kept short so a bad API day
+    cannot push the daily run (12:15 PM ET) toward tip-off: worst case ~2 min per call.
     """
-    yield 120  # First retry after 2 minutes
-    yield 240  # Second retry after 4 minutes
-    yield 360  # Third retry after 6 minutes
+    yield 10
+    yield 30
+    yield 60
+
+
+# Only transient network / response errors are retried; programming errors fail immediately.
+RETRYABLE = (RequestException, Timeout, ConnectionError, json.JSONDecodeError, KeyError, IndexError)
+RETRY = dict(max_tries=4, max_time=180)
 
 @dataclass
 class TablePair:
@@ -130,16 +135,107 @@ class NBADatabaseSync:
 
 
     def setup_logging(self, log_path: str) -> None:
-        """Setup logging configuration"""
-        logging.basicConfig(
-            level=logging.INFO,
-            format='%(asctime)s - %(levelname)s - %(message)s',
-            handlers=[
-                logging.FileHandler(log_path),
-                logging.StreamHandler()
-            ]
-        )
+        """
+        Log to `log_path` as well as the console. basicConfig is a no-op when the caller (e.g.
+        run_inference_v2) already configured logging, so the file handler is attached directly.
+        """
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+        root = logging.getLogger()
+        target = str(Path(log_path).resolve())
+        if not any(isinstance(h, logging.FileHandler) and h.baseFilename == target for h in root.handlers):
+            fh = logging.FileHandler(target)
+            fh.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+            root.addHandler(fh)
+        if root.level > logging.INFO or root.level == logging.NOTSET:
+            root.setLevel(logging.INFO)
 
+
+    @backoff.on_exception(custom_backoff_generator, RETRYABLE, **RETRY,
+                          on_backoff=lambda d: logging.error(f"Retrying in {d['wait']}s after error: {d['exception']}"))
+    def _fetch_team_game_log(self, season: str, season_type: str) -> pd.DataFrame:
+        return leaguegamelog.LeagueGameLog(season=season, season_type_all_star=season_type).get_data_frames()[0]
+
+    @backoff.on_exception(custom_backoff_generator, RETRYABLE, **RETRY,
+                          on_backoff=lambda d: logging.error(f"Retrying in {d['wait']}s after error: {d['exception']}"))
+    def _fetch_player_game_logs(self, season: str, season_type: str) -> pd.DataFrame:
+        return playergamelogs.PlayerGameLogs(season_nullable=season, season_type_nullable=season_type).get_data_frames()[0]
+
+    @staticmethod
+    def _dedupe_season(conn, table_name: str, key_cols: str, season: str) -> None:
+        """Keep the latest row per key within one season (cheaper than a whole-table pass)."""
+        conn.execute(f'''
+            DELETE FROM {table_name}
+            WHERE seasonYear = ? AND rowid NOT IN (
+                SELECT max(rowid) FROM {table_name} WHERE seasonYear = ? GROUP BY {key_cols}
+            )
+        ''', [season, season])
+
+    # ------------------------------------------------------------------ completeness helpers
+
+    MAX_ATTEMPTS = 3          # give up on an item that keeps returning nothing (e.g. endpoint has no data)
+    RECHECK_DAYS = 14         # dates this recent are re-fetched when a positional bucket is empty
+
+    def _ensure_attempts_table(self, conn) -> None:
+        conn.execute("""CREATE TABLE IF NOT EXISTS sync_attempts (
+                            source TEXT, item TEXT, attempts INTEGER, last_attempt TEXT, last_error TEXT,
+                            PRIMARY KEY (source, item))""")
+
+    def _should_attempt(self, conn, source: str, item: str) -> bool:
+        self._ensure_attempts_table(conn)
+        row = conn.execute("SELECT attempts FROM sync_attempts WHERE source = ? AND item = ?", [source, item]).fetchone()
+        return row is None or row[0] < self.MAX_ATTEMPTS
+
+    def _record_attempt(self, conn, source: str, item: str, ok: bool, error: str = '') -> None:
+        self._ensure_attempts_table(conn)
+        if ok:
+            conn.execute("DELETE FROM sync_attempts WHERE source = ? AND item = ?", [source, item])
+        else:
+            conn.execute("""INSERT INTO sync_attempts (source, item, attempts, last_attempt, last_error)
+                            VALUES (?, ?, 1, datetime('now'), ?)
+                            ON CONFLICT(source, item) DO UPDATE SET attempts = attempts + 1,
+                                last_attempt = datetime('now'), last_error = excluded.last_error""",
+                         [source, item, str(error)[:500]])
+        conn.commit()
+
+    def _table_exists(self, conn, table: str) -> bool:
+        return conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", [table]).fetchone() is not None
+
+    def _dates_to_fetch(self, conn, table: str, season: str, per: str = 'team', null_check_cols=None):
+        """
+        (date, season_type) pairs for `season` that are missing or incomplete in `table`:
+          per='team' -> fewer distinct teamIds than team_basic_stats has for that date
+          per='game' -> fewer rows than games that date (odds tables, one row per game)
+        With null_check_cols, recent dates (RECHECK_DAYS) where any of those columns is NULL are
+        re-fetched too. Items that already failed MAX_ATTEMPTS times are skipped.
+        (Previously a date counted as done once ANY row existed, so a partial fetch - one
+        positional call failing, or a sync while games were in progress - was never repaired.)
+        """
+        expected = pd.read_sql("""SELECT gameDate, COUNT(DISTINCT teamId) AS n_teams
+                                  FROM team_basic_stats WHERE seasonYear = ? GROUP BY gameDate""",
+                               conn, params=[season])
+        if per == 'game':
+            expected['n'] = expected['n_teams'] // 2
+            have_sql = f"SELECT gameDate, COUNT(*) AS have FROM {table} WHERE season = ? GROUP BY gameDate"
+        else:
+            expected['n'] = expected['n_teams']
+            have_sql = f"SELECT gameDate, COUNT(DISTINCT teamId) AS have FROM {table} WHERE season = ? GROUP BY gameDate"
+        if self._table_exists(conn, table):
+            have = pd.read_sql(have_sql, conn, params=[season])
+        else:
+            have = pd.DataFrame(columns=['gameDate', 'have'])
+        m = expected.merge(have, on='gameDate', how='left')
+        m['have'] = pd.to_numeric(m['have'], errors='coerce').fillna(0)
+        todo = set(m.loc[m['have'] < m['n'], 'gameDate'])
+        if null_check_cols and self._table_exists(conn, table):
+            cutoff = (pd.Timestamp.today() - pd.Timedelta(days=self.RECHECK_DAYS)).strftime('%Y-%m-%d')
+            cond = ' OR '.join(f'"{c}" IS NULL' for c in null_check_cols)
+            todo |= set(pd.read_sql(f"SELECT DISTINCT gameDate FROM {table} WHERE season = ? AND gameDate >= ? AND ({cond})",
+                                    conn, params=[season, cutoff])['gameDate'])
+        types = dict(self.fetch_game_date_and_season_type(season))
+        out = [(d, types.get(d, 'Regular Season')) for d in sorted(todo) if self._should_attempt(conn, table, d)]
+        if out:
+            logging.info(f"{table} {season}: {len(out)} dates missing or incomplete")
+        return out
 
     def add_team_basic_boxscores(self, seasons: List[str]) -> None:
         """
@@ -158,10 +254,7 @@ class NBADatabaseSync:
                     
                     for season_type in season_types:
                         try:
-                            team_boxscores = leaguegamelog.LeagueGameLog(
-                                season=season, 
-                                season_type_all_star=season_type
-                            ).get_data_frames()[0]
+                            team_boxscores = self._fetch_team_game_log(season, season_type)
                             
                             # Only append if DataFrame is not empty
                             if not team_boxscores.empty:
@@ -178,8 +271,9 @@ class NBADatabaseSync:
                                 logging.warning(f"No data retrieved for {season_type} {season}")
                                 
                         except Exception as e:
-                            logging.error(f"Error retrieving {season_type} data for season {season}: {str(e)}")
-                            continue
+                            # Fail loudly: silently continuing left the DB stale while inference ran anyway
+                            raise RuntimeError(f"Could not retrieve team {season_type} game log for {season} "
+                                               f"after retries: {e}") from e
                         
                         time.sleep(4*random.random())
 
@@ -212,16 +306,8 @@ class NBADatabaseSync:
                         table_name = 'team_basic_stats'
                         season_df.to_sql(table_name, conn, if_exists='append', index=False)
                         
-                        # Remove duplicates
-                        cur = conn.cursor()
-                        cur.execute(f'''
-                            DELETE FROM {table_name} 
-                            WHERE rowid NOT IN (
-                                SELECT max(rowid) 
-                                FROM {table_name} 
-                                GROUP BY teamId, gameId
-                            )
-                        ''')
+                        # Remove duplicates within this season (keeps the latest row per team-game)
+                        self._dedupe_season(conn, table_name, 'teamId, gameId', season)
                         conn.commit()
                         
                         logging.info(f"Successfully added {len(season_df)} games for season {season}")
@@ -250,10 +336,7 @@ class NBADatabaseSync:
                     for season_type in season_types:
                         try:
                             time.sleep(4*random.random())
-                            player_boxscores = playergamelogs.PlayerGameLogs(
-                                season_nullable=season,
-                                season_type_nullable=season_type
-                            ).get_data_frames()[0]
+                            player_boxscores = self._fetch_player_game_logs(season, season_type)
                             
                             if not player_boxscores.empty:
                                 
@@ -261,15 +344,15 @@ class NBADatabaseSync:
                                 player_boxscores = player_boxscores.dropna(subset=['WL'])
 
 
-                                player_boxscores = player_boxscores.drop(columns=['TEAM_COUNT'])
+                                player_boxscores = player_boxscores.drop(columns=['TEAM_COUNT'], errors='ignore')
                                 season_boxscores.append(player_boxscores)
                                 logging.info(f"Retrieved {len(player_boxscores)} player games for {season_type} {season}")
                             else:
                                 logging.warning(f"No player data retrieved for {season_type} {season}")
                                 
                         except Exception as e:
-                            logging.error(f"Error retrieving {season_type} data for season {season}: {str(e)}")
-                            continue
+                            raise RuntimeError(f"Could not retrieve player {season_type} game logs for {season} "
+                                               f"after retries: {e}") from e
                         
                         time.sleep(4*random.random())
 
@@ -303,16 +386,8 @@ class NBADatabaseSync:
                         table_name = 'player_basic_stats'
                         season_df.to_sql(table_name, conn, if_exists='append', index=False)
                         
-                        # Remove duplicates
-                        cur = conn.cursor()
-                        cur.execute(f'''
-                            DELETE FROM {table_name} 
-                            WHERE rowid NOT IN (
-                                SELECT max(rowid) 
-                                FROM {table_name} 
-                                GROUP BY personId, gameId
-                            )
-                        ''')
+                        # Remove duplicates within this season (keeps the latest row per player-game)
+                        self._dedupe_season(conn, table_name, 'personId, gameId', season)
                         conn.commit()
                         
                         logging.info(f"Successfully added {len(season_df)} player games for season {season}")
@@ -347,8 +422,8 @@ class NBADatabaseSync:
     
     @backoff.on_exception(
         custom_backoff_generator,
-        (RequestException, Timeout, Exception),
-        max_tries=4,
+        RETRYABLE,
+        **RETRY,
         on_backoff=lambda details: logging.error(
             f"Retrying in {details['wait']}s after error: {details['exception']}"
         )
@@ -505,41 +580,21 @@ class NBADatabaseSync:
                 for season in seasons:
                     logging.info(f"Processing season: {season}")
                     
-                    # Get existing dates
-                    existing_dates_query = """
-                    SELECT DISTINCT gameDate 
-                    FROM defensive_stats_by_position 
-                    WHERE season = ?
-                    
-                    """
-                    existing_dates = set(pd.read_sql_query(
-                        existing_dates_query, 
-                        conn, 
-                        params=[season]
-                    )['gameDate'].tolist())
-                    
-                    # Get all game dates and season_types
-                    game_dates_and_season_types = self.fetch_game_date_and_season_type(season)
-                    
-                    for date, season_type in game_dates_and_season_types:
-                        if date not in existing_dates:
-                            try:
-                                raw_data = self.get_all_defensive_stats(date, season, season_type)
-                                processed_data = self.process_defensive_stats(raw_data)
-                                
-                                if processed_data is not None:
-                                    processed_data.to_sql(
-                                        'defensive_stats_by_position',
-                                        conn,
-                                        if_exists='append',
-                                        index=False
-                                    )
-                                    logging.info(f"Added defensive stats for {date}")
-                                    
-                            except Exception as e:
-                                logging.error(f"Error processing date {date}: {str(e)}")
-                                continue
-                    
+                    todo = self._dates_to_fetch(conn, 'defensive_stats_by_position', season,
+                                                null_check_cols=[f'OPP_PTS_{p}' for p in self.POSITIONS])
+                    for date, season_type in todo:
+                        try:
+                            raw_data = self.get_all_defensive_stats(date, season, season_type)
+                            processed_data = self.process_defensive_stats(raw_data)
+                            if processed_data is not None:
+                                processed_data.to_sql('defensive_stats_by_position', conn, if_exists='append', index=False)
+                                logging.info(f"Added defensive stats for {date}")
+                            self._record_attempt(conn, 'defensive_stats_by_position', date, processed_data is not None, 'no data')
+                        except Exception as e:
+                            logging.error(f"Error processing date {date}: {str(e)}")
+                            self._record_attempt(conn, 'defensive_stats_by_position', date, False, str(e))
+
+                self.remove_duplicates('defensive_stats_by_position', is_player_table=False)
             logging.info("Defensive stats sync completed")
             
         except Exception as e:
@@ -549,8 +604,8 @@ class NBADatabaseSync:
         
     @backoff.on_exception(
         custom_backoff_generator,
-        (RequestException, Timeout, Exception),
-        max_tries=4,
+        RETRYABLE,
+        **RETRY,
         on_backoff=lambda details: logging.error(
             f"Retrying in {details['wait']}s after error: {details['exception']}"
         )
@@ -574,8 +629,8 @@ class NBADatabaseSync:
         df['SEASON'] = season
         df['GAME_DATE'] = date
         
-        # Process column names
-        df.columns = df.columns.map(' '.join)
+        # Process column names (flatten multi-level headers if present, strip whitespace)
+        df.columns = df.columns.map(' '.join) if isinstance(df.columns[0], tuple) else df.columns
         df.columns = [col.strip() for col in df.columns]
         
         return df
@@ -592,43 +647,19 @@ class NBADatabaseSync:
                 for season in seasons:
                     logging.info(f"Processing season: {season}")
                     
-                    # Get existing dates
-                    existing_dates_query = """
-                    SELECT DISTINCT gameDate
-                    FROM team_shot_location_boxscores 
-                    WHERE season = ?
-                    """
-                    existing_dates_df = pd.read_sql_query(
-                        existing_dates_query, 
-                        conn, 
-                        params=[season]
-                        )
-                    
-                    existing_dates_list = existing_dates_df['gameDate'].astype(str).tolist()
-
-                    existing_dates = set(existing_dates_list)
-
-                    # Get all game dates and season types
-                    game_dates_and_season_types = self.fetch_game_date_and_season_type(season)
-                    
-                    for date, season_type in game_dates_and_season_types:
-                        if date not in existing_dates:
-                            try:
-                                df = self.get_shot_location_stats(date, season, season_type)
-                                df = df.rename(columns = self.identifier_map)
-                                if df is not None:
-                                    df.to_sql(
-                                        'team_shot_location_boxscores',
-                                        conn,
-                                        if_exists='append',
-                                        index=False
-                                    )
-                                    logging.info(f"Added shot location stats for {date} ({season_type})")
-                            except Exception as e:
-                                logging.error(f"Error processing {date} ({season_type}): {str(e)}")
-                                continue
-                            
-                            time.sleep(1+random.gammavariate(1, 3))
+                    for date, season_type in self._dates_to_fetch(conn, 'team_shot_location_boxscores', season):
+                        try:
+                            df = self.get_shot_location_stats(date, season, season_type)
+                            ok = df is not None and not df.empty
+                            if ok:
+                                df.rename(columns=self.identifier_map).to_sql(
+                                    'team_shot_location_boxscores', conn, if_exists='append', index=False)
+                                logging.info(f"Added shot location stats for {date} ({season_type})")
+                            self._record_attempt(conn, 'team_shot_location_boxscores', date, ok, 'no data')
+                        except Exception as e:
+                            logging.error(f"Error processing {date} ({season_type}): {str(e)}")
+                            self._record_attempt(conn, 'team_shot_location_boxscores', date, False, str(e))
+                        time.sleep(1+random.gammavariate(1, 3))
 
                 # Remove duplicates
                 self.remove_duplicates('team_shot_location_boxscores', is_player_table=False)
@@ -641,8 +672,8 @@ class NBADatabaseSync:
 
     @backoff.on_exception(
         custom_backoff_generator,
-        (RequestException, Timeout, Exception),
-        max_tries=4,
+        RETRYABLE,
+        **RETRY,
         on_backoff=lambda details: logging.error(
             f"Retrying in {details['wait']}s after error: {details['exception']}"
         )
@@ -685,45 +716,21 @@ class NBADatabaseSync:
                     for season in seasons:
                         logging.info(f"Processing season: {season}")
                         
-                        # 1. Get existing dates from the PLAYER table
-                        try:
-                            existing_dates_query = """SELECT gameDate FROM player_shot_location_boxscores WHERE season = ?"""
-                            existing_dates_df = pd.read_sql_query(
-                                existing_dates_query, 
-                                conn, 
-                                params=[season]
-                                )
-                        
-
-                            existing_dates = set(existing_dates_df['gameDate'].astype(str).tolist())
-
-                        except:
-                            existing_dates = set()
-
-                        # 2. Get all available game dates
-                        game_dates_and_season_types = self.fetch_game_date_and_season_type(season)
-                        
-                        for date, season_type in game_dates_and_season_types:
-                            if date not in existing_dates:
-                                try:
-                                    df = self.get_player_shot_location_stats(date, season, season_type)
-                                    df = df.rename(columns = self.identifier_map)
-
-                                    if df is not None:
-                                        df.to_sql(
-                                            'player_shot_location_boxscores',
-                                             conn,
-                                            if_exists='append',
-                                            index=False
-                                        )
-                                        logging.info(f"Added player shot location stats for {date} ({season_type})")
-                                except Exception as e:
-                                    logging.error(f"Error processing {date} ({season_type}): {str(e)}")
-                                    continue
-                                        
-
-                                # Sleep to be polite to the API
-                                time.sleep(1+random.gammavariate(1, 3))
+                        # Dates missing, or with fewer teams than played that day
+                        for date, season_type in self._dates_to_fetch(conn, 'player_shot_location_boxscores', season):
+                            try:
+                                df = self.get_player_shot_location_stats(date, season, season_type)
+                                ok = df is not None and not df.empty
+                                if ok:
+                                    df.rename(columns=self.identifier_map).to_sql(
+                                        'player_shot_location_boxscores', conn, if_exists='append', index=False)
+                                    logging.info(f"Added player shot location stats for {date} ({season_type})")
+                                self._record_attempt(conn, 'player_shot_location_boxscores', date, ok, 'no data')
+                            except Exception as e:
+                                logging.error(f"Error processing {date} ({season_type}): {str(e)}")
+                                self._record_attempt(conn, 'player_shot_location_boxscores', date, False, str(e))
+                            # Sleep to be polite to the API
+                            time.sleep(1+random.gammavariate(1, 3))
 
                     # 3. Remove duplicates from the PLAYER table
                     # Note: is_player_table=True is assumed to handle PLAYER_ID logic
@@ -737,8 +744,8 @@ class NBADatabaseSync:
 
     @backoff.on_exception(
         custom_backoff_generator,
-        (RequestException, Timeout, Exception),
-        max_tries=4,
+        RETRYABLE,
+        **RETRY,
         on_backoff=lambda details: logging.error(
             f"Retrying in {details['wait']}s after error: {details['exception']}"
         )
@@ -797,44 +804,48 @@ class NBADatabaseSync:
 
     def process_game(self, game_id: str, table_pair: TablePair) -> bool:
         """
-        Process a single game for a table pair
-        
-        Parameters:
-        game_id (str): Game ID
-        table_pair (TablePair): Table pair to process
-        
-        Returns:
-        bool: True if successful, False otherwise
+        Fetch one game's box score for a table pair and store player + team rows in ONE
+        transaction (previously the player rows could be written without the team rows, and
+        the game was then never retried because only the player table was checked).
+        Returns True if rows were stored.
         """
         try:
             game_data = self.get_game_data(table_pair.team_table, game_id)
-            if game_data:
-                player_df, team_df = game_data
+            if not game_data or len(game_data) < 2:
+                logging.warning(f"No data available for game {game_id} in {table_pair.team_table}")
+                return False
+            player_df, team_df = game_data[0], game_data[1]
+            if team_df.empty:
+                logging.warning(f"Empty team data for game {game_id} in {table_pair.team_table}")
+                return False
 
-                # Rename columns for both dataframes
-                player_df = player_df.rename(columns=self.identifier_map)
-                team_df = team_df.rename(columns=self.identifier_map)
-                
-                                                            
-                with sqlite3.connect(self.db_path) as conn:
+            player_df = player_df.rename(columns=self.identifier_map)
+            team_df = team_df.rename(columns=self.identifier_map)
+
+            with sqlite3.connect(self.db_path) as conn:
+                try:
                     player_df.to_sql(table_pair.player_table, conn, if_exists='append', index=False)
                     team_df.to_sql(table_pair.team_table, conn, if_exists='append', index=False)
-                
-                logging.info(f"Successfully added data for game {game_id} to {table_pair.team_table}")
-                return True
-            
-            logging.warning(f"No data available for game {game_id} in {table_pair.team_table}")
-            return False
-            
+                except Exception:
+                    # pandas commits each to_sql call, so undo by hand: remove this game from both
+                    # tables (it was incomplete before) so it is cleanly re-fetched next run
+                    for table in (table_pair.player_table, table_pair.team_table):
+                        if self._table_exists(conn, table):
+                            conn.execute(f"DELETE FROM {table} WHERE gameId = ?", [game_id])
+                    conn.commit()
+                    raise
+
+            logging.info(f"Successfully added data for game {game_id} to {table_pair.team_table}")
+            return True
+
         except Exception as e:
             logging.error(f"Error processing game {game_id} for {table_pair.team_table}: {str(e)}")
             return False
-        
-        
+
     @backoff.on_exception(
         custom_backoff_generator,
-        (RequestException, Timeout, Exception),
-        max_tries=4,
+        RETRYABLE,
+        **RETRY,
         on_backoff=lambda details: logging.error(
             f"Retrying in {details['wait']}s after error: {details['exception']}"
         )
@@ -883,74 +894,76 @@ class NBADatabaseSync:
             return pd.DataFrame()
         
 
+
     def sync_odds_data(self, seasons: List[str]) -> None:
-        """Sync odds data (both opening and closing) for specified seasons"""
-
-
+        """
+        Sync opening (nba_odds_opening) and closing (nba_odds) odds for completed game dates.
+        Dates with fewer odds rows than games are re-fetched (previously a date counted as done
+        once any row existed). Closing lines are scraped after the games; for clean, timestamped
+        pre-game lines see scripts/snapshot_odds.py (models/odds_clean.py prefers those).
+        """
         logging.info(f"Starting odds sync for seasons: {seasons}")
-        
         try:
             with sqlite3.connect(self.db_path) as conn:
                 for season in seasons:
                     if season < '2019-20':
                         continue
-                    # --- 1. Closing Odds (nba_odds) ---
-                    existing_closing_dates = set(pd.read_sql_query(
-                        "SELECT DISTINCT gameDate FROM nba_odds WHERE SEASON = ?", 
-                        conn, params=[season]
-                    )['gameDate'].tolist())
-                    
-                    # --- 2. Opening Odds (nba_odds_opening) ---
-                    # Create table if not exists (handled by to_sql usually, but ensuring read doesn't fail basic check)
-                    try:
-                         existing_opening_dates = set(pd.read_sql_query(
-                            "SELECT DISTINCT gameDate FROM nba_odds_opening WHERE SEASON = ?",
-                            conn, params=[season]
-                        )['gameDate'].tolist())
-                    except:
-                        existing_opening_dates = set()
+                    for table, current in (('nba_odds', True), ('nba_odds_opening', False)):
+                        label = 'closing' if current else 'opening'
+                        for date, _ in self._dates_to_fetch(conn, table, season, per='game'):
+                            try:
+                                odds_df = self.get_nba_odds(date, current_line=current)
+                                processed_df = self.process_odds_data(odds_df, season, date) if not odds_df.empty else odds_df
+                                ok = not processed_df.empty
+                                if ok:
+                                    processed_df.to_sql(table, conn, if_exists='append', index=False)
+                                    logging.info(f"Added {label} odds data for {date}")
+                                self._record_attempt(conn, table, date, ok, 'no data')
+                            except Exception as e:
+                                logging.error(f"Error processing {label} odds for {date}: {str(e)}")
+                                self._record_attempt(conn, table, date, False, str(e))
 
-                    # Get all game dates
-                    game_dates = self.fetch_game_date_and_season_type(season)
-                    
-                    for date, _ in game_dates:
-                        # Sync Closing Odds
-                        if date not in existing_closing_dates:
-                            try:
-                                odds_df = self.get_nba_odds(date, current_line=True)
-                                if not odds_df.empty:
-                                    processed_df = self.process_odds_data(odds_df, season, date)
-                                    if not processed_df.empty:
-                                        processed_df.to_sql('nba_odds', conn, if_exists='append', index=False)
-                                        logging.info(f"Added closing odds data for {date}")
-                            except Exception as e:
-                                logging.error(f"Error processing closing odds for {date}: {str(e)}")
-                        
-                        # Sync Opening Odds
-                        if date not in existing_opening_dates:
-                            try:
-                                odds_df = self.get_nba_odds(date, current_line=False)
-                                if not odds_df.empty:
-                                    processed_df = self.process_odds_data(odds_df, season, date)
-                                    if not processed_df.empty:
-                                        processed_df.to_sql('nba_odds_opening', conn, if_exists='append', index=False)
-                                        logging.info(f"Added opening odds data for {date}")
-                            except Exception as e:
-                                logging.error(f"Error processing opening odds for {date}: {str(e)}")
-                                continue
-                                
-                    
-                # Remove duplicates
                 self.remove_duplicates('nba_odds', is_player_table=False)
                 self.remove_duplicates('nba_odds_opening', is_player_table=False)
-                
             logging.info("Odds sync completed")
-            
         except Exception as e:
             logging.error(f"Error in odds sync: {str(e)}")
             raise
-        
-        
+
+    @backoff.on_exception(custom_backoff_generator, RETRYABLE, **RETRY,
+                          on_backoff=lambda d: logging.error(f"Retrying in {d['wait']}s after error: {d['exception']}"))
+    def _fetch_player_info(self, person_id: int) -> pd.DataFrame:
+        from nba_api.stats.endpoints import commonplayerinfo
+        return commonplayerinfo.CommonPlayerInfo(player_id=person_id).get_data_frames()[0]
+
+    def sync_player_info(self, seasons: List[str]) -> None:
+        """
+        Add player_info rows (position etc.) for players who appeared in `seasons` but are not in
+        player_info yet - e.g. rookies. BPM uses the position; without a row a player gets the
+        default position. One API call per new player.
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            known = set(pd.read_sql("SELECT PERSON_ID FROM player_info", conn)['PERSON_ID'])
+            existing_cols = [r[1] for r in conn.execute("PRAGMA table_info(player_info)")]
+            placeholders = ','.join('?' * len(seasons))
+            seen = pd.read_sql(f"SELECT DISTINCT personId FROM player_basic_stats WHERE seasonYear IN ({placeholders})",
+                               conn, params=seasons)['personId']
+            new_ids = sorted(set(seen) - known)
+            logging.info(f"player_info: {len(new_ids)} new players to add")
+            for pid in new_ids:
+                if not self._should_attempt(conn, 'player_info', str(pid)):
+                    continue
+                try:
+                    info = self._fetch_player_info(int(pid)).rename(columns=self.identifier_map)
+                    ok = not info.empty
+                    if ok:
+                        info = info.reindex(columns=existing_cols)  # tolerate API column changes
+                        info.to_sql('player_info', conn, if_exists='append', index=False)
+                    self._record_attempt(conn, 'player_info', str(pid), ok, 'no data')
+                except Exception as e:
+                    logging.error(f"player_info for {pid} failed: {e}")
+                    self._record_attempt(conn, 'player_info', str(pid), False, str(e))
+                time.sleep(1 + random.random())
 
     def remove_duplicates(self, table_name: str, is_player_table: bool = False) -> None:
         """
@@ -975,7 +988,7 @@ class NBADatabaseSync:
                     id_column = 'teamId'
                     game_id_col = 'gameDate'
 
-                elif table_name.lower() in ('player_shot_location_boxscores'):
+                elif table_name.lower() == 'player_shot_location_boxscores':
                     id_column = 'personId'
                     game_id_col = 'gameDate'
                     
@@ -1067,71 +1080,82 @@ class NBADatabaseSync:
             logging.error(f"Error during database-wide deduplication: {str(e)}")
             raise
 
+
     def process_table_pair(self, season: str, table_pair: TablePair, all_game_ids: Set[str]) -> None:
         """
-        Process a single table pair for a season
-        
-        Parameters:
-        season (str): Season in format 'YYYY-YY'
-        table_pair (TablePair): Table pair to process
-        all_game_ids (Set[str]): Set of all game IDs for the season
+        Fetch games of `season` missing from the team OR player table of a per-game table pair.
+        Games that keep returning no data are skipped after MAX_ATTEMPTS tries (sync_attempts).
         """
-        # Skip if season is before the stat was tracked
         if season < table_pair.min_season:
             logging.info(f"Skipping {table_pair.team_table} for season {season} (stat not tracked)")
             return
+        if table_pair.team_table in ('defensive_stats_by_position', 'team_shot_location_boxscores',
+                                     'player_shot_location_boxscores'):
+            return  # date-based tables, synced by their own methods
 
         logging.info(f"Processing {table_pair.team_table} for season {season}")
-        
         try:
             with sqlite3.connect(self.db_path) as conn:
-                # Skip defensive stats as they're handled separately
-                if table_pair.team_table in ('defensive_stats_by_position', 'team_shot_location_boxscores', 'player_shot_location_boxscores'):
-                    logging.info("Skipping defensive_stats_by_position and team_shot_location_boxscores as they are handled separately")
-                    return
-                    
-                # Get existing game IDs
-                existing_ids = set(pd.read_sql(
-                    f"SELECT DISTINCT {table_pair.id_column} FROM {table_pair.player_table}",
-                    conn
-                )[table_pair.id_column])
-                
-                # Find missing games
-                missing_ids = all_game_ids - existing_ids
-                
-                if not missing_ids:
+                def ids(table):
+                    if not self._table_exists(conn, table):
+                        return set()
+                    return set(pd.read_sql(f"SELECT DISTINCT {table_pair.id_column} FROM {table}", conn)[table_pair.id_column])
+
+                complete = ids(table_pair.team_table) & ids(table_pair.player_table)
+                missing = sorted(g for g in all_game_ids - complete
+                                 if self._should_attempt(conn, table_pair.team_table, g))
+                if not missing:
                     logging.info(f"No missing games for {table_pair.team_table}")
                     return
-                
-                logging.info(f"Found {len(missing_ids)} missing games for {table_pair.team_table}")
-                
-                # Process missing games
-                for game_id in missing_ids:
-                    try:
-                        self.process_game(game_id, table_pair)
+                logging.info(f"Found {len(missing)} missing games for {table_pair.team_table}")
 
-                    except Exception as e:
-                        logging.error(f"Error processing game {game_id}: {str(e)}")
-                
-                # Remove duplicates after processing
-                # self.remove_duplicates(table_pair.team_table, is_player_table=False)
-                # self.remove_duplicates(table_pair.player_table, is_player_table=True)
-                
+                for game_id in missing:
+                    ok = self.process_game(game_id, table_pair)
+                    self._record_attempt(conn, table_pair.team_table, game_id, ok, '' if ok else 'no data or error')
+
         except Exception as e:
             logging.error(f"Error processing {table_pair.team_table}: {str(e)}")
 
+    # Exact opponent totals come from the opponent's own row in team_basic_stats.
+    OPP_FROM_BOX = {
+        'OPP_FGM': 'fieldGoalsMade', 'OPP_FGA': 'fieldGoalsAttempted', 'OPP_FG_PCT': 'fieldGoalPercentage',
+        'OPP_FG3M': 'threePointersMade', 'OPP_FG3A': 'threePointersAttempted', 'OPP_FG3_PCT': 'threePointerPercentage',
+        'OPP_FTM': 'freeThrowsMade', 'OPP_FTA': 'freeThrowsAttempted', 'OPP_FT_PCT': 'freeThrowPercentage',
+        'OPP_OREB': 'offensiveRebounds', 'OPP_DREB': 'defensiveRebounds', 'OPP_REB': 'rebounds',
+        'OPP_AST': 'assists', 'OPP_TOV': 'turnovers', 'OPP_STL': 'steals', 'OPP_BLK': 'blocks',
+        'OPP_PF': 'personalFouls', 'OPP_PTS': 'points',
+    }
+    POSITIONAL_STATS = ['FGM', 'FGA', 'FG_PCT', 'FG3M', 'FG3A', 'FG3_PCT', 'FTM', 'FTA', 'FT_PCT', 'OREB', 'DREB',
+                        'REB', 'AST', 'TOV', 'STL', 'BLK', 'BLKA', 'PF', 'PFD', 'PTS']
+
     def rebuild_team_game_full(self) -> None:
         """
-        Rebuild the team_game_full table by joining all component tables.
-        This ensures the unified table is up-to-date with latest synced data.
+        Rebuild team_game_full by joining the component tables.
+
+        - OPP_* (no position suffix): the opponent's actual totals, from the opponent's row in
+          team_basic_stats. (Features used to sum the C/F/G columns below, which overstates
+          opponent totals by ~23% because the position buckets overlap.)
+        - OPP_<stat>_<C|F|G>, PLUS_MINUS_<C|F|G>_DEF: from LeagueDashTeamStats (Opponent) filtered
+          by player position. The filter applies to the DEFENDING team's own players: these are the
+          opponent's stats while this team's C/F/G-listed players were on the floor, NOT the
+          stats of the opponent's centers/forwards/guards. Hybrid positions (G-F, F-C) fall in
+          more than one bucket, so the three do not add up to the game total. Kept for future
+          use; missing values stay NULL (they used to be coalesced to 0).
+        - Built into a new table and swapped in within one transaction, so a failed rebuild
+          never leaves the database without team_game_full.
         """
         logging.info("Rebuilding team_game_full table...")
-        
-        query = """
-        CREATE TABLE team_game_full AS
-        SELECT 
+
+        opp_cols = ',\n            '.join(f'opp.{src} AS {dst}' for dst, src in self.OPP_FROM_BOX.items())
+        pos_cols = ',\n            '.join(
+            [f'dp.OPP_{stat}_{p} AS OPP_{stat}_{p}' for stat in self.POSITIONAL_STATS for p in self.POSITIONS] +
+            [f'dp.PLUS_MINUS_{p} AS PLUS_MINUS_{p}_DEF' for p in self.POSITIONS])
+
+        query = f"""
+        CREATE TABLE team_game_full_new AS
+        SELECT
             tb.seasonYear, tb.teamId, tb.teamTricode, tb.gameId, tb.gameDate, tb.matchup, tb.wl,
-            
+
             -- Basic Stats
             tb.minutes, tb.points, tb.plusMinus, tb.fieldGoalsMade, tb.fieldGoalsAttempted, tb.fieldGoalPercentage,
             tb.threePointersMade, tb.threePointersAttempted, tb.threePointerPercentage,
@@ -1157,12 +1181,6 @@ class NBADatabaseSync:
             tt.defendedAtRimFieldGoalsMade, tt.defendedAtRimFieldGoalsAttempted, tt.defendedAtRimFieldGoalPercentage,
             tt.reboundChancesOffensive, tt.reboundChancesDefensive, tt.reboundChancesTotal,
 
-            -- Hustle
-            -- th.contestedShots, th.contestedShots2pt, th.contestedShots3pt, th.deflections, th.chargesDrawn,
-            -- th.screenAssists, th.screenAssistPoints, th.looseBallsRecoveredOffensive, th.looseBallsRecoveredDefensive,
-            -- th.looseBallsRecoveredTotal, th.offensiveBoxOuts, th.defensiveBoxOuts, th.boxOutPlayerTeamRebounds,
-            -- th.boxOutPlayerRebounds, th.boxOuts,
-
             -- Shot Location
             tsl."Restricted Area FGM", tsl."Restricted Area FGA", tsl."Restricted Area FG_PCT",
             tsl."In The Paint (Non-RA) FGM", tsl."In The Paint (Non-RA) FGA", tsl."In The Paint (Non-RA) FG_PCT",
@@ -1170,108 +1188,49 @@ class NBADatabaseSync:
             tsl."Above the Break 3 FGM", tsl."Above the Break 3 FGA", tsl."Above the Break 3 FG_PCT",
             tsl."Corner 3 FGM", tsl."Corner 3 FGA", tsl."Corner 3 FG_PCT",
 
-            -- Defense
-              coalesce(dp.OPP_FGM_C, 0) as OPP_FGM_C
-            , coalesce(dp.OPP_FGM_F, 0) as OPP_FGM_F
-            , coalesce(dp.OPP_FGM_G, 0) as OPP_FGM_G
-            , coalesce(dp.OPP_FGA_C, 0) as OPP_FGA_C
-            , coalesce(dp.OPP_FGA_F, 0) as OPP_FGA_F
-            , coalesce(dp.OPP_FGA_G, 0) as OPP_FGA_G
-            , coalesce(dp.OPP_FG_PCT_C, 0) as OPP_FG_PCT_C
-            , coalesce(dp.OPP_FG_PCT_F, 0) as OPP_FG_PCT_F
-            , coalesce(dp.OPP_FG_PCT_G, 0) as OPP_FG_PCT_G
-            , coalesce(dp.OPP_FG3M_C, 0) as OPP_FG3M_C
-            , coalesce(dp.OPP_FG3M_F, 0) as OPP_FG3M_F
-            , coalesce(dp.OPP_FG3M_G, 0) as OPP_FG3M_G
-            , coalesce(dp.OPP_FG3A_C, 0) as OPP_FG3A_C
-            , coalesce(dp.OPP_FG3A_F, 0) as OPP_FG3A_F
-            , coalesce(dp.OPP_FG3A_G, 0) as OPP_FG3A_G
-            , coalesce(dp.OPP_FG3_PCT_C, 0) as OPP_FG3_PCT_C
-            , coalesce(dp.OPP_FG3_PCT_F, 0) as OPP_FG3_PCT_F
-            , coalesce(dp.OPP_FG3_PCT_G, 0) as OPP_FG3_PCT_G
-            , coalesce(dp.OPP_FTM_C, 0) as OPP_FTM_C
-            , coalesce(dp.OPP_FTM_F, 0) as OPP_FTM_F
-            , coalesce(dp.OPP_FTM_G, 0) as OPP_FTM_G
-            , coalesce(dp.OPP_FTA_C, 0) as OPP_FTA_C
-            , coalesce(dp.OPP_FTA_F, 0) as OPP_FTA_F
-            , coalesce(dp.OPP_FTA_G, 0) as OPP_FTA_G
-            , coalesce(dp.OPP_FT_PCT_C, 0) as OPP_FT_PCT_C
-            , coalesce(dp.OPP_FT_PCT_F, 0) as OPP_FT_PCT_F
-            , coalesce(dp.OPP_FT_PCT_G, 0) as OPP_FT_PCT_G
-            , coalesce(dp.OPP_OREB_C, 0) as OPP_OREB_C
-            , coalesce(dp.OPP_OREB_F, 0) as OPP_OREB_F
-            , coalesce(dp.OPP_OREB_G, 0) as OPP_OREB_G
-            , coalesce(dp.OPP_DREB_C, 0) as OPP_DREB_C
-            , coalesce(dp.OPP_DREB_F, 0) as OPP_DREB_F
-            , coalesce(dp.OPP_DREB_G, 0) as OPP_DREB_G
-            , coalesce(dp.OPP_REB_C, 0) as OPP_REB_C
-            , coalesce(dp.OPP_REB_F, 0) as OPP_REB_F
-            , coalesce(dp.OPP_REB_G, 0) as OPP_REB_G
-            , coalesce(dp.OPP_AST_C, 0) as OPP_AST_C
-            , coalesce(dp.OPP_AST_F, 0) as OPP_AST_F
-            , coalesce(dp.OPP_AST_G, 0) as OPP_AST_G
-            , coalesce(dp.OPP_TOV_C, 0) as OPP_TOV_C
-            , coalesce(dp.OPP_TOV_F, 0) as OPP_TOV_F
-            , coalesce(dp.OPP_TOV_G, 0) as OPP_TOV_G
-            , coalesce(dp.OPP_STL_C, 0) as OPP_STL_C
-            , coalesce(dp.OPP_STL_F, 0) as OPP_STL_F
-            , coalesce(dp.OPP_STL_G, 0) as OPP_STL_G
-            , coalesce(dp.OPP_BLK_C, 0) as OPP_BLK_C
-            , coalesce(dp.OPP_BLK_F, 0) as OPP_BLK_F
-            , coalesce(dp.OPP_BLK_G, 0) as OPP_BLK_G
-            , coalesce(dp.OPP_BLKA_C, 0) as OPP_BLKA_C
-            , coalesce(dp.OPP_BLKA_F, 0) as OPP_BLKA_F
-            , coalesce(dp.OPP_BLKA_G, 0) as OPP_BLKA_G
-            , coalesce(dp.OPP_PF_C, 0) as OPP_PF_C
-            , coalesce(dp.OPP_PF_F, 0) as OPP_PF_F
-            , coalesce(dp.OPP_PF_G, 0) as OPP_PF_G
-            , coalesce(dp.OPP_PFD_C, 0) as OPP_PFD_C
-            , coalesce(dp.OPP_PFD_F, 0) as OPP_PFD_F
-            , coalesce(dp.OPP_PFD_G, 0) as OPP_PFD_G
-            , coalesce(dp.OPP_PTS_C, 0) as OPP_PTS_C
-            , coalesce(dp.OPP_PTS_F, 0) as OPP_PTS_F
-            , coalesce(dp.OPP_PTS_G, 0) as OPP_PTS_G
-            , coalesce(dp.PLUS_MINUS_C, 0) as PLUS_MINUS_C_DEF
-            , coalesce(dp.PLUS_MINUS_F, 0) as PLUS_MINUS_F_DEF
-            , coalesce(dp.PLUS_MINUS_G, 0) as PLUS_MINUS_G_DEF
-            
+            -- Opponent totals (exact, from the opponent's box score)
+            {opp_cols},
+
+            -- Opponent stats while this team's C/F/G-listed players were on the floor (see docstring)
+            {pos_cols}
+
         FROM team_basic_stats tb
-        
+        LEFT JOIN team_basic_stats opp ON opp.gameId = tb.gameId AND opp.teamId <> tb.teamId
         LEFT JOIN team_advanced_stats_v3 ta ON tb.teamId = ta.teamId AND tb.gameId = ta.gameId
         LEFT JOIN team_scoring_stats_v3 ts ON tb.teamId = ts.teamId AND tb.gameId = ts.gameId
         LEFT JOIN team_track_stats_v3 tt ON tb.teamId = tt.teamId AND tb.gameId = tt.gameId
-        -- LEFT JOIN team_hustle_stats th ON tb.teamId = th.teamId AND tb.gameId = th.gameId
-        
         LEFT JOIN team_shot_location_boxscores tsl ON tb.teamId = tsl.teamId AND tb.gameDate = tsl.gameDate
         LEFT JOIN defensive_stats_by_position dp ON tb.teamId = dp.teamId AND tb.gameDate = dp.gameDate
-        where tb.seasonYear >= '2013-14'
+        WHERE tb.seasonYear >= '2013-14'
         """
-        
+
+        conn = sqlite3.connect(self.db_path)
+        conn.isolation_level = None  # manage the transaction explicitly (DDL included)
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                cur = conn.cursor()
-                
-                logging.info("Dropping existing team_game_full table...")
-                cur.execute("DROP TABLE IF EXISTS team_game_full")
-                
-                logging.info("Executing CREATE TABLE query...")
-                cur.execute(query)
-                
-                rows = cur.execute("SELECT COUNT(*) FROM team_game_full").fetchone()[0]
-                logging.info(f"Table created successfully with {rows} rows.")
-                
-                logging.info("Creating indexes on team_game_full...")
-                cur.execute("CREATE INDEX idx_full_team_date ON team_game_full(teamId, gameDate)")
-                cur.execute("CREATE INDEX idx_full_game_id ON team_game_full(gameId)")
-                
-                conn.commit()
-                
+            cur = conn.cursor()
+            cur.execute("DROP TABLE IF EXISTS team_game_full_new")
+            cur.execute(query)
+            n_new = cur.execute("SELECT COUNT(*) FROM team_game_full_new").fetchone()[0]
+            n_base = cur.execute("SELECT COUNT(*) FROM team_basic_stats WHERE seasonYear >= '2013-14'").fetchone()[0]
+            if n_new != n_base:
+                raise RuntimeError(f"team_game_full_new has {n_new} rows but team_basic_stats has {n_base}: "
+                                   "a component table has duplicate keys")
+            cur.execute("BEGIN")
+            cur.execute("DROP TABLE IF EXISTS team_game_full")
+            cur.execute("ALTER TABLE team_game_full_new RENAME TO team_game_full")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_full_team_date ON team_game_full(teamId, gameDate)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_full_game_id ON team_game_full(gameId)")
+            cur.execute("COMMIT")
+            logging.info(f"team_game_full rebuilt with {n_new} rows.")
         except Exception as e:
-            logging.error(f"Error rebuilding team_game_full: {e}")
+            if conn.in_transaction:
+                conn.execute("ROLLBACK")
+            conn.execute("DROP TABLE IF EXISTS team_game_full_new")
+            logging.error(f"Error rebuilding team_game_full (existing table kept): {e}")
             raise
-            
-            
-        
+        finally:
+            conn.close()
+
     def sync_database(self, seasons: List[str]) -> None:
         """
         Main method to synchronize the database
@@ -1282,6 +1241,12 @@ class NBADatabaseSync:
         try:
             # First sync basic stats
             self.sync_basic_stats(seasons)
+
+            # Positions etc. for players new to the database (e.g. rookies)
+            try:
+                self.sync_player_info(seasons)
+            except Exception as e:
+                logging.warning(f"player_info sync failed (continuing): {e}")
             
             # Then sync defensive stats
             self.sync_defensive_stats(seasons)
@@ -1331,13 +1296,9 @@ class NBADatabaseSync:
         
 # Usage example
 if __name__ == "__main__":
-    seasons_to_check = ['2025-26']
+    from models.season_utils import season_for_date
+    seasons_to_check = [season_for_date()]
     db_path = Path.cwd() / 'data' / 'nba_stats.db'
-    
+
     syncer = NBADatabaseSync(db_path)
-
-    # Regular sync will now include deduplication
-
     syncer.sync_database(seasons_to_check)
-
-

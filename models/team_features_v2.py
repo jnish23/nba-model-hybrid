@@ -93,10 +93,14 @@ class TeamFeatureBuilder:
             """
             df_history = pd.read_sql(query, conn)
             
-        # Ensure we have the aggregated OPP columns if they are missing
+        # Opponent totals: team_game_full has exact OPP_<stat> columns (from the opponent's box
+        # score). Only fall back to the positional C/F/G columns for an old table without them -
+        # those buckets overlap and overstate totals by ~23% (see update_database.rebuild_team_game_full).
         for stat in ['FGM', 'FGA', 'FG_PCT', 'FG3M', 'FG3A', 'FG3_PCT', 
                      'FTM', 'FTA', 'FT_PCT', 'OREB', 'DREB', 'REB',
                      'AST', 'TOV', 'STL', 'BLK', 'PTS']:
+            if f'OPP_{stat}' in df_history.columns:
+                continue
             pos_cols = [f'OPP_{stat}_{p}' for p in ['C', 'F', 'G']]
             existing = [c for c in pos_cols if c in df_history.columns]
             if existing:
@@ -223,10 +227,13 @@ class TeamFeatureBuilder:
             
         df['gameDate'] = pd.to_datetime(df['gameDate'])
         
-        # Ensure we have the aggregated OPP columns before proceeding
-        for stat in ['FGM', 'FGA', 'FG_PCT', 'FG3M', 'FG3A', 'FG3_PCT', 
+        # Opponent totals: use the exact OPP_<stat> columns in team_game_full; only fall back to
+        # the overlapping positional C/F/G columns for an old table without them (same as build_features)
+        for stat in ['FGM', 'FGA', 'FG_PCT', 'FG3M', 'FG3A', 'FG3_PCT',
                      'FTM', 'FTA', 'FT_PCT', 'OREB', 'DREB', 'REB',
                      'AST', 'TOV', 'STL', 'BLK', 'PTS']:
+            if f'OPP_{stat}' in df.columns:
+                continue
             pos_cols = [f'OPP_{stat}_{p}' for p in ['C', 'F', 'G']]
             existing = [c for c in pos_cols if c in df.columns]
             if existing:

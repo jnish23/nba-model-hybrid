@@ -38,6 +38,7 @@ import pandas as pd
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from models.train_baseline import BaselineModel
+from models.data_paths import latest_training_set
 
 DB_PATH = Path('data/nba_stats.db')
 MODEL_DIR = Path('models/saved')
@@ -68,7 +69,7 @@ def main():
     season, suffix = args.season, f'_oos_{args.season}'
 
     # 1. Train on earlier seasons only
-    data_path = Path(max(glob.glob('data/processed/training_set_v1_reduced_*.csv')))
+    data_path = latest_training_set()
     full = pd.read_csv(data_path, low_memory=False)
     pre_path = data_path.with_name(f'training_set_pre_{season}.csv')
     full[full['seasonYear'] < season].to_csv(pre_path, index=False)
@@ -122,9 +123,9 @@ def main():
     csv_path = Path(f'predictions/predictions_{season}.csv')
     stamp = dt.date.today().strftime('%Y%m%d')
     if csv_path.exists():
-        backup = Path('data/backups') / f'{csv_path.stem}_before_oos_{stamp}.csv'
+        backup = Path('data/backups') / f'{csv_path.stem}_before_oos_{dt.datetime.now():%Y%m%d_%H%M%S}.csv'
         backup.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(csv_path, backup)
+        shutil.copy2(csv_path, backup)  # timestamped name: never overwrites an earlier backup
         logging.info(f"Backed up previous {csv_path} to {backup}")
     log.to_csv(csv_path, index=False)
 
