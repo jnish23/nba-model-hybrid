@@ -76,24 +76,38 @@ def display_subgroup_metrics(df, subgroup_col, result_col, title, group_order=No
 
 
 # Constants
-DB_PATH = Path(__file__).resolve().parent.parent / "data" / "nba_stats.db"
-print(DB_PATH)
+# NBA_DASHBOARD_DB overrides the DB path (e.g. point it at a missing file to test the hosted data path)
+DB_PATH = Path(os.environ.get("NBA_DASHBOARD_DB", Path(__file__).resolve().parent.parent / "data" / "nba_stats.db"))
+# Published daily by scripts/export_dashboard_data.py --publish (used when the DB is not available,
+# e.g. on Streamlit Community Cloud or in a fresh clone)
+REMOTE_DATA_URL = "https://raw.githubusercontent.com/jnish23/nba-model-hybrid/dashboard-data/predictions_log.csv"
+SNAPSHOT_PATH = Path(__file__).resolve().parent / "snapshot" / "predictions_log.csv"
+
+
+def _read_predictions():
+    """predictions_log_v2 from the local DB, else the published data branch, else the bundled snapshot.
+    Returns (DataFrame, source label)."""
+    if DB_PATH.exists():
+        with sqlite3.connect(DB_PATH) as conn:
+            return pd.read_sql_query("SELECT * FROM predictions_log_v2", conn), "local database"
+    try:
+        return pd.read_csv(REMOTE_DATA_URL, dtype={'game_id': str}), "published data (updated daily)"
+    except Exception:
+        pass
+    if SNAPSHOT_PATH.exists():
+        return pd.read_csv(SNAPSHOT_PATH, dtype={'game_id': str}), "bundled snapshot"
+    raise FileNotFoundError(f"No data: {DB_PATH}, {REMOTE_DATA_URL} and {SNAPSHOT_PATH} are all unavailable")
+
+
 @st.cache_data(ttl=3600)
 def load_data():
-    """Loads prediction data from the sqlite database."""
-    if not DB_PATH.exists():
-        st.error(f"Database not found at {DB_PATH}")
-        return pd.DataFrame()
-
+    """Loads prediction data (see _read_predictions for the sources)."""
     try:
-        conn = sqlite3.connect(DB_PATH)
-        query = "SELECT * FROM predictions_log_v2"
-        df = pd.read_sql_query(query, conn)
+        df, source = _read_predictions()
         # Sort by game_date, then by prediction_date so the LATEST prediction is first
         df = df.sort_values(by=['game_date', 'prediction_date'], ascending=[False, False])
         df = df.drop_duplicates(subset=['game_id'], keep='first')
-        conn.close()
-        
+
         # Convert date columns to datetime
         df['game_date'] = pd.to_datetime(df['game_date']).dt.date
         df['prediction_date'] = pd.to_datetime(df['prediction_date'])
@@ -104,10 +118,10 @@ def load_data():
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
 
-        return df
+        return df, source
     except Exception as e:
         st.error(f"Error loading data: {e}")
-        return pd.DataFrame()
+        return pd.DataFrame(), "unavailable"
 
 # Helper functions moved to models.betting
 # calculate_implied_prob and calculate_payout are now imported
@@ -641,14 +655,15 @@ def build_team_breakdown(df, team, bet_type, threshold):
 def main():
     st.title("🏀 NBA Model Dashboard")
 
-    df = load_data()
+    df, source = load_data()
     
     if df.empty:
-        st.warning("No data returned from database.")
+        st.warning("No prediction data available.")
         st.stop() # Stop execution if no data
 
     # Sidebar Filters
     st.sidebar.header("Configuration")
+    st.sidebar.caption(f"Data: {source} · {df['game_date'].min()} to {df['game_date'].max()}")
     
     # Date Filter
     # Check if we have data

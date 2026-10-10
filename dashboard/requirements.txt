@@ -1,4 +1,6 @@
-streamlit
-pandas
-matplotlib
-plotly
+# Dashboard-only dependencies (Streamlit Community Cloud reads this file next to app.py).
+# The full modeling stack in the root requirements.txt is not needed to view the dashboard.
+streamlit==1.37.1
+plotly==5.24.1
+pandas==2.2.2
+numpy==1.26.4
