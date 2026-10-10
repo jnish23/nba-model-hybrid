@@ -1,0 +1,74 @@
+INFO: Dropped closing odds for 201 games in contaminated window 2019-10-22..2019-11-19
+INFO: Dropped closing odds for 266 games in contaminated window 2021-10-19..2021-11-23
+INFO: Clean odds: 8815 games matched to results (8799 with opening spread, 8321 with closing spread)
+INFO: Joined 8443 of 8443 predictions to clean odds
+
+==========================================================================================
+1-2. ACCURACY BY SEASON: model vs opening vs closing line (games with model + open + close available)
+==========================================================================================
+ season  games  ML ll model  ML ll open  ML ll close  Spr MAE model  Spr MAE open  Spr MAE close  Tot MAE model  Tot MAE open  Tot MAE close
+2019-20    936        0.659       0.618        0.614         10.457        10.046          9.952         15.891        14.938         14.800
+2020-21   1156        0.656       0.623        0.619         11.278        10.837         10.727         15.630        14.644         14.440
+2021-22   1046        0.651       0.616        0.605         11.479        10.994         10.823         15.364        14.372         13.985
+2022-23   1288        0.659       0.631        0.626         10.408         9.869          9.837         15.482        14.374         14.116
+2023-24   1296        0.636       0.591        0.583         11.214        10.691         10.640         15.898        14.237         13.980
+2024-25   1312        0.618       0.596        0.586         11.245        10.832         10.626         15.433        14.522         14.098
+2025-26    853        0.636       0.623        0.612         11.428        11.149         10.869         16.052        15.053         14.662
+    ALL   7887        0.644       0.613        0.606         11.065        10.615         10.487         15.659        14.556         14.261
+
+Lower is better. ML ll = log loss of home-win probability (market = no-vig consensus).
+
+==========================================================================================
+3. DOES THE MODEL ADD INFORMATION BEYOND THE LINE?
+==========================================================================================
+Spread/Total: regress (actual - line) on (model - line). Slope b > 0 (t > 2) means the model's
+disagreement with the line predicts the line's error. b = 1 would mean trust the model fully.
+ML: logistic regression of home_win on logit(model) - logit(market), with the market as offset.
+
+market  line    n  slope b    se      t
+Spread  open 8427    0.064 0.039  1.660
+ Total  open 8427    0.054 0.026  2.099
+    ML  open 8413    0.070 0.034  2.038
+Spread close 7949    0.006 0.036  0.155
+ Total close 7952   -0.000 0.025 -0.008
+    ML close 7910    0.027 0.032  0.833
+
+==========================================================================================
+3b. WALK-FORWARD BLEND vs OPENING LINE (blend weight fit on prior seasons only)
+==========================================================================================
+blend = line + b*(model - line). 'gain' = market error - blend error on the held-out season
+(positive = blending in the model would have improved on the opening line).
+
+ season  Spr b  Spr MAE gain  Tot b  Tot MAE gain   ML b  ML ll gain
+2020-21 0.1879       -0.0185 0.0593       -0.0356 0.0774     -0.0015
+2021-22 0.0686        0.0043 0.0809        0.0008 0.0602      0.0013
+2022-23 0.1018       -0.0381 0.0556       -0.0028 0.0784     -0.0008
+2023-24 0.0730       -0.0073 0.0414        0.0021 0.0816     -0.0008
+2024-25 0.0351        0.0000 0.0410        0.0267 0.0489      0.0006
+2025-26 0.0507        0.0113 0.0533       -0.0190 0.0564      0.0012
+
+==========================================================================================
+4. CLOSING LINE VALUE: bets placed at the OPENING line when the model disagrees with it
+==========================================================================================
+Spread/Total CLV is in points (positive = the line moved your way by close). Win % excludes
+pushes; ROI assumes -110. Break-even at -110 is 52.38%. |CLV t| > 2 is the signal to look for.
+
+SPREAD (model margin vs opening line, points)
+ threshold  bets  mean CLV  CLV t  % beat close  % worse  win %  ROI %
+       0.0  7946      0.12   5.14         44.19    42.69  49.78  -4.91
+       2.5  4063      0.18   5.50         44.55    41.79  49.93  -4.64
+       5.0  1531      0.23   4.28         44.48    41.15  49.64  -5.18
+
+TOTAL (model total vs opening total, points)
+ threshold  bets  mean CLV  CLV t  % beat close  % worse  win %  ROI %
+       0.0  7950      0.26   6.93         49.51    44.48  51.10  -2.44
+       3.0  5427      0.35   7.88         50.73    43.45  51.48  -1.70
+       6.0  3357      0.42   7.30         50.76    42.93  51.76  -1.18
+
+MONEYLINE (model prob vs opening no-vig prob). 'mean CLV' = expected ROI per unit of the opening
+median price if the closing no-vig probability is the truth; 'best px' = best price across books.
+  threshold  bets  mean CLV  CLV t  % beat close  % worse  win %  ROI %  CLV best px  ROI best px %  % dogs
+        0.0  7892     -2.72 -14.66         36.53    63.44  41.59  -1.98         0.52           1.36   68.50
+       0.03  6255     -2.50 -11.66         37.46    62.51  39.92  -1.62         0.90           1.89   72.12
+       0.05  5304     -2.25  -9.48         38.14    61.82  39.01  -2.05         1.21           1.45   74.28
+random side  7896     -3.90    NaN           NaN      NaN    NaN    NaN        -1.29            NaN     NaN

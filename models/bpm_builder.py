@@ -61,11 +61,13 @@ class BPMBuilder:
         # Handle multi-position (take avg? or primary?)
         # "Guard-Forward" -> ?
         p = pos_str.upper()
-        if 'Guard' in p and 'Forward' in p: return 2.5 # GF / FG
-        if 'Forward' in p and 'Center' in p: return 4.5 # FC / CF
-        if 'Guard' in p: return 1.5 # G (Generic)
-        if 'Forward' in p: return 3.5 # F (Generic)
-        if 'Center' in p: return 5.0
+        # (These checks used to compare mixed-case words against the upper-cased string, so every
+        # player got the 3.0 default.)
+        if 'GUARD' in p and 'FORWARD' in p: return 2.5 # GF / FG
+        if 'FORWARD' in p and 'CENTER' in p: return 4.5 # FC / CF
+        if 'GUARD' in p: return 1.5 # G (Generic)
+        if 'FORWARD' in p: return 3.5 # F (Generic)
+        if 'CENTER' in p: return 5.0
         
         # Specifics
         mapping = {
@@ -177,7 +179,14 @@ class BPMBuilder:
         logging.info(f"Raw BPM (weighted):   {self.df['raw_bpm'].min():.1f} to {self.df['raw_bpm'].max():.1f}")
     
 
-        self.df['bpm'] = self.df['raw_bpm'] - self.df['raw_bpm'].mean()
+        # Center on the league mean of raw BPM over player-games in the 365 days BEFORE this date.
+        # Point-in-time (a full-sample mean used future games), and the trailing window makes the
+        # value independent of where the loaded data starts once a year of history is loaded,
+        # so training and live inference agree even if they load different season ranges.
+        daily = self.df.groupby('gameDate')['raw_bpm'].agg(['sum', 'count']).sort_index()
+        trailing = daily.rolling('365D', closed='left').sum()
+        prior_mean = (trailing['sum'] / trailing['count']).fillna(0.0)
+        self.df['bpm'] = self.df['raw_bpm'] - self.df['gameDate'].map(prior_mean)
 
         # # =====================================================
         # # 5. FIXED Team Adjustment - ROLLING, NOT FULL SEASON
