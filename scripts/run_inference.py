@@ -147,7 +147,7 @@ class InferenceEngine:
         # 2. Direct SBR Fetch
         logging.info(f"Fetching from SBR for {today}...")
         try:
-            from sbrscrape import Scoreboard
+            from models.sbr import Scoreboard
             
             # Fetch Current
             sb_curr = Scoreboard(sport='NBA', date=today, current_line=True)

@@ -2,7 +2,7 @@ import sqlite3
 import pandas as pd
 import logging
 from typing import List
-from sbrscrape import Scoreboard
+from models.sbr import Scoreboard
 
 # Add project root to path
 import sys

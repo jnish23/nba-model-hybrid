@@ -25,7 +25,7 @@ from nba_api.stats.endpoints import (
     leaguedashteamstats,
     leaguedashteamshotlocations
 )
-from sbrscrape import Scoreboard
+from models.sbr import Scoreboard
 
 # Add root to sys.path to allow importing models when run from scripts/
 import sys
@@ -197,6 +197,23 @@ class NBADatabaseSync:
                          [source, item, str(error)[:500]])
         conn.commit()
 
+    def _append(self, conn, df: pd.DataFrame, table: str) -> None:
+        """
+        Append df to table, aligned to the table's existing columns. The NBA API adds columns
+        over time (e.g. FP_HIGH_SCORE in PlayerGameLogs), and pandas' append fails on any column
+        the table lacks - which aborted the whole sync. New columns are dropped (and logged);
+        columns the API no longer returns are written as NULL.
+        """
+        if df is None or df.empty:
+            return
+        if self._table_exists(conn, table):
+            cols = [r[1] for r in conn.execute(f'PRAGMA table_info("{table}")')]
+            extra = [c for c in df.columns if c not in cols]
+            if extra:
+                logging.warning(f"{table}: ignoring {len(extra)} new API column(s) not in the table: {extra[:10]}")
+            df = df.reindex(columns=cols)
+        df.to_sql(table, conn, if_exists='append', index=False)
+
     def _table_exists(self, conn, table: str) -> bool:
         return conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", [table]).fetchone() is not None
 
@@ -304,7 +321,7 @@ class NBADatabaseSync:
 
                         # Add to database
                         table_name = 'team_basic_stats'
-                        season_df.to_sql(table_name, conn, if_exists='append', index=False)
+                        self._append(conn, season_df, table_name)
                         
                         # Remove duplicates within this season (keeps the latest row per team-game)
                         self._dedupe_season(conn, table_name, 'teamId, gameId', season)
@@ -384,7 +401,7 @@ class NBADatabaseSync:
 
                         # Add to database
                         table_name = 'player_basic_stats'
-                        season_df.to_sql(table_name, conn, if_exists='append', index=False)
+                        self._append(conn, season_df, table_name)
                         
                         # Remove duplicates within this season (keeps the latest row per player-game)
                         self._dedupe_season(conn, table_name, 'personId, gameId', season)
@@ -587,7 +604,7 @@ class NBADatabaseSync:
                             raw_data = self.get_all_defensive_stats(date, season, season_type)
                             processed_data = self.process_defensive_stats(raw_data)
                             if processed_data is not None:
-                                processed_data.to_sql('defensive_stats_by_position', conn, if_exists='append', index=False)
+                                self._append(conn, processed_data, 'defensive_stats_by_position')
                                 logging.info(f"Added defensive stats for {date}")
                             self._record_attempt(conn, 'defensive_stats_by_position', date, processed_data is not None, 'no data')
                         except Exception as e:
@@ -652,8 +669,7 @@ class NBADatabaseSync:
                             df = self.get_shot_location_stats(date, season, season_type)
                             ok = df is not None and not df.empty
                             if ok:
-                                df.rename(columns=self.identifier_map).to_sql(
-                                    'team_shot_location_boxscores', conn, if_exists='append', index=False)
+                                self._append(conn, df.rename(columns=self.identifier_map), 'team_shot_location_boxscores')
                                 logging.info(f"Added shot location stats for {date} ({season_type})")
                             self._record_attempt(conn, 'team_shot_location_boxscores', date, ok, 'no data')
                         except Exception as e:
@@ -722,8 +738,7 @@ class NBADatabaseSync:
                                 df = self.get_player_shot_location_stats(date, season, season_type)
                                 ok = df is not None and not df.empty
                                 if ok:
-                                    df.rename(columns=self.identifier_map).to_sql(
-                                        'player_shot_location_boxscores', conn, if_exists='append', index=False)
+                                    self._append(conn, df.rename(columns=self.identifier_map), 'player_shot_location_boxscores')
                                     logging.info(f"Added player shot location stats for {date} ({season_type})")
                                 self._record_attempt(conn, 'player_shot_location_boxscores', date, ok, 'no data')
                             except Exception as e:
@@ -824,8 +839,8 @@ class NBADatabaseSync:
 
             with sqlite3.connect(self.db_path) as conn:
                 try:
-                    player_df.to_sql(table_pair.player_table, conn, if_exists='append', index=False)
-                    team_df.to_sql(table_pair.team_table, conn, if_exists='append', index=False)
+                    self._append(conn, player_df, table_pair.player_table)
+                    self._append(conn, team_df, table_pair.team_table)
                 except Exception:
                     # pandas commits each to_sql call, so undo by hand: remove this game from both
                     # tables (it was incomplete before) so it is cleanly re-fetched next run
@@ -916,7 +931,7 @@ class NBADatabaseSync:
                                 processed_df = self.process_odds_data(odds_df, season, date) if not odds_df.empty else odds_df
                                 ok = not processed_df.empty
                                 if ok:
-                                    processed_df.to_sql(table, conn, if_exists='append', index=False)
+                                    self._append(conn, processed_df, table)
                                     logging.info(f"Added {label} odds data for {date}")
                                 self._record_attempt(conn, table, date, ok, 'no data')
                             except Exception as e:
@@ -958,7 +973,7 @@ class NBADatabaseSync:
                     ok = not info.empty
                     if ok:
                         info = info.reindex(columns=existing_cols)  # tolerate API column changes
-                        info.to_sql('player_info', conn, if_exists='append', index=False)
+                        self._append(conn, info, 'player_info')
                     self._record_attempt(conn, 'player_info', str(pid), ok, 'no data')
                 except Exception as e:
                     logging.error(f"player_info for {pid} failed: {e}")
