@@ -20,6 +20,7 @@ data) produced them. This script regenerates the whole season cleanly:
 
 Usage:
     python scripts/generate_season_predictions.py --season 2025-26 [--time-budget 600]
+    python scripts/generate_season_predictions.py --season 2023-24 --eval-only   # backtest another season
 """
 import argparse
 import datetime as dt
@@ -64,6 +65,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--season', default='2025-26')
     parser.add_argument('--time-budget', type=int, default=600, help='FLAML seconds per model')
+    parser.add_argument('--eval-only', action='store_true',
+                        help='Write reports/oos_predictions_<season>.csv only; leave the predictions CSV and DB untouched')
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s: %(message)s')
     season, suffix = args.season, f'_oos_{args.season}'
@@ -118,6 +121,12 @@ def main():
     missing_names = log['home_team'].isna().sum() + log['away_team'].isna().sum()
     if missing_names:
         raise ValueError(f"{missing_names} team names could not be mapped")
+
+    if args.eval_only:
+        out_path = Path(f'reports/oos_predictions_{season}.csv')
+        log.to_csv(out_path, index=False)
+        logging.info(f"Eval-only: wrote {len(log)} predictions to {out_path}; training data ended {train_max:%Y-%m-%d}")
+        return
 
     # Write CSV (back up the previous working copy first)
     csv_path = Path(f'predictions/predictions_{season}.csv')
