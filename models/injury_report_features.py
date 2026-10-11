@@ -105,6 +105,9 @@ def _team_lookup(conn):
     return lookup
 
 
+FUZZY_MATCHES = []  # audit trail of the last link_reports() call (see scripts/audit_training_warnings.py)
+
+
 def link_reports(reports, db_path, upcoming=None):
     """
     Add teamId, gameId, personId. Rows that cannot be linked keep NaN ids (counts are logged).
@@ -171,6 +174,7 @@ def link_reports(reports, db_path, upcoming=None):
     miss = r['personId'].isna() & r['key'].notna() & r['teamId'].notna()
     roster_keys = players.groupby(['teamId', 'seasonYear'])
     fuzzy_hits = 0
+    FUZZY_MATCHES.clear()
     for (tid, season), grp in r[miss].groupby(['teamId', 'seasonYear']):
         try:
             roster = roster_keys.get_group((tid, season))
@@ -182,6 +186,9 @@ def link_reports(reports, db_path, upcoming=None):
             if m:
                 r.loc[sub.index, 'personId'] = before.loc[before['key'] == m[0], 'personId'].iloc[0]
                 fuzzy_hits += len(sub)
+                FUZZY_MATCHES.append({'teamId': tid, 'seasonYear': season, 'game_date': gdate,
+                                      'report_name': sub['player'].iloc[0], 'report_key': key, 'matched_key': m[0],
+                                      'personId': r.loc[sub.index[0], 'personId'], 'n_rows': len(sub)})
 
     player_rows = r['player'].notna()
     logging.info(f"Linked: team {r['teamId'].notna().mean():.1%}, game {r['gameId'].notna().mean():.1%}, "
@@ -284,7 +291,7 @@ def reported_features(rows, coverage, cand, play_rates):
 
     base = cand[['gameId', 'teamId']].drop_duplicates().merge(coverage, on=['gameId', 'teamId'], how='left')
     base = base.merge(feats, on=['gameId', 'teamId'], how='left')
-    base['rep_missing'] = base['report_ts'].isna() | base['not_submitted'].fillna(False).astype(bool)
+    base['rep_missing'] = base['report_ts'].isna() | base['not_submitted'].eq(True)
     for c in ('rep_lost', 'rep_lost_new', 'rep_n_out'):
         base[c] = base[c].fillna(0.0)
     return base
@@ -394,7 +401,7 @@ def build_injury_features(db_path, seasons, snapshot_name='game_day_noon', as_of
     sched['teamId'] = sched['teamId'].astype('int64')
     f['teamId'] = f['teamId'].astype('int64')
     f = sched.merge(f, on=['gameId', 'teamId'], how='left')
-    f['inj_missing'] = f['inj_missing'].fillna(True).astype(int)
+    f['inj_missing'] = f['inj_missing'].ne(False).astype(int)
     for c in ('inj_lost', 'inj_lost_new', 'inj_n_out'):
         f[c] = f[c].fillna(0.0)
     return f[['gameId', 'teamId'] + INJ_COLS]
