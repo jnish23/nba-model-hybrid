@@ -92,7 +92,7 @@ def _num(v):
 
 
 def fetch(date, current_line):
-    from sbrscrape import Scoreboard
+    from models.sbr import Scoreboard
     sb = Scoreboard(sport='NBA', date=date, current_line=current_line)  # swallows its own errors
     if not hasattr(sb, 'games'):
         # sbrscrape returns without setting .games both when no games are listed and on some errors

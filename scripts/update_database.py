@@ -25,7 +25,7 @@ from nba_api.stats.endpoints import (
     leaguedashteamstats,
     leaguedashteamshotlocations
 )
-from sbrscrape import Scoreboard
+from models.sbr import Scoreboard
 
 # Add root to sys.path to allow importing models when run from scripts/
 import sys
