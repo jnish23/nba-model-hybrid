@@ -22,6 +22,7 @@ import pandas as pd
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from models.train_baseline import BaselineModel
+from models.data_paths import latest_training_set
 
 START_SEASON = '2021-22'
 
@@ -32,13 +33,14 @@ def main():
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s: %(message)s')
 
-    data_path = Path(max(glob.glob('data/processed/training_set_v1_reduced_*.csv')))
+    data_path = latest_training_set()
     logging.info(f"Training set: {data_path}")
     df = pd.read_csv(data_path, low_memory=False)
     inj_cols = [c for c in df.columns if c.startswith(('inj_', 'diff_inj_'))]
     if not inj_cols:
         raise SystemExit("Training set has no inj_* columns; regenerate it first")
-    off_path = data_path.with_name(data_path.stem + '_no_inj.csv')
+    # Named so it can never be mistaken for a dated training set
+    off_path = data_path.with_name('ablation_no_inj_' + data_path.name)
     df.drop(columns=inj_cols).to_csv(off_path, index=False)
     logging.info(f"Arm B training set without {len(inj_cols)} inj columns: {off_path}")
 

@@ -1399,7 +1399,8 @@ if __name__ == "__main__":
     
     # Assuming script run from project root
     # Latest dated training set written by scripts/generate_training_set.py (ISO dates sort lexically)
-    data_path = max(Path('data/processed').glob('training_set_v1_reduced_*.csv'))
+    from models.data_paths import latest_training_set
+    data_path = latest_training_set()
     
     model = BaselineModel(data_path)
     
