@@ -48,6 +48,98 @@ def custom_backoff_generator(**kwargs):
 RETRYABLE = (RequestException, Timeout, ConnectionError, json.JSONDecodeError, KeyError, IndexError)
 RETRY = dict(max_tries=4, max_time=180)
 
+def fix_neutral_site_matchups(conn, tables=('team_basic_stats', 'team_game_full')) -> int:
+    """
+    Neutral-site games (NBA Cup, Europe/Mexico games) come from the NBA API with '@' in BOTH
+    teams' MATCHUP, so no team is the home team and every 'vs.' based home/away split drops the
+    game. The sportsbook-designated host in nba_odds is the nominal home team (odds are quoted
+    against it), so give that team's row 'HOST vs. OTHER'. The other row already reads
+    'OTHER @ HOST'. Idempotent. Games without an odds row (e.g. some international games) get an
+    arbitrary but deterministic host (lower teamId), logged as a warning.
+    Returns the number of games fixed.
+    """
+    def nick(name):  # 'Portland Trail Blazers' / 'LA Clippers' -> last word, stable across naming eras
+        return str(name).split()[-1]
+
+    games = pd.read_sql("SELECT gameId, substr(gameDate, 1, 10) AS gameDate, teamId, teamTricode, teamName, MATCHUP "
+                        "FROM team_basic_stats WHERE seasonYear >= '2013-14'", conn)
+    games['home'] = games['MATCHUP'].str.contains(' vs. ', regex=False)
+    bad = games.groupby('gameId').filter(lambda g: not g['home'].any())
+    if bad.empty:
+        return 0
+    odds = pd.read_sql("SELECT substr(gameDate, 1, 10) AS gameDate, home_team, away_team FROM nba_odds", conn)
+    odds['h'], odds['a'] = odds['home_team'].map(nick), odds['away_team'].map(nick)
+
+    fixed = 0
+    for game_id, g in bad.groupby('gameId'):
+        if len(g) != 2:
+            continue
+        date = g['gameDate'].iloc[0]
+        nicks = {r.teamId: nick(r.teamName) for r in g.itertuples()}
+        day = odds[odds['gameDate'] == date]
+        host_id = None
+        for host, other in [tuple(g['teamId']), tuple(g['teamId'])[::-1]]:
+            if ((day['h'] == nicks[host]) & (day['a'] == nicks[other])).any():
+                host_id = host
+                break
+        if host_id is None:
+            host_id = min(g['teamId'])
+            logging.warning(f"Neutral-site game {game_id} ({date}): no odds row; arbitrarily treating the lower "
+                            f"teamId as home (no odds exist for this game, so only its feature row is affected)")
+        host_row = g[g['teamId'] == host_id].iloc[0]
+        other_row = g[g['teamId'] != host_id].iloc[0]
+        new_matchup = f"{host_row['teamTricode']} vs. {other_row['teamTricode']}"
+        for table in tables:
+            if conn.execute("SELECT 1 FROM sqlite_master WHERE name = ?", [table]).fetchone():
+                conn.execute(f"UPDATE {table} SET MATCHUP = ? WHERE gameId = ? AND teamId = ?",
+                             [new_matchup, game_id, int(host_id)])
+        logging.info(f"Neutral-site game {game_id} ({date}): {host_row['MATCHUP']} -> {new_matchup}")
+        fixed += 1
+    conn.commit()
+    return fixed
+
+
+# Full team name (as printed by the odds scraper, current and past names) -> NBA teamId
+ODDS_TEAM_IDS = {
+    'Atlanta Hawks': 1610612737, 'Boston Celtics': 1610612738, 'Cleveland Cavaliers': 1610612739,
+    'New Orleans Pelicans': 1610612740, 'New Orleans Hornets': 1610612740, 'Chicago Bulls': 1610612741,
+    'Dallas Mavericks': 1610612742, 'Denver Nuggets': 1610612743, 'Golden State Warriors': 1610612744,
+    'Houston Rockets': 1610612745, 'LA Clippers': 1610612746, 'Los Angeles Clippers': 1610612746,
+    'Los Angeles Lakers': 1610612747, 'LA Lakers': 1610612747, 'Miami Heat': 1610612748,
+    'Milwaukee Bucks': 1610612749, 'Minnesota Timberwolves': 1610612750, 'Brooklyn Nets': 1610612751,
+    'New York Knicks': 1610612752, 'Orlando Magic': 1610612753, 'Indiana Pacers': 1610612754,
+    'Philadelphia 76ers': 1610612755, 'Phoenix Suns': 1610612756, 'Portland Trail Blazers': 1610612757,
+    'Sacramento Kings': 1610612758, 'San Antonio Spurs': 1610612759, 'Oklahoma City Thunder': 1610612760,
+    'Toronto Raptors': 1610612761, 'Utah Jazz': 1610612762, 'Memphis Grizzlies': 1610612763,
+    'Washington Wizards': 1610612764, 'Detroit Pistons': 1610612765, 'Charlotte Hornets': 1610612766,
+    'Charlotte Bobcats': 1610612766,
+}
+
+
+def fill_odds_team_ids(conn, tables=('nba_odds', 'nba_odds_opening')) -> int:
+    """
+    The odds scraper returns team names but no teamId. Fill teamId_home/teamId_away from the full
+    team name wherever they are NULL (existing IDs are never changed). Idempotent; returns the
+    number of cells filled. Unknown names are logged.
+    """
+    filled = 0
+    for table in tables:
+        if not conn.execute("SELECT 1 FROM sqlite_master WHERE name = ?", [table]).fetchone():
+            continue
+        for side in ('home', 'away'):
+            for name, team_id in ODDS_TEAM_IDS.items():
+                filled += conn.execute(
+                    f"UPDATE {table} SET teamId_{side} = ? WHERE teamId_{side} IS NULL AND {side}_team = ?",
+                    [team_id, name]).rowcount
+            left = conn.execute(f"SELECT DISTINCT {side}_team FROM {table} WHERE teamId_{side} IS NULL").fetchall()
+            if left:
+                logging.warning(f"{table}: unmapped {side} team names left without teamId: {[r[0] for r in left][:8]}")
+    conn.commit()
+    if filled:
+        logging.info(f"Filled {filled} missing odds teamId values from team names")
+    return filled
+
+
 @dataclass
 class TablePair:
     """Class to hold related team and player table information"""
@@ -940,6 +1032,7 @@ class NBADatabaseSync:
 
                 self.remove_duplicates('nba_odds', is_player_table=False)
                 self.remove_duplicates('nba_odds_opening', is_player_table=False)
+                fill_odds_team_ids(conn)
             logging.info("Odds sync completed")
         except Exception as e:
             logging.error(f"Error in odds sync: {str(e)}")
@@ -1159,6 +1252,9 @@ class NBADatabaseSync:
         - Built into a new table and swapped in within one transaction, so a failed rebuild
           never leaves the database without team_game_full.
         """
+        with sqlite3.connect(self.db_path) as fix_conn:
+            fix_neutral_site_matchups(fix_conn, tables=('team_basic_stats',))
+
         logging.info("Rebuilding team_game_full table...")
 
         opp_cols = ',\n            '.join(f'opp.{src} AS {dst}' for dst, src in self.OPP_FROM_BOX.items())

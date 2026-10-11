@@ -21,6 +21,7 @@ data) produced them. This script regenerates the whole season cleanly:
 Usage:
     python scripts/generate_season_predictions.py --season 2025-26 [--time-budget 600]
     python scripts/generate_season_predictions.py --season 2023-24 --eval-only   # backtest another season
+    python scripts/generate_season_predictions.py --season 2025-26 --skip-train  # re-predict with saved models
 """
 import argparse
 import datetime as dt
@@ -65,7 +66,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--season', default='2025-26')
     parser.add_argument('--time-budget', type=int, default=600, help='FLAML seconds per model')
-    parser.add_argument('--eval-only', action='store_true',
+    parser.add_argument('--skip-train', action='store_true',
+                        help='Reuse the saved *_oos_<season> models and only re-predict (e.g. after the training set '
+                             'gained new games from the target season; pre-season data must be unchanged)')
+    parser.add_argument('--eval-only',action='store_true',
                         help='Write reports/oos_predictions_<season>.csv only; leave the predictions CSV and DB untouched')
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s: %(message)s')
@@ -74,12 +78,21 @@ def main():
     # 1. Train on earlier seasons only
     data_path = latest_training_set()
     full = pd.read_csv(data_path, low_memory=False)
-    pre_path = data_path.with_name(f'training_set_pre_{season}.csv')
-    full[full['seasonYear'] < season].to_csv(pre_path, index=False)
-    logging.info(f"Training on {(full['seasonYear'] < season).sum()} games before {season} ({pre_path})")
-    trainer = BaselineModel(pre_path)
-    trainer.train_and_save_all(use_odds=True, save_suffix=suffix, time_budget=args.time_budget)
-    train_max = trainer.df['gameDate'].max()
+    if args.skip_train:
+        needed = [f'feature_config{suffix}.json', f'model_ml{suffix}.pkl', f'calibrator_ml{suffix}.pkl',
+                  f'model_spread{suffix}.pkl', f'model_total{suffix}.pkl']
+        missing = [n for n in needed if not (MODEL_DIR / n).exists()]
+        if missing:
+            raise FileNotFoundError(f"--skip-train needs previously trained models; missing {missing}")
+        train_max = pd.to_datetime(full.loc[full['seasonYear'] < season, 'gameDate']).max()
+        logging.info(f"Skipping training; reusing saved {suffix} models (pre-{season} data ends {train_max:%Y-%m-%d})")
+    else:
+        pre_path = data_path.with_name(f'training_set_pre_{season}.csv')
+        full[full['seasonYear'] < season].to_csv(pre_path, index=False)
+        logging.info(f"Training on {(full['seasonYear'] < season).sum()} games before {season} ({pre_path})")
+        trainer = BaselineModel(pre_path)
+        trainer.train_and_save_all(use_odds=True, save_suffix=suffix, time_budget=args.time_budget)
+        train_max = trainer.df['gameDate'].max()
 
     # 2. Predict the target season with identical preprocessing
     loader = BaselineModel(data_path)
