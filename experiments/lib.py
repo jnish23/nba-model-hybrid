@@ -182,6 +182,16 @@ def run_walk_forward(name, csv=None, features_from=None, hooks=None, seasons=TES
     return test_df, calib_df, info
 
 
+def label_calib_folds(df, calib_df, seasons=TEST_SEASONS):
+    """Calibration-set rows are saved in fold order; return the fold (test season) of each row."""
+    labels = []
+    for s in seasons:
+        n_train = int((df['seasonYear'] < s).sum())
+        labels += [s] * (n_train - int(n_train * 0.8))
+    assert len(labels) == len(calib_df), (len(labels), len(calib_df))
+    return np.array(labels)
+
+
 def load_run(name):
     d = OUT / name
     t = pd.read_csv(d / 'predictions.csv', dtype={'gameId': str}, parse_dates=['gameDate'])
