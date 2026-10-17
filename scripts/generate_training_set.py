@@ -40,8 +40,9 @@ def main():
     output_path = output_dir / f'training_set_v1_reduced_{today}.csv'
     df.to_csv(output_path, index=False)
     
-    logging.info(f"Training set saved to {output_path}")
-    print(f"Final Odds Coverage: {df['odds_home_ml'].notna().mean():.2%}")
+    ml_cov = df['odds_home_ml'].notna().mean() if 'odds_home_ml' in df.columns else 0
+    spread_cov = df['odds_home_spread'].notna().mean() if 'odds_home_spread' in df.columns else 0
+    logging.info(f"Final Odds Coverage -> Spread: {spread_cov:.2%}, Moneyline: {ml_cov:.2%}")
     logging.info(f"Shape: {df.shape}")
     logging.info(f"Columns: {list(df.columns)[:20]} ...")
 

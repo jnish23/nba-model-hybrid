@@ -202,13 +202,14 @@ class GameFeatureBuilder:
         # Find all feature columns that exist for both home and away
         home_feat_cols = [c for c in game_df.columns if c.endswith('_home') and not c.startswith(('teamId', 'matchup', 'wl', 'points', 'gameId', 'is_home', 'seasonYear', 'gameDate'))]
 
+        new_cols = {}
         for hcol in home_feat_cols:
             base = hcol.rsplit('_home', 1)[0]
             acol = f"{base}_away"
             if acol in game_df.columns:
                 # Only for numeric columns
                 if game_df[hcol].dtype in [np.float64, np.float32, np.int64, np.int32, float, int]:
-                    game_df[f"diff_{base}"] = game_df[hcol] - game_df[acol]
+                    new_cols[f"diff_{base}"] = game_df[hcol] - game_df[acol]
 
         # 5c. Matchup features (home offense vs away defense and vice versa)
         logging.info("Generating matchup features...")
@@ -221,15 +222,18 @@ class GameFeatureBuilder:
 
         for home_col, away_col, name in matchup_pairs:
             if home_col in game_df.columns and away_col in game_df.columns:
-                game_df[name] = game_df[home_col] - game_df[away_col]
+                new_cols[name] = game_df[home_col] - game_df[away_col]
             else:
                 missing = [c for c in [home_col, away_col] if c not in game_df.columns]
                 logging.debug(f"Matchup feature skipped (missing cols {missing}): {name}")
         
         # 6. Calculate Targets
-        game_df['target_home_win'] = game_df['wl_home'].apply(lambda x: 1 if x == 'W' else 0)
-        game_df['target_point_diff'] = game_df['points_home'] - game_df['points_away']
-        game_df['target_total_pts'] = game_df['points_home'] + game_df['points_away']
+        new_cols['target_home_win'] = game_df['wl_home'].apply(lambda x: 1 if x == 'W' else 0)
+        new_cols['target_point_diff'] = game_df['points_home'] - game_df['points_away']
+        new_cols['target_total_pts'] = game_df['points_home'] + game_df['points_away']
+
+        if new_cols:
+            game_df = pd.concat([game_df, pd.DataFrame(new_cols, index=game_df.index)], axis=1)
         
         # 6b. Roster Features
         p_feats = self._get_player_features(seasons)
@@ -280,7 +284,7 @@ class GameFeatureBuilder:
             combined = pd.concat(odds_frames, ignore_index=True)
             combined['gameDate'] = pd.to_datetime(combined['gameDate'])
             # Keep first occurrence per game (DB wins because it's first in the list)
-            final_odds = combined.drop_duplicates(subset=['gameDate', 'teamId_home'], keep='first')
+            final_odds = combined.drop_duplicates(subset=['gameDate', 'teamId_home'], keep='first').copy()
         else:
             final_odds = pd.DataFrame()
         
@@ -307,7 +311,9 @@ class GameFeatureBuilder:
         # Merge into Game DF
 
         game_df = pd.merge(game_df, final_odds, left_on=['gameDate', 'teamId_home'], right_on=['gameDate', 'teamId_home'], how='left')
-        print(f"Built training set with {len(game_df)} games. Odds coverage: {game_df.get('odds_home_ml', pd.Series()).notna().mean():.2%}")
+        spread_cov = game_df['odds_home_spread'].notna().mean() if 'odds_home_spread' in game_df.columns else 0
+        ml_cov = game_df['odds_home_ml'].notna().mean() if 'odds_home_ml' in game_df.columns else 0
+        logging.info(f"Built training set with {len(game_df)} games. Spread coverage: {spread_cov:.2%}, ML coverage: {ml_cov:.2%} (Archive has spreads/totals; ML from DB)")
 
         return game_df
 

@@ -31,26 +31,21 @@ class BPMBuilder:
         }
         
     def load_data(self, seasons=None):
+        cols = [
+            'gameId', 'teamId', 'personId', 'playerName', 'gameDate', 'seasonYear',
+            'minutes', 'fieldGoalsMade', 'fieldGoalsAttempted',
+            'threePointersMade', 'threePointersAttempted', 'freeThrowsMade', 'freeThrowsAttempted',
+            'offensiveRebounds', 'defensiveRebounds', 'assists', 'steals', 'blocks',
+            'turnovers', 'personalFouls', 'points'
+        ]
         with sqlite3.connect(self.db_path) as conn:
-            query = "SELECT * FROM player_basic_stats"
+            query = f"SELECT {', '.join(cols)} FROM player_basic_stats"
             if seasons:
                 query += f" WHERE seasonYear IN ({','.join(repr(s) for s in seasons)})"
             self.df_stats = pd.read_sql(query, conn)
             
             # Load Positions
             self.df_info = pd.read_sql("SELECT PERSON_ID as personId, POSITION FROM player_info", conn)
-            
-            # Load Team Advanced Stats (For BPM Adjustment)
-            # JOIN with basic stats to get seasonYear
-            query_team = """
-                SELECT adv.teamId, adv.gameId, bst.seasonYear, adv.netRating 
-                FROM team_advanced_stats_v3 adv
-                JOIN team_basic_stats bst ON adv.gameId = bst.gameId AND adv.teamId = bst.teamId
-            """
-            if seasons:
-                # filter by seasonYear from basic stats
-                query_team += f" WHERE bst.seasonYear IN ({','.join(repr(s) for s in seasons)})"
-            self.df_team_adv = pd.read_sql(query_team, conn)
             
         self.df = self.df_stats.merge(self.df_info, on='personId', how='left')
 
