@@ -1,0 +1,47 @@
+{
+ "decision": {
+  "ml: (a) flat 1.0 pt": false,
+  "ml: (c) walk-forward threshold": false,
+  "spread: (a) flat 1.0 pt": false,
+  "spread: (c) walk-forward threshold": false,
+  "total: (a) flat 1.0 pt": false,
+  "total: (c) walk-forward threshold": false
+ },
+ "thresholds": {
+  "2019-20": {
+   "ml": 0.05,
+   "spread": 0.05,
+   "total": 0.1
+  },
+  "2020-21": {
+   "ml": 0.03,
+   "spread": 0.02,
+   "total": 0.075
+  },
+  "2021-22": {
+   "ml": 0.0,
+   "spread": 0.03,
+   "total": 0.05
+  },
+  "2022-23": {
+   "ml": 0.04,
+   "spread": 0.01,
+   "total": 0.05
+  },
+  "2023-24": {
+   "ml": 0.1,
+   "spread": 0.0,
+   "total": 0.0
+  },
+  "2024-25": {
+   "ml": 0.01,
+   "spread": 0.04,
+   "total": 0.075
+  },
+  "2025-26": {
+   "ml": 0.075,
+   "spread": 0.03,
+   "total": 0.03
+  }
+ }
+}
