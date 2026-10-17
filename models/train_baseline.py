@@ -404,10 +404,14 @@ class BaselineModel:
         2. Null Importance Selection to filter out noise.
         
         Uses the target-appropriate feature pool (diff for ML/Spread, sep for Totals).
+
+        Deterministic: columns are processed in alphabetical order (so the CSV column order cannot
+        change the clustering), LightGBM runs in deterministic mode, and every tie - in importance or
+        in the cluster representative - is broken by feature name.
         """
         # 1. Filter available/valid features from the correct pool
         feature_pool = self._get_pool_for_target(target)
-        available_features = [f for f in feature_pool if f in df_subset.columns]
+        available_features = sorted(f for f in feature_pool if f in df_subset.columns)
         X = df_subset[available_features].copy().replace([np.inf, -np.inf], np.nan)
         
         # Drop zero-variance columns
@@ -418,9 +422,11 @@ class BaselineModel:
         
         # Initial proxy model to gauge baseline importance
         if 'win' in target:
-            model = lgb.LGBMClassifier(n_estimators=100, max_depth=4, verbose=-1, random_state=42, n_jobs=-1)
+            model = lgb.LGBMClassifier(n_estimators=100, max_depth=4, verbose=-1, random_state=42, n_jobs=-1,
+                                       deterministic=True, force_row_wise=True)
         else:
-            model = lgb.LGBMRegressor(n_estimators=100, max_depth=4, verbose=-1, random_state=42, n_jobs=-1)
+            model = lgb.LGBMRegressor(n_estimators=100, max_depth=4, verbose=-1, random_state=42, n_jobs=-1,
+                                      deterministic=True, force_row_wise=True)
             
         model.fit(X, y)
         initial_imp = dict(zip(X.columns, model.feature_importances_))
@@ -444,22 +450,17 @@ class BaselineModel:
         # Group features with < 0.15 distance (> 0.85 correlation)
         labels = sch.fcluster(linked, t=0.15, criterion='distance')
         
-        cluster_to_feature = {}
+        # Keep, per cluster, the feature with the highest initial LightGBM importance (ties: smallest name)
+        cluster_members = {}
         for feat, label in zip(X.columns, labels):
-            if label not in cluster_to_feature:
-                cluster_to_feature[label] = feat
-            else:
-                # Keep the one with the highest initial LightGBM importance
-                current_best = cluster_to_feature[label]
-                if initial_imp[feat] > initial_imp[current_best]:
-                    cluster_to_feature[label] = feat
-                    
-        stage1_features = list(cluster_to_feature.values())
+            cluster_members.setdefault(label, []).append(feat)
+        stage1_features = sorted(min(members, key=lambda f: (-initial_imp[f], f))
+                                 for members in cluster_members.values())
         logging.info(f"[{target}] Stage 1 (Clustering): Reduced from {len(X.columns)} to {len(stage1_features)} independent features.")
         
         # If we have very few features, just return what we have
         if len(stage1_features) <= n_min:
-            return sorted(stage1_features, key=lambda f: initial_imp[f], reverse=True)
+            return sorted(stage1_features, key=lambda f: (-initial_imp[f], f))
             
         # ==========================================
         # STAGE 2: Noise Filter (Null Importance)
@@ -488,7 +489,7 @@ class BaselineModel:
                 final_candidates.append((feat, actual_imp[idx]))
                 
         # Sort by actual importance
-        final_candidates.sort(key=lambda x: x[1], reverse=True)
+        final_candidates.sort(key=lambda x: (-x[1], x[0]))
         selected = [f[0] for f in final_candidates]
         
         logging.info(f"[{target}] Stage 2 (Null Imp): Reduced from {len(stage1_features)} to {len(selected)} high-signal features.")
@@ -499,7 +500,7 @@ class BaselineModel:
         elif len(selected) < n_min:
             # Fallback to the top stage1 features if too many were stripped
             logging.warning(f"[{target}] Too few features passed Null Imp. Padding to {n_min}.")
-            fallback = sorted(stage1_features, key=lambda f: initial_imp[f], reverse=True)
+            fallback = sorted(stage1_features, key=lambda f: (-initial_imp[f], f))
             for f in fallback:
                 if f not in selected:
                     selected.append(f)
