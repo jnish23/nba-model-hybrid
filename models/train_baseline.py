@@ -16,6 +16,8 @@ from pathlib import Path
 from flaml import AutoML, tune
 from datetime import date
 
+from models.model_registry import DEPLOYED_SUFFIX
+
 class BaselineModel:
     def __init__(self, data_path, model_dir='models/saved'):
         self.data_path = data_path
@@ -1395,29 +1397,47 @@ class BaselineModel:
         print(f"Calibration Meta: calibration_meta{save_suffix}.json")
 
 
-if __name__ == "__main__":
+def main():
+    import argparse
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--skip-backtest', action='store_true', help='skip the walk-forward backtest')
+    parser.add_argument('--deploy', action='store_true',
+                        help=f'train the production model set (opening odds as inputs) and save it as '
+                             f'"{DEPLOYED_SUFFIX}", the set scripts/run_inference_v2.py loads')
+    parser.add_argument('--no-research-model', action='store_true', help='skip the dated no-odds research model')
+    parser.add_argument('--time-budget', type=int, default=600, help='FLAML seconds per model when training final models')
+    args = parser.parse_args()
     logging.basicConfig(level=logging.INFO)
-    
-    # Assuming script run from project root
+
     # Latest dated training set written by scripts/generate_training_set.py (ISO dates sort lexically)
     from models.data_paths import latest_training_set
     data_path = latest_training_set()
     
     model = BaselineModel(data_path)
-    
-    date = date.today()
+    today = date.today()
 
-    metrics, preds = model.backtest_walk_forward(
-        start_season='2019-20',
-        use_odds=False,
-        calibrate=True,
-        save_suffix = '_calibrated'
-        )
-    
-    model.evaluate_vs_market(preds)
+    if not args.skip_backtest:
+        metrics, preds = model.backtest_walk_forward(
+            start_season='2019-20',
+            use_odds=False,
+            calibrate=True,
+            save_suffix='_calibrated'
+            )
+        model.evaluate_vs_market(preds)
 
-    print("\n" + "="*80)
-    print("TRAINING FINAL MODELS (NO ODDS)")
-    print("="*80)
-    model.train_and_save_all(use_odds=False, save_suffix=f'_no_odds_{date}')
-    
+    if not args.no_research_model:
+        print("\n" + "="*80)
+        print("TRAINING FINAL MODELS (NO ODDS)")
+        print("="*80)
+        model.train_and_save_all(use_odds=False, save_suffix=f'_no_odds_{today}', time_budget=args.time_budget)
+
+    if args.deploy:
+        print("\n" + "="*80)
+        print(f"TRAINING DEPLOYED MODEL SET ({DEPLOYED_SUFFIX}, WITH opening odds)")
+        print("="*80)
+        BaselineModel(data_path).train_and_save_all(use_odds=True, save_suffix=DEPLOYED_SUFFIX,
+                                                    time_budget=args.time_budget)
+
+
+if __name__ == "__main__":
+    main()

@@ -20,6 +20,7 @@ from models.bpm_builder import BPMBuilder
 from models.prediction_logger import PredictionLogger
 from models.live_odds import split_open_and_current
 from models.live_features import align_features
+from models.model_registry import DEPLOYED_SUFFIX, MODEL_DIR, load_bundle
 from models.player_features import PlayerFeatureBuilder
 from models import injury_report_features as irf
 from models.game_features_v2 import GameFeatureBuilder
@@ -56,88 +57,24 @@ def get_nba_schedule(game_date=None):
         return pd.DataFrame()
 
 class InferenceEngine:
-    def __init__(self, db_path, model_path_ml, target_date=None):
+    def __init__(self, db_path, suffix=DEPLOYED_SUFFIX, model_dir=MODEL_DIR, target_date=None):
         self.db_path = db_path
         self.target_date = target_date  # Optional: override datetime.now() for backfilling
-        
-        # 1. Parse Paths using the input ML model as the anchor
-        # Example input: "models/saved/model_ml_with_odds_v3.pkl"
-        model_path = Path(model_path_ml)
-        model_dir = model_path.parent
-        model_name = model_path.name  # "model_ml_with_odds_v3.pkl"
-        
-        # 2. Load the Base ML Model
-        logging.info(f"Loading ML Model from {model_path}")
-        self.model_ml = joblib.load(model_path)
-        
-        # 3. Load the Matching Calibrator
-        # Logic: Replace "model_ml" with "calibrator_ml" in the filename
-        if 'model_ml' in model_name:
-            calib_name = model_name.replace('model_ml', 'calibrator_ml')
-            calib_path = model_dir / calib_name
-            
-            if calib_path.exists():
-                self.calibrator_ml = joblib.load(calib_path)
-                logging.info(f"Loaded Calibrator: {calib_name}")
-            else:
-                logging.warning(f"Calibrator not found at {calib_path}")
-                self.calibrator_ml = None
-        else:
-            logging.warning("Filename format mismatch. Expected 'model_ml...'")
-            self.calibrator_ml = None
 
-        # 4. Load Spread/Total Models (Using the same suffix pattern)
-        # We assume if ML model is "model_ml_v3.pkl", Spread is "model_spread_v3.pkl"
-        suffix = model_name.replace('model_ml', '')  # e.g., "_with_odds_v3.pkl"
-        
-        try:
-            spread_path = model_dir / f'model_spread{suffix}'
-            self.model_spread = joblib.load(spread_path)
-            logging.info(f"Loaded Spread Model: {spread_path.name}")
-        except Exception as e:
-            logging.warning(f"Could not load spread model: {e}")
-            self.model_spread = None
-
-        try:
-            total_path = model_dir / f'model_total{suffix}'
-            self.model_total = joblib.load(total_path)
-            logging.info(f"Loaded Total Model: {total_path.name}")
-        except Exception as e:
-            logging.warning(f"Could not load total model: {e}")
-            self.model_total = None
-
-        # 5. Load Feature Configuration
-        # Your training script named this "feature_config{suffix}.json"
-        # NOT "selected_features.json"
-        config_name = f'feature_config{suffix}'.replace('.pkl', '.json')
-        config_path = model_dir / config_name
-        
-        self.selected_features = {}
-        if config_path.exists():
-            with open(config_path, 'r') as f:
-                self.selected_features = json.load(f)
-            logging.info(f"Loaded feature config from {config_name}")
-        else:
-            logging.warning(f"Feature config not found at {config_path}")
-
-        # 6. Load Calibration Metadata
-        # Your training script saved this to model_dir, NOT root
-        meta_name = f'calibration_meta{suffix}'.replace('.pkl', '.json')
-        meta_path = model_dir / meta_name
-        
-        self.calib_meta = {}
-        if meta_path.exists():
-            with open(meta_path, 'r') as f:
-                self.calib_meta = json.load(f)
-            logging.info(f"Loaded calibration meta from {meta_name}")
-        else:
-            logging.warning(f"Calibration meta not found at {meta_path}")
+        # One explicit, validated model set (models/model_registry.py): all pickles, calibrator and
+        # the feature config share `suffix`, and the config is checked against each pickle.
+        bundle = load_bundle(suffix, model_dir)
+        self.bundle = bundle
+        self.model_ml = bundle.ml
+        self.calibrator_ml = bundle.calibrator
+        self.model_spread = bundle.spread
+        self.model_total = bundle.total
+        self.selected_features = bundle.features
+        self.calib_meta = bundle.calib_meta
 
         # Initialize Logger
         self.logger = PredictionLogger(db_path) 
-        logging.info("Inference Engine initialization complete.")
-            
-        logging.info("Models loaded successfully.")
+        logging.info(f"Inference Engine initialized with model set '{suffix}'.")
         
     def get_todays_games(self):
         logging.info("Fetching Today's Odds & Schedule...")
@@ -552,16 +489,6 @@ class InferenceEngine:
             return pd.DataFrame()
 
 
-    def _get_model_cols(self, model):
-        if not model: return []
-        if hasattr(model, 'feature_names_in_'):
-            return model.feature_names_in_.tolist()
-        elif hasattr(model, 'feature_name_'):
-            return model.feature_name_
-        elif hasattr(model, 'booster_'):
-            return model.booster_.feature_name()
-        return []
-
     def verify_feature_alignment(self, row_df, model_name, expected_cols):
         """Select the model's columns in order; missing features become NaN and are logged loudly."""
         return align_features(row_df, expected_cols, model_name)
@@ -607,14 +534,11 @@ class InferenceEngine:
         # 3. Predict Loop
         preds = []
         
-        # Determine Model Columns (Robust Fallback)
-        cols_ml_model = self._get_model_cols(self.model_ml)
-        cols_spread_model = self._get_model_cols(self.model_spread)
-        cols_total_model = self._get_model_cols(self.model_total)
-
-        logging.info(f"ML Model expects {len(cols_ml_model)} features.")
-        logging.info(f"Spread Model expects {len(cols_spread_model)} features.")
-        logging.info(f"Total Model expects {len(cols_total_model)} features.")
+        # Model columns come from the validated feature config (checked against each pickle at load)
+        cols_ml = self.selected_features['ml']
+        cols_spread = self.selected_features['spread']
+        cols_total = self.selected_features['total']
+        logging.info(f"Models expect {len(cols_ml)} / {len(cols_spread)} / {len(cols_total)} features (ML / Spread / Total).")
 
         # Set index for travel feats to allow lookup by Team Name
         if not travel_feats.empty and 'team' in travel_feats.columns:
@@ -716,10 +640,6 @@ class InferenceEngine:
             row_df.columns = [str(c).replace(' ', '_') for c in row_df.columns]
             
             # --- ML PREDICTION ---
-            cols_ml = self.selected_features.get('ml', [])
-            if not cols_ml or len(cols_ml) > 800:
-                cols_ml = cols_ml_model # Fallback to model features
-            
             # VERIFY ALIGNMENT
             row_df_ml = self.verify_feature_alignment(row_df.copy(), 'ML', cols_ml)
             
@@ -734,10 +654,6 @@ class InferenceEngine:
                 prob = self.calibrator_ml.predict([prob])[0]
             
             # --- SPREAD PREDICTION ---
-            cols_spread = self.selected_features.get('spread', [])
-            if not cols_spread or len(cols_spread) > 800:
-                cols_spread = cols_spread_model
-                
             # VERIFY ALIGNMENT
             row_df_spread = self.verify_feature_alignment(row_df.copy(), 'Spread', cols_spread)
 
@@ -749,10 +665,6 @@ class InferenceEngine:
                      logging.error(f"Spread Prediction Failed: {e}")
 
             # --- TOTAL PREDICTION ---
-            cols_total = self.selected_features.get('total', [])
-            if not cols_total or len(cols_total) > 800:
-                cols_total = cols_total_model
-                
             # VERIFY ALIGNMENT
             row_df_total = self.verify_feature_alignment(row_df.copy(), 'Total', cols_total)
             
@@ -878,10 +790,14 @@ class InferenceEngine:
         res.to_csv('todays_picks.csv', index=False)
 
 
-if __name__ == "__main__":
+def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="Predict today's NBA games with the deployed model set")
+    parser.add_argument('--suffix', default=DEPLOYED_SUFFIX,
+                        help=f"model set suffix in models/saved (default: deployed set {DEPLOYED_SUFFIX})")
+    parser.add_argument('--date', default=None, help='YYYY-MM-DD to backfill instead of today (ET)')
+    args = parser.parse_args()
 
-    p = Path(__file__).parent.parent / 'models' / 'saved' / 'model_ml_with_odds_v2_injury.pkl'
-    
     seasons_to_check = [current_season]
     db_path = Path.cwd() / 'data' / 'nba_stats.db'
     
@@ -896,6 +812,10 @@ if __name__ == "__main__":
         logging.error(f"DATABASE SYNC FAILED ({e}). Predicting with data through {last}; "
                       f"features may be stale.")
 
-    engine = InferenceEngine(db_path, p)
+    engine = InferenceEngine(db_path, suffix=args.suffix, target_date=args.date)
 
     engine.run()
+
+
+if __name__ == "__main__":
+    main()
