@@ -18,6 +18,7 @@ from models.travel_builder import TravelFeatureBuilder
 from models.live_rotation_v2 import LiveRotationBuilder
 from models.bpm_builder import BPMBuilder
 from models.prediction_logger import PredictionLogger
+from models.live_odds import split_open_and_current
 from models.player_features import PlayerFeatureBuilder
 from models import injury_report_features as irf
 from models.game_features_v2 import GameFeatureBuilder
@@ -164,55 +165,28 @@ class InferenceEngine:
             # Fetch Open
             sb_open = Scoreboard(sport='NBA', date=today, current_line=False)
             
-            # Helper to extract value
-            def get_val(item):
-                if isinstance(item, dict):
-                    # Priority: generic books
-                    for k in ['draftkings', 'fanduel', 'betmgm', 'bet365', 'caesars']:
-                        if k in item and item[k]: return item[k]
-                return None
-
-            # Build dict of Opening Odds by Matchup key
+            # Opening lines are the model inputs (odds_*), current lines are kept for bets
+            # (curr_odds_*): see models/live_odds.py
             open_map = {}
             if sb_open.games:
                 for g in sb_open.games:
-                    # Key: Away @ Home
-                    key = f"{g.get('away_team')} @ {g.get('home_team')}"
-                    open_map[key] = {
-                    'odds_away_ml_open': get_val(g.get('away_ml')),
-                        'odds_home_ml_open': get_val(g.get('home_ml')),
-                        'odds_home_spread_open': get_val(g.get('home_spread')),
-                        'odds_away_spread_open': get_val(g.get('away_spread')),
-                        'odds_total_open': get_val(g.get('total'))
-                    }
-            
+                    open_map[f"{g.get('away_team')} @ {g.get('home_team')}"] = g
+
             games = []
             for g in sb_curr.games:
                 key = f"{g.get('away_team')} @ {g.get('home_team')}"
-                open_data = open_map.get(key, {})
-                
+                if key not in open_map:
+                    logging.warning(f"No opening line on SBR for {key}; the current line stands in as model input")
                 row = {
                     'gameDate': today,
                     'away_team': g.get('away_team'),
                     'home_team': g.get('home_team'),
-                    'away_team_abbr' : g.get('away_team_abbr'),
-                    'home_team_abbr' : g.get('home_team_abbr'),
-                    # Current
-                    'odds_away_ml': get_val(g.get('away_ml')),
-                    'odds_home_ml': get_val(g.get('home_ml')),
-                    'odds_home_spread': get_val(g.get('home_spread')),
-                    'odds_away_spread': get_val(g.get('away_spread')),
-                    'odds_total': get_val(g.get('total')),
-                    # Open (Fallback to Current if missing, or np.nan? Model likely needs numeric. 
-                    # If open is missing, "No movement" assumption -> use current is safest proxy)
-                    'odds_away_ml_open': open_data.get('odds_away_ml_open') or get_val(g.get('away_ml')),
-                    'odds_home_ml_open': open_data.get('odds_home_ml_open') or get_val(g.get('home_ml')),
-                    'odds_home_spread_open': open_data.get('odds_home_spread_open') or get_val(g.get('home_spread')),
-                    'odds_away_spread_open': open_data.get('odds_away_spread_open') or get_val(g.get('away_spread')),
-                    'odds_total_open': open_data.get('odds_total_open') or get_val(g.get('total'))
+                    'away_team_abbr': g.get('away_team_abbr'),
+                    'home_team_abbr': g.get('home_team_abbr'),
+                    **split_open_and_current(g, open_map.get(key)),
                 }
                 games.append(row)
-                
+
             df = pd.DataFrame(games)
 
             abbr_map = { 'BK':'BKN',
@@ -674,16 +648,10 @@ class InferenceEngine:
                 except (TypeError, ValueError):
                     return np.nan
 
-            # Add Odds (Base & Open)
-            row['odds_home_ml'] = g.get('odds_home_ml')
-            row['odds_away_ml'] = g.get('odds_away_ml')
-            row['odds_home_spread'] = safe_float(g.get('odds_home_spread'))
-            row['odds_away_spread'] = safe_float(g.get('odds_away_spread'))
-            row['odds_total'] = safe_float(g.get('odds_total'))
-            
-            # Add Open Odds
-            for open_key in ['odds_home_ml_open', 'odds_away_ml_open', 'odds_home_spread_open', 'odds_away_spread_open', 'odds_total_open']:
-                row[open_key] = safe_float(g.get(open_key))
+            # Model inputs: OPENING lines (what the models were trained on). Bets / EV use the
+            # current lines (curr_odds_*) further down.
+            for market in ('home_ml', 'away_ml', 'home_spread', 'away_spread', 'total'):
+                row[f'odds_{market}'] = safe_float(g.get(f'odds_{market}'))
 
 
             # Home Feats
@@ -807,10 +775,11 @@ class InferenceEngine:
                      logging.error(f"Total Prediction Failed: {e}")
 
             # Get Odds
-            line = g.get('odds_home_spread', 0)
-            total_line = g.get('odds_total', 0)
-            ml_home = g.get('odds_home_ml', 0)
-            ml_away = g.get('odds_away_ml', 0)
+            # Tradable (current) lines for edges, EV and the prediction log
+            line = safe_float(g.get('curr_odds_home_spread'))
+            total_line = safe_float(g.get('curr_odds_total'))
+            ml_home = safe_float(g.get('curr_odds_home_ml'))
+            ml_away = safe_float(g.get('curr_odds_away_ml'))
             
             # Implied Prob Logic
             def to_decimal(us_odds):
