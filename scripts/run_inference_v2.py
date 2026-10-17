@@ -143,7 +143,8 @@ class InferenceEngine:
                 try:
                     # Columns are likely camelCase now: teamId, teamName, teamTricode
                     team_info = pd.read_sql("SELECT DISTINCT teamId, teamName, teamTricode FROM team_basic_stats", conn)
-                except:
+                except (sqlite3.OperationalError, pd.errors.DatabaseError) as e:
+                    logging.warning(f"team_basic_stats has no camelCase columns ({e}); trying the upper-case names")
                     # Fallback try original uppercase just in case
                     team_info = pd.read_sql("SELECT DISTINCT TEAM_ID as teamId, TEAM_NAME as teamName, TEAM_ABBREVIATION as teamTricode FROM team_basic_stats", conn)
                 
@@ -365,7 +366,8 @@ class InferenceEngine:
                      alt_diff = my_home_alt - opp_home_alt
                 else:
                      alt_diff = opp_home_alt - my_home_alt
-            except:
+            except (IndexError, KeyError) as e:
+                logging.warning(f"No altitude data for team {tid} / {opp_tid} ({e}); altitude diff set to 0")
                 alt_diff = 0
             
             feats.append({

@@ -87,6 +87,25 @@ def ewma_pre_game(values, seasons, span, carryover=1.0, season_means=None):
     return out
 
 
+
+def games_in_previous_7_days(team_ids, game_dates):
+    """Number of the team's games in [date - 7 days, date) for every row (same definition as
+    groupby.rolling('7D', closed='left').count()); rows may be in any order."""
+    team_ids = pd.Series(np.asarray(team_ids))
+    dates = pd.Series(pd.to_datetime(np.asarray(game_dates)))
+    out = np.zeros(len(dates))
+    for _, idx in team_ids.groupby(team_ids).groups.items():
+        d = dates.loc[idx].to_numpy()
+        order = np.argsort(d, kind='stable')
+        ds = d[order]
+        before_today = np.searchsorted(ds, ds, side='left')
+        in_window = np.searchsorted(ds, ds - np.timedelta64(7, 'D'), side='left')
+        counts = np.empty(len(ds))
+        counts[order] = before_today - in_window
+        out[np.asarray(list(idx))] = counts
+    return out
+
+
 class TeamFeatureBuilder:
     def __init__(self, db_path, season_carryover=1.0):
         """season_carryover < 1 is an EXPERIMENT (batch build only): shrink each team's EWMA features
@@ -378,8 +397,12 @@ class TeamFeatureBuilder:
             # Since df is sorted by teamId, gameDate, the row order matches df.
             # We can use .values to bypass index alignment issues.
             new_features['games_last_7d'] = g7.values
-        except:
-             new_features['games_last_7d'] = 3 # Placeholder
+        except (ValueError, KeyError, TypeError) as e:
+            # e.g. a non-monotonic date column. Compute the same count another way instead of filling a
+            # constant (a made-up feature for every row is worse than a failure).
+            logging.error(f"rolling('7D') failed for games_last_7d ({type(e).__name__}: {e}); "
+                          f"using the exact searchsorted count")
+            new_features['games_last_7d'] = games_in_previous_7_days(df['teamId'], df['gameDate'])
         
         # Fill NA for this specific col if needed, though concat handles it mainly
         # new_features['games_last_7d'] = new_features['games_last_7d'].fillna(0) # Do after concat

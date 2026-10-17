@@ -201,8 +201,8 @@ class PredictionLogger:
 
             try:
                 results_df = pd.read_sql(query, conn)
-            except:
-                logging.warning("Could not query 'team_basic_stats' table. Skipping validation.")
+            except (sqlite3.OperationalError, pd.errors.DatabaseError) as e:
+                logging.warning(f"Could not query 'team_basic_stats' ({e}). Skipping validation.")
                 return
                 
             if results_df.empty:

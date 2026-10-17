@@ -54,8 +54,8 @@ class GameFeatureBuilder:
             # Load OPENING odds as the primary source
             try:
                 opening = pd.read_sql("SELECT * FROM nba_odds_opening", conn)
-            except:
-                logging.warning("Could not load nba_odds_opening")
+            except (sqlite3.OperationalError, pd.errors.DatabaseError) as e:
+                logging.warning(f"Could not load nba_odds_opening: {e}")
                 opening = pd.DataFrame()
 
             # Build team name → teamId lookup to fill missing IDs
