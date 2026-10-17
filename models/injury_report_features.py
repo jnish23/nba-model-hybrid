@@ -352,7 +352,7 @@ def build_injury_features(db_path, seasons, snapshot_name='game_day_noon', as_of
     snapshot_name: key of SNAPSHOT_CUTOFFS. as_of: optional timestamp; the cutoff becomes
     min(snapshot cutoff, as_of) - for live use, as_of = now.
     P(play | status) for a season is estimated from report rows of earlier seasons only
-    (the earliest season, which has none, uses the later ones).
+    (the earliest season, which has none, uses STATUS_PRIOR - never later data).
     """
     reports = parse_all_reports(report_dir=Path('nonexistent')) if reports is None else reports
     if as_of is None:
@@ -410,10 +410,17 @@ def build_injury_features(db_path, seasons, snapshot_name='game_day_noon', as_of
 STATUS_RATES_PATH = Path('models/saved/injury_status_play_rates.json')
 
 
+# P(play | status) used for the first season, which has no earlier data to estimate from (it used to
+# borrow the pooled rates of all LATER seasons, i.e. the future). These are the conventional meanings
+# of the NBA report categories (Out ~0, Doubtful ~25%, Questionable ~50%, Probable ~75%, Available ~100%);
+# n=0 marks them as a prior, not an estimate.
+STATUS_PRIOR = {'Out': 0.0, 'Doubtful': 0.25, 'Questionable': 0.50, 'Probable': 0.75, 'Available': 1.0}
+
+
 def compute_status_play_rates(db_path, reports=None, snapshot_name='tip_minus_30m'):
     """
     P(played | status) per season, estimated from EARLIER seasons only (the first season, which
-    has no earlier data, uses all later ones), plus 'all' = every season pooled (used for seasons
+    has no earlier data, uses STATUS_PRIOR), plus 'all' = every season pooled (used for seasons
     after the data, i.e. live). Saved to STATUS_RATES_PATH. Rates come from the latest report
     before tip, where a status is closest to the final decision.
     """
@@ -431,7 +438,9 @@ def compute_status_play_rates(db_path, reports=None, snapshot_name='tip_minus_30
         g = df.groupby(level=0)[['played', 'size']].sum()
         return {st: {'p_play': float(r.played / r['size']), 'n': int(r['size'])} for st, r in g.iterrows()}
 
-    table = {s: pooled([k for k in seasons if k < s] or [k for k in seasons if k != s]) for s in seasons}
+    table = {s: pooled([k for k in seasons if k < s]) if any(k < s for k in seasons)
+             else {st: {'p_play': p, 'n': 0} for st, p in STATUS_PRIOR.items()}
+             for s in seasons}
     table['all'] = pooled(seasons)
     STATUS_RATES_PATH.parent.mkdir(parents=True, exist_ok=True)
     STATUS_RATES_PATH.write_text(json.dumps(table, indent=2))
