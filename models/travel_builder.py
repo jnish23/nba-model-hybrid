@@ -262,9 +262,9 @@ class TravelFeatureBuilder:
         the training values (distance, time-zone delta, body-clock lag, road-trip length, altitude).
 
         Args:
-            schedule_df: DataFrame with ['gameDate', 'away_team', 'home_team'] (team names);
-                an optional 'gameId' column is carried through.
-        Returns one row per team per game with a 'team' (name) column and the feature columns.
+            schedule_df: DataFrame with 'gameDate' and either ['teamId_home', 'teamId_away'] or
+                team names ['home_team', 'away_team']; an optional 'gameId' column is carried through.
+        Returns one row per team per game: 'gameId', 'teamId', 'team' (name) and the feature columns.
         """
         logging.info("Building live travel features...")
         if not hasattr(self, 'df_games'):
@@ -272,29 +272,36 @@ class TravelFeatureBuilder:
 
         with sqlite3.connect(self.db_path) as conn:
             teams = pd.read_sql("SELECT DISTINCT teamId, teamName, teamTricode FROM team_basic_stats", conn)
+        by_id = teams.drop_duplicates('teamId').set_index('teamId')
         by_name = teams.drop_duplicates('teamName').set_index('teamName')
+        use_ids = {'teamId_home', 'teamId_away'} <= set(schedule_df.columns)
 
-        rows, keep = [], []
-        for i, g in enumerate(schedule_df.itertuples(index=False)):
-            if g.home_team not in by_name.index or g.away_team not in by_name.index:
-                logging.warning(f"Could not resolve team ids for {g.home_team} / {g.away_team}")
+        rows = []
+        for i, g in enumerate(schedule_df.to_dict('records')):
+            try:
+                if use_ids:
+                    hid, aid = int(g['teamId_home']), int(g['teamId_away'])
+                    home, away = by_id.loc[hid], by_id.loc[aid]
+                    hname, aname = home['teamName'], away['teamName']
+                else:
+                    home, away = by_name.loc[g['home_team']], by_name.loc[g['away_team']]
+                    hid, aid, hname, aname = int(home['teamId']), int(away['teamId']), g['home_team'], g['away_team']
+            except (KeyError, ValueError, TypeError):
+                logging.warning(f"Could not resolve team ids for game {g}")
                 continue
-            home, away = by_name.loc[g.home_team], by_name.loc[g.away_team]
-            gid = f"live_{i}"
-            rows.append({'teamId': home['teamId'], 'teamTricode': home['teamTricode'], 'gameId': gid,
-                         'gameDate': g.gameDate, 'MATCHUP': f"{home['teamTricode']} vs. {away['teamTricode']}"})
-            rows.append({'teamId': away['teamId'], 'teamTricode': away['teamTricode'], 'gameId': gid,
-                         'gameDate': g.gameDate, 'MATCHUP': f"{away['teamTricode']} @ {home['teamTricode']}"})
-            keep += [(gid, g.home_team), (gid, g.away_team)]
+            gid = str(g.get('gameId', f"live_{i}"))
+            htri, atri = home['teamTricode'], away['teamTricode']
+            rows.append({'teamId': hid, 'teamTricode': htri, 'gameId': gid, 'gameDate': g['gameDate'],
+                         'MATCHUP': f"{htri} vs. {atri}", 'team': hname})
+            rows.append({'teamId': aid, 'teamTricode': atri, 'gameId': gid, 'gameDate': g['gameDate'],
+                         'MATCHUP': f"{atri} @ {htri}", 'team': aname})
         if not rows:
             return pd.DataFrame()
 
         upcoming = pd.DataFrame(rows)
         feats = self.build_features(upcoming=upcoming)
-        feats = feats[feats['gameId'].isin(upcoming['gameId'])]
-        names = dict(zip(zip(upcoming['gameId'], upcoming['teamId']), [k[1] for k in keep]))
-        feats = feats.assign(team=[names[(gid, tid)] for gid, tid in zip(feats['gameId'], feats['teamId'])])
-        return feats.drop(columns=['teamId', 'gameId', 'gameDate', 'venueTricode', 'lat', 'long']).reset_index(drop=True)
+        feats = feats.merge(upcoming[['teamId', 'gameId', 'team']], on=['teamId', 'gameId'], how='inner')
+        return feats.drop(columns=['gameDate', 'venueTricode', 'lat', 'long']).reset_index(drop=True)
 
     def calculate_distance(self, lat1, lon1, lat2, lon2):
         return self._haversine_np(lat1, lon1, lat2, lon2)

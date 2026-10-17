@@ -19,7 +19,7 @@ from models.live_rotation_v2 import LiveRotationBuilder
 from models.bpm_builder import BPMBuilder
 from models.prediction_logger import PredictionLogger
 from models.live_odds import split_open_and_current
-from models.live_features import align_features
+from models.live_features import align_features, build_live_game_frame
 from models.model_registry import DEPLOYED_SUFFIX, MODEL_DIR, load_bundle
 from models.player_features import PlayerFeatureBuilder
 from models import injury_report_features as irf
@@ -501,233 +501,44 @@ class InferenceEngine:
         if games_df.empty:
             logging.info("No games found today.")
             return
+        unmapped = games_df[games_df[['teamId_home', 'teamId_away']].isna().any(axis=1)]
+        for _, g in unmapped.iterrows():
+            logging.warning(f"Team ID not found for {g.get('home_team')} or {g.get('away_team')}; skipping game {g.get('gameId')}")
+        games_df = games_df.dropna(subset=['teamId_home', 'teamId_away']).reset_index(drop=True)
+        if games_df.empty:
+            logging.info("No games with resolvable teams today.")
+            return
 
-        # 2. Build Features
+        # 2. Build the model inputs with the same code as the training set (models/live_features.py):
+        #    team form, travel, roster BPM, injury report, differences and matchups
         logging.info("Building Live Features...")
-        
-        # Team Features
-        tb = TeamFeatureBuilder(self.db_path)
-        team_feats = tb.get_latest_team_features()
-        
-        # Travel Features
-        trb = TravelFeatureBuilder(self.db_path)
-        travel_feats = trb.get_travel_features(games_df)
-        
-        # Roster features: computed exactly as in training (previous-game roster). Injuries enter
-        # through the inj_* features below, not through an injury-adjusted roster_bpm (training
-        # never saw an injury-adjusted roster_bpm, so mixing them was a train/inference mismatch).
         try:
-            roster_feats = self.get_training_consistent_roster_features()
-            logging.info(f"Roster Feats Shape: {roster_feats.shape}")
-        except Exception as e:
-            logging.warning(f"Roster features skipped: {e}")
-            roster_feats = pd.DataFrame()
-
-        # Injury report features (same code path and snapshot as the training set)
-        try:
-            inj_feats = self.get_injury_features(games_df)
+            inj_feats = self.get_injury_features(games_df).reset_index()
         except Exception as e:
             # Same values training uses for a team with no report: inj_missing=1, zeros elsewhere
             logging.warning(f"Injury features unavailable, treating as missing report: {e}")
-            inj_feats = pd.DataFrame()
-            
-        # 3. Predict Loop
-        preds = []
-        
-        # Model columns come from the validated feature config (checked against each pickle at load)
+            inj_feats = None
+        frame = build_live_game_frame(self.db_path, games_df, injury_features=inj_feats)
+
+        # 3. Predict (model columns come from the validated feature config)
         cols_ml = self.selected_features['ml']
         cols_spread = self.selected_features['spread']
         cols_total = self.selected_features['total']
         logging.info(f"Models expect {len(cols_ml)} / {len(cols_spread)} / {len(cols_total)} features (ML / Spread / Total).")
+        prob_raw = self.model_ml.predict_proba(self.verify_feature_alignment(frame, 'ML', cols_ml))[:, 1]
+        probs = self.calibrator_ml.predict(prob_raw)
+        pred_spreads = self.model_spread.predict(self.verify_feature_alignment(frame, 'Spread', cols_spread))
+        pred_totals = self.model_total.predict(self.verify_feature_alignment(frame, 'Total', cols_total))
 
-        # Set index for travel feats to allow lookup by Team Name
-        if not travel_feats.empty and 'team' in travel_feats.columns:
-            travel_feats = travel_feats.set_index('team')
+        preds = []
+        for i, g in games_df.iterrows():
+            prob, pred_spread, pred_total = float(probs[i]), float(pred_spreads[i]), float(pred_totals[i])
 
-        for _, g in games_df.iterrows():
-            # Build Row using a dictionary to prevent fragmentation
-            hid = tb.team_map.get(g['home_team'])
-            aid = tb.team_map.get(g['away_team'])
-            
-            if not hid or not aid:
-                logging.warning(f"Team ID not found for {g['home_team']} or {g['away_team']}")
-                continue
-                
-            row = {}
-            
-            def safe_float(x):
-                try:
-                    return float(x)
-                except (TypeError, ValueError):
-                    return np.nan
-
-            # Model inputs: OPENING lines (what the models were trained on). Bets / EV use the
-            # current lines (curr_odds_*) further down.
-            for market in ('home_ml', 'away_ml', 'home_spread', 'away_spread', 'total'):
-                row[f'odds_{market}'] = safe_float(g.get(f'odds_{market}'))
-
-
-            # Home Feats
-            if hid in team_feats:
-                for k,v in team_feats[hid].items(): row[f"{k}_home"] = v
-            else:
-                logging.warning(f"No team stats for Home ID {hid}")
-
-            # travel_feats
-            if g['home_team'] in travel_feats.index:
-                for k,v in travel_feats.loc[g['home_team']].items(): 
-                     row[f"{k}_home"] = v
-            
-        # Roster/BPM Logic
-            if hid in roster_feats.index:
-                row['roster_bpm_home'] = roster_feats.loc[hid, 'roster_bpm']
-                row['roster_bpm_ewma_home'] = roster_feats.loc[hid, 'roster_bpm_ewma']
-            else:
-                row['roster_bpm_home'] = 0.0 # Default/Neutral
-                row['roster_bpm_ewma_home'] = 0.0
-            
-            if aid in roster_feats.index:
-                row['roster_bpm_away'] = roster_feats.loc[aid, 'roster_bpm']
-                row['roster_bpm_ewma_away'] = roster_feats.loc[aid, 'roster_bpm_ewma']
-            else:
-                row['roster_bpm_away'] = 0.0
-                row['roster_bpm_ewma_away'] = 0.0
-
-            # Injury report features; when unavailable, the values training uses for a team with
-            # no report (inj_missing=1, zeros)
-            for side, tid in (('home', hid), ('away', aid)):
-                key = (str(g['gameId']), int(tid))
-                have = not inj_feats.empty and key in inj_feats.index
-                for c in irf.INJ_COLS:
-                    row[f'{c}_{side}'] = inj_feats.loc[key, c] if have else (1 if c == 'inj_missing' else 0.0)
-
-            # Away Feats
-            if aid in team_feats:
-                for k,v in team_feats[aid].items(): row[f"{k}_away"] = v
-            else:
-                logging.warning(f"No team stats for Away ID {aid}")
-
-            if g['away_team'] in travel_feats.index:
-                for k,v in travel_feats.loc[g['away_team']].items(): 
-                     row[f"{k}_away"] = v
-                
-            # Create DF from the fully populated dictionary to avoid fragmentation
-            
-            # --- DIFFERENTIAL & MATCHUP FEATURES (Calculated directly in Dict) ---
-            home_feat_keys = [k for k in row.keys() if k.endswith('_home') and not k.startswith(('teamId', 'matchup', 'wl', 'points', 'gameId', 'is_home', 'seasonYear', 'gameDate'))]
-            for hcol in home_feat_keys:
-                base = hcol.rsplit('_home', 1)[0]
-                acol = f"{base}_away"
-                if acol in row:
-                    val = row[hcol]
-                    if isinstance(val, (int, float, np.number)):
-                        row[f"diff_{base}"] = val - row[acol]
-
-            # Generate specific matchup features (home offense vs away defense, etc.)
-            matchup_pairs = [
-                ('off_offensiveRating_5g_home', 'def_defensiveRating_5g_away', 'matchup_off_vs_def_rating_5g'),
-                ('off_offensiveRating_20g_home', 'def_defensiveRating_20g_away', 'matchup_off_vs_def_rating_20g'),
-                ('off_threePointersAttempted_5g_home', 'def_OPP_FG3A_5g_away', 'matchup_3pa_vs_opp_3pa_5g'),
-            ]
-            
-            for home_col, away_col, name in matchup_pairs:
-                if home_col in row and away_col in row:
-                    row[name] = row[home_col] - row[away_col]
-                    
-            row_df = pd.DataFrame([row])
-            
-            # Sanitization: All features must use underscores to match FLAML/LGBM model map
-            row_df.columns = [str(c).replace(' ', '_') for c in row_df.columns]
-            
-            # --- ML PREDICTION ---
-            # VERIFY ALIGNMENT
-            row_df_ml = self.verify_feature_alignment(row_df.copy(), 'ML', cols_ml)
-            
-            try:
-                prob = self.model_ml.predict_proba(row_df_ml)[0, 1]
-            except Exception as e:
-                logging.error(f"ML Prediction Failed: {e}")
-                prob = 0.5
-            
-            # Apply Calibration if available
-            if self.calibrator_ml:
-                prob = self.calibrator_ml.predict([prob])[0]
-            
-            # --- SPREAD PREDICTION ---
-            # VERIFY ALIGNMENT
-            row_df_spread = self.verify_feature_alignment(row_df.copy(), 'Spread', cols_spread)
-
-            pred_spread = 0.0
-            if self.model_spread:
-                try:
-                    pred_spread = self.model_spread.predict(row_df_spread)[0]
-                except Exception as e:
-                     logging.error(f"Spread Prediction Failed: {e}")
-
-            # --- TOTAL PREDICTION ---
-            # VERIFY ALIGNMENT
-            row_df_total = self.verify_feature_alignment(row_df.copy(), 'Total', cols_total)
-            
-            pred_total = 0.0
-            if self.model_total:
-                try:
-                    pred_total = self.model_total.predict(row_df_total)[0]
-                except Exception as e:
-                     logging.error(f"Total Prediction Failed: {e}")
-
-            # Get Odds
             # Tradable (current) lines for edges, EV and the prediction log
-            line = safe_float(g.get('curr_odds_home_spread'))
-            total_line = safe_float(g.get('curr_odds_total'))
-            ml_home = safe_float(g.get('curr_odds_home_ml'))
-            ml_away = safe_float(g.get('curr_odds_away_ml'))
-            
-            # Implied Prob Logic
-            def to_decimal(us_odds):
-                try:
-                    us = float(us_odds)
-                    if us > 0: return round(1 + (us / 100), 2)
-                    else: return round(1 + (100 / abs(us)), 2)
-                except:
-                    return 0.0
-
-            dec_home = to_decimal(ml_home)
-            dec_away = to_decimal(ml_away)
-            
-            imp_home_str = ""
-            if dec_home > 0:
-                imp_home = (1/dec_home)
-                imp_home_str = f"{imp_home:.1%}"
-            else:
-                est_margin = -1 * float(line) if line else 0
-                est_prob = stats.norm.cdf(est_margin / 12.0)
-                imp_home_str = f"{est_prob:.1%} (Est)"
-                item_ml_dec = 0.0
-            
-            # --- Calibration Probabilities ---
-            std_spread = self.calib_meta.get('spread_std', 12.0)
-            std_total = self.calib_meta.get('total_std', 18.0)
-            
-            spread_edge = pred_spread + line
-            spread_cover_prob = stats.norm.cdf(spread_edge / std_spread)
-            
-            if spread_cover_prob > 0.5:
-                pick_spread_team = 'Home'
-                pick_spread_prob = spread_cover_prob
-            else:
-                pick_spread_team = 'Away'
-                pick_spread_prob = 1.0 - spread_cover_prob
-            
-            # Total Prob (Over)
-            total_edge = pred_total - total_line
-            prob_over = stats.norm.cdf(total_edge / std_total)
-            
-            if prob_over > 0.5:
-                pick_total_type = 'Over'
-                pick_total_prob = prob_over
-            else:
-                pick_total_type = 'Under'
-                pick_total_prob = 1.0 - prob_over
+            line = float(g['curr_odds_home_spread']) if pd.notna(g.get('curr_odds_home_spread')) else np.nan
+            total_line = float(g['curr_odds_total']) if pd.notna(g.get('curr_odds_total')) else np.nan
+            ml_home = float(g['curr_odds_home_ml']) if pd.notna(g.get('curr_odds_home_ml')) else np.nan
+            ml_away = float(g['curr_odds_away_ml']) if pd.notna(g.get('curr_odds_away_ml')) else np.nan
 
             # Log Prediction
             try:

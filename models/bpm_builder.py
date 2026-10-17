@@ -30,7 +30,10 @@ class BPMBuilder:
             'fta': (-0.246, -0.343)
         }
         
-    def load_data(self, seasons=None):
+    def load_data(self, seasons=None, before=None):
+        """Load player box scores. `before` (YYYY-MM-DD) keeps only games strictly before that date
+        (point-in-time features for a given day; every value is built from earlier games only, so
+        cutting the data changes nothing about the rows that remain)."""
         cols = [
             'gameId', 'teamId', 'personId', 'playerName', 'gameDate', 'seasonYear',
             'minutes', 'fieldGoalsMade', 'fieldGoalsAttempted',
@@ -40,9 +43,16 @@ class BPMBuilder:
         ]
         with sqlite3.connect(self.db_path) as conn:
             query = f"SELECT {', '.join(cols)} FROM player_basic_stats"
+            where, params = [], []
             if seasons:
-                query += f" WHERE seasonYear IN ({','.join(repr(s) for s in seasons)})"
-            self.df_stats = pd.read_sql(query, conn)
+                where.append(f"seasonYear IN ({','.join('?' * len(seasons))})")
+                params += list(seasons)
+            if before is not None:
+                where.append("gameDate < ?")
+                params.append(str(before)[:10])
+            if where:
+                query += " WHERE " + " AND ".join(where)
+            self.df_stats = pd.read_sql(query, conn, params=params)
             
             # Load Positions
             self.df_info = pd.read_sql("SELECT PERSON_ID as personId, POSITION FROM player_info", conn)
