@@ -23,6 +23,7 @@ from flaml import AutoML, tune
 from datetime import date
 
 from models.model_registry import DEPLOYED_SUFFIX
+from models.market_models import (MarginStackCalibrator, ResidualSpreadModel, SPREAD_LINE_COL, fit_hetero_sigma)
 
 # Fixed LightGBM settings used when no hyperparameter search is run. They were NOT chosen by looking
 # at any test season, which is what makes them safe for a walk-forward backtest.
@@ -1261,15 +1262,24 @@ class BaselineModel:
         logging.info("Saved error_distribution.png")
 
 
-    def train_and_save_all(self, use_odds=False, save_suffix='', calib_holdout_frac=0.2, time_budget=600):
+    def train_and_save_all(self, use_odds=False, save_suffix='', calib_holdout_frac=0.2, time_budget=600,
+                           market_aware=None):
         """
         Train final models on ALL available data and save them, including calibrators.
-        
+
         Split: [model_train (80%)] [calibration (20%)]
         - Models trained on model_train
         - Calibrators fitted on calibration set
         - Both saved for production use
+
+        market_aware (default: use_odds) adopts experiments E1/E3/E4 (models/market_models.py), which need the
+        opening lines as inputs: the spread model learns the residual against the opening spread, the ML probability
+        is a logistic stack of the raw ML score and the spread margin, and the total gets a per-game sigma model.
+        market_aware=False reproduces the earlier isotonic / plain-regressor set.
         """
+        market_aware = use_odds if market_aware is None else market_aware
+        if market_aware and not use_odds:
+            raise ValueError("market_aware models need the opening lines: use_odds=True")
         self.load_data(use_odds=use_odds)
         
         # Sort by date for proper temporal split
@@ -1331,30 +1341,31 @@ class BaselineModel:
         final_ml = lgb.LGBMClassifier(**best_ml_params, verbosity=-1, random_state=42)
         final_ml.fit(X_model_train_ml, y_model_train_ml)
         
-        # Fit isotonic calibrator on calibration set
         calib_probs_ml = final_ml.predict_proba(X_calib_ml)[:, 1]
-        iso_ml = IsotonicRegression(out_of_bounds='clip')
-        iso_ml.fit(calib_probs_ml, y_calib_ml)
-        
-        # Evaluate calibration improvement
         brier_raw = brier_score_loss(y_calib_ml, calib_probs_ml)
-        calib_probs_clipped = np.clip(iso_ml.predict(calib_probs_ml), 1e-15, 1 - 1e-15)
-        brier_cal = brier_score_loss(y_calib_ml, calib_probs_clipped)
-        logging.info(f"ML Calibration - Brier raw: {brier_raw:.4f}, calibrated: {brier_cal:.4f}")
-        
         calibration_meta['ml_brier_raw'] = float(brier_raw)
-        calibration_meta['ml_brier_calibrated'] = float(brier_cal)
-        
-        # Save model and calibrator
         self.save_model(final_ml, f'model_ml{save_suffix}.pkl')
-        self.save_model(iso_ml, f'calibrator_ml{save_suffix}.pkl')
+        if not market_aware:
+            # Isotonic calibrator on the calibration set
+            iso_ml = IsotonicRegression(out_of_bounds='clip')
+            iso_ml.fit(calib_probs_ml, y_calib_ml)
+            brier_cal = brier_score_loss(y_calib_ml, np.clip(iso_ml.predict(calib_probs_ml), 1e-15, 1 - 1e-15))
+            logging.info(f"ML Calibration - Brier raw: {brier_raw:.4f}, calibrated: {brier_cal:.4f}")
+            calibration_meta['ml_brier_calibrated'] = float(brier_cal)
+            self.save_model(iso_ml, f'calibrator_ml{save_suffix}.pkl')
+        # (market aware: the stack calibrator needs the spread margin, so it is fitted after the spread model below)
         
         with open(self.model_dir / f'best_config_ml{save_suffix}.json', 'w') as f:
             json.dump(best_ml_params, f)
 
         # ===== SPREAD =====
-        X_model_train_spread = model_train_df[self.features_spread]
-        y_model_train_spread = model_train_df['target_point_diff']
+        spread_train_rows = model_train_df
+        if market_aware:
+            # E1: learn what the opening line misses; rows without an opening spread cannot be used
+            spread_train_rows = model_train_df[model_train_df[SPREAD_LINE_COL].notna()]
+        X_model_train_spread = spread_train_rows[self.features_spread]
+        y_model_train_spread = (ResidualSpreadModel.make_target(spread_train_rows) if market_aware
+                                else spread_train_rows['target_point_diff'])
         X_calib_spread = calib_df[self.features_spread]
         y_calib_spread = calib_df['target_point_diff']
         
@@ -1378,10 +1389,16 @@ class BaselineModel:
         best_spread_params = automl_spread.best_config.copy()
         final_spread = lgb.LGBMRegressor(**best_spread_params, verbosity=-1, random_state=42)
         final_spread.fit(X_model_train_spread, y_model_train_spread)
-        
+        if market_aware:
+            final_spread = ResidualSpreadModel(final_spread)
+
         # Compute error distribution on calibration set
-        calib_spread_pred = final_spread.predict(X_calib_spread)
-        spread_errors = y_calib_spread.values - calib_spread_pred
+        if market_aware:
+            calib_spread_pred = final_spread.predict(X_calib_spread, line=calib_df[SPREAD_LINE_COL].to_numpy(float))
+        else:
+            calib_spread_pred = final_spread.predict(X_calib_spread)
+        has_line = np.isfinite(calib_spread_pred)
+        spread_errors = (y_calib_spread.values - calib_spread_pred)[has_line]
         spread_std = float(spread_errors.std())
         spread_bias = float(spread_errors.mean())
         spread_mae = float(np.abs(spread_errors).mean())
@@ -1391,8 +1408,19 @@ class BaselineModel:
         calibration_meta['spread_std'] = spread_std
         calibration_meta['spread_bias'] = spread_bias
         calibration_meta['spread_mae'] = spread_mae
-        
+        calibration_meta['spread_target'] = 'market_residual' if market_aware else 'margin'
+
         self.save_model(final_spread, f'model_spread{save_suffix}.pkl')
+
+        if market_aware:
+            # E3: logistic stack of [logit(raw ML prob), spread margin / sigma] on the calibration block
+            stack = MarginStackCalibrator().fit(calib_probs_ml, calib_spread_pred, spread_std, y_calib_ml)
+            p_cal = np.clip(stack.predict(calib_probs_ml, margin=calib_spread_pred), 1e-15, 1 - 1e-15)
+            brier_cal = brier_score_loss(y_calib_ml, p_cal)
+            logging.info(f"ML Calibration (margin stack) - Brier raw: {brier_raw:.4f}, calibrated: {brier_cal:.4f}")
+            calibration_meta['ml_brier_calibrated'] = float(brier_cal)
+            calibration_meta['ml_calibrator'] = 'margin_stack'
+            self.save_model(stack, f'calibrator_ml{save_suffix}.pkl')
         
         with open(self.model_dir / f'best_config_spread{save_suffix}.json', 'w') as f:
             json.dump(best_spread_params, f)
@@ -1436,8 +1464,19 @@ class BaselineModel:
         calibration_meta['total_std'] = total_std
         calibration_meta['total_bias'] = total_bias
         calibration_meta['total_mae'] = total_mae
-        
+
         self.save_model(final_total, f'model_total{save_suffix}.pkl')
+
+        if market_aware:
+            # E4: per-game sigma for the total's cover probability, from out-of-fold errors inside model_train
+            sigma_total = fit_hetero_sigma(model_train_df, self.features_total, 'target_total_pts',
+                                           best_total_params, fallback_std=total_std)
+            sig_calib = sigma_total.predict(calib_df)
+            logging.info(f"Total per-game sigma on the calibration block: mean {sig_calib.mean():.2f} "
+                         f"(global std {total_std:.2f}), range [{sig_calib.min():.2f}, {sig_calib.max():.2f}]")
+            calibration_meta['total_sigma_model'] = True
+            calibration_meta['total_sigma_mean_calib'] = float(sig_calib.mean())
+            self.save_model(sigma_total, f'sigma_total{save_suffix}.pkl')
         
         with open(self.model_dir / f'best_config_total{save_suffix}.json', 'w') as f:
             json.dump(best_total_params, f)
