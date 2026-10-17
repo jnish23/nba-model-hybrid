@@ -97,7 +97,7 @@ def paired(base, exp, col, lower_is_better=True, n_boot=N_BOOT, subset=None):
     boots = sums[draws].sum(1) / cnts[draws].sum(1)
     seas = j.assign(d=d).groupby('seasonYear')['d'].mean()
     better = (seas < 0) if lower_is_better else (seas > 0)
-    return {'n': len(j), 'diff': float(d.mean()), 'ci_lo': float(np.quantile(boots, .025)), 'ci_hi': float(np.quantile(boots, .975)),
+    return {'n': len(j), 'base_mean': float(j[col].mean()), 'diff': float(d.mean()), 'ci_lo': float(np.quantile(boots, .025)), 'ci_hi': float(np.quantile(boots, .975)),
             'seasons_improved': int(better.sum()), 'seasons': int(len(seas)), 'per_season': seas.round(5).to_dict(),
             'ci_excludes_zero_in_favor': bool((np.quantile(boots, .975) < 0) if lower_is_better else (np.quantile(boots, .025) > 0))}
 
@@ -106,12 +106,14 @@ def paired(base, exp, col, lower_is_better=True, n_boot=N_BOOT, subset=None):
 
 def _payout(odds):
     odds = np.asarray(odds, float)
-    return np.where(odds < 0, 100.0 / -odds, odds / 100.0)
+    with np.errstate(divide='ignore', invalid='ignore'):
+        return np.where(odds < 0, 100.0 / -odds, odds / 100.0)
 
 
 def _imp(odds):
     odds = np.asarray(odds, float)
-    return np.where(odds < 0, -odds / (-odds + 100), 100 / (odds + 100))
+    with np.errstate(divide='ignore', invalid='ignore'):
+        return np.where(odds < 0, -odds / (-odds + 100), 100 / (odds + 100))
 
 
 def make_bets(df, thr=0.05, markets=('ml', 'spread', 'total'), rule='edge', flat_points=1.0,
