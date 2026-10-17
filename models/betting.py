@@ -12,6 +12,7 @@ Conventions
 import numpy as np
 import pandas as pd
 
+STANDARD_PRICE = -110            # spread / total price when the real one is unknown
 DEFAULT_PROB_EDGE = 0.05
 
 
@@ -45,6 +46,11 @@ def calculate_bet_ev(model_prob, american_odds):
         return np.nan
 
     return model_prob * calculate_payout(american_odds, stake=1) - (1 - model_prob)
+
+
+def settle_bet(american_odds, won, stake=100):
+    """Profit of a settled bet: the payout at the bet's OWN odds if it won, -stake if it lost."""
+    return calculate_payout(american_odds, stake) if won else -stake
 
 
 # ----------------------------------------------------------------------------------------------

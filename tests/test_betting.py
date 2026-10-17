@@ -57,3 +57,22 @@ def test_both_sides_never_clear_the_threshold_together_when_prices_have_vig():
     for p in np.linspace(0.01, 0.99, 99):
         h, a = b.ml_side_edges(p, -170, 150)
         assert not (h > 0.0 and a > 0.0)
+
+
+def test_ml_bets_settle_at_their_own_odds_not_minus_110():
+    assert b.settle_bet(150, True) == pytest.approx(150.0)
+    assert b.settle_bet(-250, True) == pytest.approx(40.0)
+    assert b.settle_bet(-250, False) == -100
+    # ten +200 winners and ten losers at the same price: +$1000 vs a flat -110 settlement of +$909.09
+    profit = sum(b.settle_bet(200, w) for w in [True] * 10 + [False] * 10)
+    flat = sum(b.settle_bet(-110, w) for w in [True] * 10 + [False] * 10)
+    assert profit == pytest.approx(1000.0) and flat == pytest.approx(10 * 100 / 1.1 - 1000)
+
+
+def test_evaluate_vs_market_reports_roi_at_actual_odds(capsys):
+    from models.train_baseline import BaselineModel
+    df = pd.DataFrame({'ml_prob': [0.8, 0.8, 0.2, 0.2], 'ml_actual': [1, 0, 0, 1],
+                       'odds_home_ml': [-110, -110, 130, 130], 'odds_away_ml': [-110, -110, -150, -150]})
+    BaselineModel('unused.csv').evaluate_vs_market(df)
+    out = capsys.readouterr().out
+    assert 'ROI at the actual moneylines' in out

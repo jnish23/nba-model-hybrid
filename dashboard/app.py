@@ -1,4 +1,5 @@
 import streamlit as st
+import numpy as np
 import pandas as pd
 import sqlite3
 import os
@@ -13,7 +14,8 @@ root_path = Path(__file__).resolve().parent.parent
 if str(root_path) not in sys.path:
     sys.path.append(str(root_path))
 
-from models.betting import calculate_implied_prob, calculate_payout, calculate_bet_ev, get_ml_bet
+from models.betting import (calculate_implied_prob, calculate_payout, calculate_bet_ev, get_ml_bet,
+                            settle_bet, STANDARD_PRICE)
 
 # Set page config
 st.set_page_config(
@@ -145,6 +147,11 @@ def compute_model_accuracy_and_roi(df):
         return pick
 
     d['model_ml_pick'] = d.apply(ml_pick_func, axis=1)
+    # Moneyline bets settle at the price of the side picked (never a flat -110)
+    home_ml = pd.to_numeric(d.get('odds_home_ml'), errors='coerce')
+    away_ml = pd.to_numeric(d.get('odds_away_ml'), errors='coerce')
+    d['model_ml_odds'] = np.where(d['model_ml_pick'] == 'home', home_ml,
+                                  np.where(d['model_ml_pick'] == 'away', away_ml, np.nan))
 
     def ml_correct(row):
         if pd.isna(row['home_score']) or row['model_ml_pick'] is None: return None
@@ -631,16 +638,16 @@ def build_team_breakdown(df, team, bet_type, threshold):
         w = int(valid['model_bet_won'].sum())
         l = len(valid) - w
         # Compute profit
-        profit = 0.0
+        profit, staked = 0.0, 0
         for _, r in valid.iterrows():
             odds = r['model_bet_odds']
             if pd.isna(odds):
-                odds = -110
-            if r['model_bet_won']:
-                profit += calculate_payout(odds)
-            else:
-                profit -= 100
-        roi = (profit / (len(valid) * 100)) * 100
+                if bet_type == 'Moneyline':
+                    continue   # no moneyline price: not settled (and not staked) rather than assumed -110
+                odds = STANDARD_PRICE
+            profit += settle_bet(odds, bool(r['model_bet_won']))
+            staked += 1
+        roi = (profit / (staked * 100)) * 100 if staked else 0.0
         model_rows.append({
             'Split': label,
             'Bets': len(valid),
@@ -795,39 +802,30 @@ def main():
             st.info("No predictions yet this week.")
         else:
             # Compute records and ROI for each bet type
-            def compute_record_and_roi(correct_series, pick_col, odds_col=None):
-                """Returns (wins, losses, pushes, roi) tuple."""
-                valid_mask = correct_series.notna()
-                valid = correct_series[valid_mask]
+            def compute_record_and_roi(correct_series, odds_series=None):
+                """Returns (wins, losses, pushes, roi) tuple. odds_series: American odds of each bet
+                (moneyline); None = the standard -110 spread/total price. Bets without a price are
+                not settled and not counted in the stake."""
+                valid = correct_series[correct_series.notna()]
                 if valid.empty:
                     return 0, 0, 0, 0.0
                 wins = int(valid.sum())
                 losses = len(valid) - wins
-                
-                # Compute ROI
-                profit = 0.0
+
+                profit, staked = 0.0, 0
                 for idx in valid.index:
-                    won = valid.loc[idx]
-                    if pick_col and odds_col:
-                        odds = week_df.loc[idx, odds_col]
-                        if pd.notna(odds):
-                            if won:
-                                profit += calculate_payout(odds)
-                            else:
-                                profit -= 100
-                    else:
-                        # Use -110 for spreads/totals
-                        if won:
-                            profit += calculate_payout(-110)
-                        else:
-                            profit -= 100
-                
-                roi = (profit / (len(valid) * 100)) * 100 if len(valid) > 0 else 0.0
+                    odds = STANDARD_PRICE if odds_series is None else odds_series.loc[idx]
+                    if pd.isna(odds):
+                        continue
+                    profit += settle_bet(odds, bool(valid.loc[idx]))
+                    staked += 1
+
+                roi = (profit / (staked * 100)) * 100 if staked > 0 else 0.0
                 return wins, losses, 0, roi
-            
-            ml_wins, ml_losses, ml_pushes, ml_roi = compute_record_and_roi(week_df['ml_correct'], 'model_ml_pick', None)
-            sp_wins, sp_losses, sp_pushes, sp_roi = compute_record_and_roi(week_df['spread_correct'], None, None)
-            tl_wins, tl_losses, tl_pushes, tl_roi = compute_record_and_roi(week_df['total_correct'], None, None)
+
+            ml_wins, ml_losses, ml_pushes, ml_roi = compute_record_and_roi(week_df['ml_correct'], week_df['model_ml_odds'])
+            sp_wins, sp_losses, sp_pushes, sp_roi = compute_record_and_roi(week_df['spread_correct'])
+            tl_wins, tl_losses, tl_pushes, tl_roi = compute_record_and_roi(week_df['total_correct'])
             
             # Display records with ROI as top metrics
             cols = st.columns(3)

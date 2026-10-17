@@ -195,6 +195,7 @@ class BaselineModel:
                 market_avg = home_bets['market_prob'].mean()
                 print(f"\nHome edge > {thresh:.0%}: {len(home_bets)} bets")
                 print(f"  Actual win rate: {actual_wr:.1%} | Model: {model_avg:.1%} | Market: {market_avg:.1%}")
+                print(f"  ROI at the actual moneylines: {self._ml_roi(home_bets, 'home'):+.1%}")
             
             away_bets = df_clean[(df_clean['edge_away'] > thresh) & (df_clean['edge_away'] > df_clean['edge_home'])]
             if len(away_bets) > 0:
@@ -203,6 +204,16 @@ class BaselineModel:
                 market_avg = away_bets['market_prob_away'].mean()
                 print(f"\nAway edge > {thresh:.0%}: {len(away_bets)} bets")
                 print(f"  Actual win rate: {actual_wr:.1%} | Model: {model_avg:.1%} | Market: {market_avg:.1%}")
+                print(f"  ROI at the actual moneylines: {self._ml_roi(away_bets, 'away'):+.1%}")
+
+    @staticmethod
+    def _ml_roi(bets, side):
+        """ROI of flat $100 moneyline bets on `side`, each settled at ITS OWN price (not a flat -110)."""
+        from models.betting import settle_bet
+        odds = bets['odds_home_ml'] if side == 'home' else bets['odds_away_ml']
+        won = bets['ml_actual'] == (1 if side == 'home' else 0)
+        profit = sum(settle_bet(o, w) for o, w in zip(odds, won))
+        return profit / (100 * len(bets))
 
     def sanity_check_odds(self):
         """Verify odds data makes sense."""
