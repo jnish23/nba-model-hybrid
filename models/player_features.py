@@ -65,7 +65,13 @@ class PlayerFeatureBuilder:
             lambda x: x.shift(1).ewm(span=10, adjust=False).mean()
         ).fillna(0)
         
+        # The roster EWMA runs over the whole history from BPM_HISTORY_START; `seasons` only picks which
+        # games are returned (a different `seasons` must not change any returned value).
+        season_of = df_bpm.drop_duplicates('gameId').set_index('gameId')['seasonYear']
+        grouped['seasonYear'] = grouped['gameId'].map(season_of)
         features = grouped[['gameId', 'teamId', 'roster_bpm', 'roster_bpm_ewma']]
+        if seasons:
+            features = features[grouped['seasonYear'].isin(seasons)]
         
         logging.info(f"Aggregated {len(features)} team-games (leak-free).")
         self._grouped = grouped

@@ -4,6 +4,11 @@ import numpy as np
 import sqlite3
 import logging
 
+# First season of player history used for every BPM value (cumulative minutes, EWMA and the league mean
+# all start here). Fixed so training, live inference and the injury features agree.
+BPM_HISTORY_START = '2013-14'
+
+
 class BPMBuilder:
     """
     Calculates Box Plus/Minus (BPM) 2.0 using official coefficients.
@@ -31,9 +36,19 @@ class BPMBuilder:
         }
         
     def load_data(self, seasons=None, before=None):
-        """Load player box scores. `before` (YYYY-MM-DD) keeps only games strictly before that date
-        (point-in-time features for a given day; every value is built from earlier games only, so
-        cutting the data changes nothing about the rows that remain)."""
+        """Load player box scores.
+
+        History always starts at BPM_HISTORY_START and runs to the latest requested season, whatever
+        `seasons` says: a player's BPM depends on his cumulative minutes (reliability weight), his
+        40-game EWMA and the trailing league mean, so the same game got different values depending
+        on which season the load happened to start at (2013-14 for the training set, 2019-20 for the
+        injury features, a handful of seasons in ad-hoc runs). Callers pick the rows they need from
+        the result.
+
+        `before` (YYYY-MM-DD) keeps only games strictly before that date (point-in-time features
+        for a given day; every value is built from earlier games only, so cutting the data changes
+        nothing about the rows that remain).
+        """
         cols = [
             'gameId', 'teamId', 'personId', 'playerName', 'gameDate', 'seasonYear',
             'minutes', 'fieldGoalsMade', 'fieldGoalsAttempted',
@@ -45,8 +60,11 @@ class BPMBuilder:
             query = f"SELECT {', '.join(cols)} FROM player_basic_stats"
             where, params = [], []
             if seasons:
-                where.append(f"seasonYear IN ({','.join('?' * len(seasons))})")
-                params += list(seasons)
+                db_seasons = [r[0] for r in conn.execute("SELECT DISTINCT seasonYear FROM player_basic_stats")]
+                last = max(seasons)
+                history = sorted(x for x in set(db_seasons) | set(seasons) if BPM_HISTORY_START <= x <= last)
+                where.append(f"seasonYear IN ({','.join('?' * len(history))})")
+                params += history
             if before is not None:
                 where.append("gameDate < ?")
                 params.append(str(before)[:10])
@@ -284,7 +302,7 @@ class BPMBuilder:
         # Handle any remaining NaNs (early season games with no history)
         self.df['bpm'] = self.df['bpm'].fillna(self.df['raw_bpm'])
         
-        return self.df[['gameId', 'gameDate', 'personId', 'playerName', 'teamId', 'bpm', 'e_minutes']]
+        return self.df[['gameId', 'gameDate', 'seasonYear', 'personId', 'playerName', 'teamId', 'bpm', 'e_minutes']]
 
 
     def save_player_bpm_to_db(self):
