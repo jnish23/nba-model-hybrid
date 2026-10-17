@@ -107,7 +107,7 @@ DEFAULT_KEEP = ['gameId', 'gameDate', 'seasonYear', 'target_home_win', 'target_p
                 'close_home_prob', 'open_home_prob']
 
 
-def run_walk_forward(name, csv=None, features_from=None, hooks=None, seasons=TEST_SEASONS, save=True, df_override=None):
+def run_walk_forward(name, csv=None, features_from=None, hooks=None, seasons=TEST_SEASONS, save=True, df_override=None, selection_seed=42):
     """
     Run all folds. `hooks` (dict, optional) lets an experiment change ONE thing:
       'init_scores'(kind, frame, fold_ctx) -> array|None   market-residual init_score (E1)
@@ -135,7 +135,7 @@ def run_walk_forward(name, csv=None, features_from=None, hooks=None, seasons=TES
         fold_feats = cached.get(s)
         if fold_feats is None:
             sel_df = mt.iloc[:n_fl]
-            fold_feats = {k: m._select_features_from_subset(sel_df, t) for k, t in TARGETS.items()}
+            fold_feats = {k: m._select_features_from_subset(sel_df, t, seed=selection_seed) for k, t in TARGETS.items()}
         chosen[s] = fold_feats
         res_test = test[[c for c in keep if c in test]].copy()
         res_cal = calib[[c for c in keep if c in calib]].copy()
