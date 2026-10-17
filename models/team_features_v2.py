@@ -155,21 +155,21 @@ class TeamFeatureBuilder:
         return features
 
     def _with_opponent_totals(self, df: pd.DataFrame) -> pd.DataFrame:
-        """OPP_<stat> totals: team_game_full has exact opponent box-score totals. Only fall back to
-        the positional C/F/G columns for an old table without them - those buckets overlap and
-        overstate totals by ~23% (see update_database.rebuild_team_game_full)."""
+        """Check that team_game_full carries the exact OPP_<stat> opponent box-score totals.
+
+        There is deliberately no fallback to the positional OPP_<stat>_<C|F|G> columns: those
+        buckets overlap (hybrid positions fall in more than one), so their sum overstates every
+        opponent total by ~22%. A table without the exact columns must be rebuilt with
+        NBADatabaseSync.rebuild_team_game_full() (scripts/create_team_full_table.py does).
+        """
         if df.empty:
             return df
-        for stat in OPP_STATS:
-            if f'OPP_{stat}' in df.columns:
-                continue
-            pos_cols = [f'OPP_{stat}_{p}' for p in ['C', 'F', 'G']]
-            existing = [c for c in pos_cols if c in df.columns]
-            if existing:
-                if 'PCT' in stat:
-                    df[f'OPP_{stat}'] = df[existing].mean(axis=1)
-                else:
-                    df[f'OPP_{stat}'] = df[existing].sum(axis=1)
+        missing = [f'OPP_{stat}' for stat in OPP_STATS if f'OPP_{stat}' not in df.columns]
+        if missing:
+            raise ValueError(
+                f"team_game_full has no exact opponent columns ({missing[:3]}...). Rebuild it with "
+                f"scripts/create_team_full_table.py (NBADatabaseSync.rebuild_team_game_full); the "
+                f"positional C/F/G columns cannot be summed into opponent totals.")
         return df
 
     def _calculate_ewma(self, df: pd.DataFrame, columns: list, prefix: str) -> dict:
