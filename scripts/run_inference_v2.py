@@ -3,31 +3,21 @@ import numpy as np
 import sqlite3
 import logging
 import datetime
-import joblib
 import sys
 import os
-import json
-from scipy import stats
-from bs4 import BeautifulSoup
 from pathlib import Path 
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from models.team_features_v2 import TeamFeatureBuilder
-from models.travel_builder import TravelFeatureBuilder
-from models.live_rotation_v2 import LiveRotationBuilder
-from models.bpm_builder import BPMBuilder
 from models.prediction_logger import PredictionLogger
 from models.live_odds import split_open_and_current
 from models.live_features import align_features, build_live_game_frame
 from models.betting import (get_ml_bet, get_spread_bet, get_total_bet, DEFAULT_SPREAD_STD,
                             DEFAULT_TOTAL_STD)
 from models.model_registry import DEPLOYED_SUFFIX, MODEL_DIR, load_bundle
-from models.player_features import PlayerFeatureBuilder
 from models import injury_report_features as irf
 from models.game_features_v2 import GameFeatureBuilder
 from update_database import NBADatabaseSync
-from build_nba_odds_table import sync_odds_data
 from nba_api.stats.endpoints import scoreboardv3
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -197,198 +187,6 @@ class InferenceEngine:
             logging.error(f"SBR Fetch Error: {e}")
             return pd.DataFrame()
 
-    def get_latest_team_features(self):
-        logging.info("Building Full Team Features...")
-        
-        # 1. Load Data
-        with sqlite3.connect(self.db_path) as conn:
-            df = pd.read_sql("SELECT * FROM team_game_full", conn)
-            
-        df['gameDate'] = pd.to_datetime(df['gameDate'])
-        df = df.sort_values(['teamId', 'gameDate'])
-        
-        # Ensure we have aggregated OPP columns
-        for stat in ['FGM', 'FGA', 'FG_PCT', 'FG3M', 'FG3A', 'FG3_PCT', 
-                     'FTM', 'FTA', 'FT_PCT', 'OREB', 'DREB', 'REB',
-                     'AST', 'TOV', 'STL', 'BLK', 'PTS']:
-            pos_cols = [f'OPP_{stat}_{p}' for p in ['C', 'F', 'G']]
-            existing = [c for c in pos_cols if c in df.columns]
-            if existing:
-                if 'PCT' in stat:
-                    df[f'OPP_{stat}'] = df[existing].mean(axis=1)
-                else:
-                    df[f'OPP_{stat}'] = df[existing].sum(axis=1)
-        
-        builder = TeamFeatureBuilder(self.db_path)
-        off_cols = builder.feature_categories['team_offense']
-        def_cols = builder.feature_categories['team_defense']
-        spans = [5, 20] # Note: spans updated to [5, 20]
-        
-        final_feats = pd.DataFrame(index=df['teamId'].unique())
-        final_feats.index.name = 'teamId'
-        
-        feat_dict = {}
-
-        # Offense
-        for col in off_cols:
-            if col in df.columns:
-                grp = df.groupby('teamId')[col]
-                for span in spans:
-                    series = grp.transform(lambda x: x.ewm(span=span).mean())
-                    feat_dict[f"off_{col}_{span}g"] = series.groupby(df['teamId']).last()
-                    
-        # Defense
-        for col in def_cols:
-            if col in df.columns:
-                grp = df.groupby('teamId')[col]
-                for span in spans:
-                    series = grp.transform(lambda x: x.ewm(span=span).mean())
-                    feat_dict[f"def_{col}_{span}g"] = series.groupby(df['teamId']).last()
-
-        # Trend & Momentum Features
-        # Trend
-        for category in ['team_offense', 'team_defense']:
-            prefix = 'off' if category == 'team_offense' else 'def'
-            cat_cols = off_cols if category == 'team_offense' else def_cols
-            for col in cat_cols:
-                col_5 = f"{prefix}_{col}_5g"
-                col_20 = f"{prefix}_{col}_20g"
-                if col_5 in feat_dict and col_20 in feat_dict:
-                    feat_dict[f"{prefix}_{col}_trend"] = feat_dict[col_5] - feat_dict[col_20]
-                    
-        # Momentum
-        if 'wl' in df.columns:
-            df['_win'] = (df['wl'] == 'W').astype(int)
-            # win_pct_last10 (using the *completed* history)
-            feat_dict['win_pct_last10'] = df.groupby('teamId')['_win'].rolling(10, min_periods=3).mean().groupby('teamId').last()
-            
-            def streak(series):
-                streaks = []
-                current = 0
-                for val in series:
-                    if pd.isna(val):
-                        streaks.append(0)
-                        continue
-                    if val == 1:
-                        current = max(1, current + 1) if current > 0 else 1
-                    else:
-                        current = min(-1, current - 1) if current < 0 else -1
-                    streaks.append(current)
-                return pd.Series(streaks, index=series.index)
-            
-            feat_dict['win_streak'] = df.groupby('teamId')['_win'].apply(streak).groupby('teamId').last()
-            
-            # home_win_pct_20g
-            if 'matchup' in df.columns:
-                df['_is_home'] = df['matchup'].str.contains('vs.', na=False).astype(int)
-                df['_home_win'] = df['_is_home'] * df['_win']
-                
-                feat_dict['home_win_pct_20g'] = df.groupby('teamId').apply(
-                    lambda g: g['_home_win'].rolling(20, min_periods=5).sum() / 
-                              g['_is_home'].rolling(20, min_periods=5).sum()
-                ).groupby('teamId').last()
-
-        final_feats = pd.DataFrame.from_dict(feat_dict)
-        final_feats.index.name = 'teamId'
-
-        # 4. Rest & Context
-        last_dates = df.groupby('teamId')['gameDate'].max()
-        today = pd.to_datetime(datetime.datetime.now().strftime('%Y-%m-%d'))
-        
-        days_rest = (today - last_dates).dt.days - 1 
-        
-        final_feats['days_rest'] = days_rest.clip(lower=0)
-        final_feats['is_b2b'] = (final_feats['days_rest'] == 0).astype(int)
-        
-        cutoff = today - pd.Timedelta(days=7)
-        games_7d = df[df['gameDate'] >= cutoff].groupby('teamId').size()
-        final_feats['games_last_7d'] = games_7d.reindex(final_feats.index, fill_value=0)
-        
-        # Season Game Num
-        final_feats['season_game_number'] = df.groupby('teamId').count()['gameDate'] + 1
-        
-        final_feats['is_playoff'] = 0 
-        
-        return final_feats
-
-    def get_travel_features(self, schedule):
-        logging.info("Building Travel Features...")
-        tb = TravelFeatureBuilder(self.db_path)
-        tb.load_data()
-        
-        feats = []
-        teams = set(schedule['teamId_home']).union(set(schedule['teamId_away']))
-        
-        for tid in teams:
-            # Last Game
-            t_games = tb.df_games[tb.df_games['teamId'] == tid].sort_values('gameDate')
-            if t_games.empty: continue
-            
-            last = t_games.iloc[-1]
-            last_dt = pd.to_datetime(last['gameDate'])
-            last_lat = last.get('lat', 0)
-            last_lon = last.get('long', 0)
-            last_tz = last.get('timeZone', 0)
-            
-            # Current Game
-            is_home = tid in schedule['teamId_home'].values
-            if is_home:
-                # My Arena
-                ainfo = tb.df_arenas[tb.df_arenas['teamId'] == tid]
-                row_sched = schedule[schedule['teamId_home'] == tid].iloc[0]
-                opp_tid = row_sched['teamId_away']
-            else:
-                # Host Arena (for travel metrics)
-                row_sched = schedule[schedule['teamId_away'] == tid].iloc[0]
-                host = row_sched['teamId_home']
-                ainfo = tb.df_arenas[tb.df_arenas['teamId'] == host]
-                opp_tid = host
-                
-            if ainfo.empty: continue
-            
-            curr_lat = ainfo['lat'].values[0]
-            curr_lon = ainfo['long'].values[0]
-            curr_alt = ainfo['altitude'].values[0]
-            curr_tz = ainfo['tz_offset'].values[0]
-            
-            dist = tb._haversine_np(last_lat, last_lon, curr_lat, curr_lon)
-            today = pd.to_datetime(datetime.datetime.now().strftime('%Y-%m-%d'))
-            rest = max(0, (today - last_dt).days - 1)
-            tz_delta = curr_tz - last_tz
-            
-            # Altitude Diff Calculation
-            # Need My Home Altitude and Opp Home Altitude
-            try:
-                my_home_alt = tb.df_arenas.loc[tb.df_arenas['teamId'] == tid, 'altitude'].values[0]
-                opp_home_alt = tb.df_arenas.loc[tb.df_arenas['teamId'] == opp_tid, 'altitude'].values[0]
-                
-                if is_home:
-                     alt_diff = my_home_alt - opp_home_alt
-                else:
-                     alt_diff = opp_home_alt - my_home_alt
-            except (IndexError, KeyError) as e:
-                logging.warning(f"No altitude data for team {tid} / {opp_tid} ({e}); altitude diff set to 0")
-                alt_diff = 0
-            
-            feats.append({
-                'teamId': tid,
-                'dist_miles': dist,
-                'tz_delta': tz_delta,
-                'body_clock_lag': 0,
-                'eff_rest_days': min(rest, 3),
-                'altitude': curr_alt,
-                'game_altitude_diff': alt_diff,
-                'road_trip_count': 0
-            })
-            
-        return pd.DataFrame(feats).set_index('teamId')
-
-    def get_training_consistent_roster_features(self):
-        """roster_bpm / roster_bpm_ewma computed exactly as in the training set (previous-game roster)."""
-        seasons = sorted(pd.read_sql("SELECT DISTINCT seasonYear FROM team_game_full",
-                                     sqlite3.connect(self.db_path))['seasonYear'])
-        return PlayerFeatureBuilder(self.db_path).next_game_roster_features(seasons)
-
     def get_injury_features(self, games_df):
         """
         inj_* features for today's games from the official NBA injury report, built with the same
@@ -428,79 +226,6 @@ class InferenceEngine:
         inj = inj[inj['gameId'].isin(upcoming['gameId'])]
         logging.info(f"Injury features for {len(inj)} team-games; missing report for {int(inj['inj_missing'].sum())}")
         return inj.set_index(['gameId', 'teamId'])
-
-    def get_roster_features(self):
-        """
-        Get injury-adjusted roster BPM for all teams.
-        Combines:
-        1. Historical EWMA of team roster_bpm (from DB)
-        2. Today's injury adjustments (from LiveRotationBuilder)
-        """
-        logging.info("Building Roster Features (injury-adjusted)...")
-        
-        # 1. Get historical roster_bpm_ewma from player_bpm table
-        historical_ewma = self._get_historical_roster_bpm_ewma()
-        
-        # 2. Get today's injury-adjusted roster_bpm
-        rb = LiveRotationBuilder(self.db_path)
-        today_roster = rb.build_roster_features(season=current_season)
-        
-        if today_roster.empty:
-            logging.warning("No roster features built")
-            return pd.DataFrame()
-        
-        # 3. Combine: use today's injury-adjusted BPM, but historical EWMA
-        if not historical_ewma.empty:
-            today_roster = today_roster.join(historical_ewma, how='left')
-            today_roster['roster_bpm_ewma'] = today_roster['roster_bpm_ewma'].fillna(today_roster['roster_bpm'])
-        else:
-            today_roster['roster_bpm_ewma'] = today_roster['roster_bpm']
-        
-        logging.info(f"Roster features built for {len(today_roster)} teams")
-        
-        return today_roster[['roster_bpm', 'roster_bpm_ewma']]
-
-
-    def _get_historical_roster_bpm_ewma(self):
-        """
-        Calculate team-level roster_bpm EWMA from player_bpm table.
-        This matches the training methodology.
-        """
-        try:
-            with sqlite3.connect(self.db_path) as conn:
-                # Get team roster_bpm for each game
-                query = """
-                    SELECT 
-                        teamId,
-                        gameDate,
-                        SUM(bpm * e_minutes) / NULLIF(SUM(e_minutes), 0) as game_roster_bpm
-                    FROM player_bpm
-                    WHERE gameDate >= date('now', '-90 days')
-                    GROUP BY teamId, gameDate
-                    ORDER BY teamId, gameDate
-                """
-                df = pd.read_sql(query, conn)
-            
-            if df.empty:
-                return pd.DataFrame()
-            
-            df['gameDate'] = pd.to_datetime(df['gameDate'])
-            df = df.sort_values(['teamId', 'gameDate'])
-            
-            # Calculate EWMA per team
-            df['roster_bpm_ewma'] = df.groupby('teamId')['game_roster_bpm'].transform(
-                lambda x: x.ewm(span=10, adjust=False).mean()
-            )
-            
-            # Get latest EWMA per team
-            latest = df.groupby('teamId')['roster_bpm_ewma'].last()
-            
-            return latest.to_frame()
-            
-        except Exception as e:
-            logging.warning(f"Could not get historical roster EWMA: {e}")
-            return pd.DataFrame()
-
 
     def verify_feature_alignment(self, row_df, model_name, expected_cols):
         """Select the model's columns in order; missing features become NaN and are logged loudly."""
