@@ -1,10 +1,13 @@
 
+import os
+import sys
 import pandas as pd
 import logging
 from pathlib import Path
 import matplotlib.pyplot as plt
 import lightgbm as lgb
-from models.game_features import GameFeatureBuilder
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from models.game_features_v2 import GameFeatureBuilder
 from models.backtest import Backtester
 
 # Config
@@ -12,17 +15,17 @@ logging.basicConfig(level=logging.INFO)
 
 def main():
     # 1. Generate Training Set with Archive Odds AND Player Features
-    db_path = r'c:\Users\jorda\nba-model-hybrid\data\nba_stats.db'
-    archive_path = r'c:\Users\jorda\nba-model-hybrid\data\nba_odds_archive.csv'
+    db_path = Path('data/nba_stats.db')
+    archive_path = Path('data/nba_odds_archive.csv')
     
     logging.info("Building Training Set (Archive + Player Features)...")
     builder = GameFeatureBuilder(db_path)
     # Filter for requested seasons
     seasons = ['2019-20', '2020-21', '2021-22', '2022-23']
-    df = builder.build_training_set_with_archive(archive_path, seasons=seasons)
+    df = builder.build_training_set(seasons=seasons, archive_path=archive_path)
     
     # Save for inspection
-    output_path = Path('data/processed/training_set_player.csv')
+    output_path = Path('data/processed/training_set_travel.csv')
     df.to_csv(output_path, index=False)
     logging.info(f"Saved {len(df)} games to {output_path}")
     
@@ -90,7 +93,7 @@ def main():
         return
 
     full_preds = pd.concat(preds_dfs)
-    full_preds.to_csv('data/processed/backtest_predictions_player.csv', index=False)
+    full_preds.to_csv('data/processed/backtest_predictions_travel.csv', index=False)
     
     # 3. Backtest All Markets
     backtester = Backtester(full_preds)
@@ -139,13 +142,13 @@ def main():
     if not daily_spread.empty: plt.plot(daily_spread.index, daily_spread, label=f'Spread (ROI {roi_spread:.1%})')
     if not daily_total.empty: plt.plot(daily_total.index, daily_total, label=f'Total (ROI {roi_total:.1%})')
     
-    plt.title(f"Player-Adjusted: Multi-Market Bankroll")
+    plt.title(f"Travel-Adjusted: Multi-Market Bankroll")
     plt.xlabel("Date")
     plt.ylabel("Profit ($100 unit)")
     plt.legend()
     plt.grid(True)
-    plt.savefig('bankroll_player_combined.png')
-    logging.info("Analysis Complete. Results in backtest_player_metrics.txt")
+    plt.savefig(PLOT_FILE)
+    logging.info(f"Analysis Complete. Results in {OUTPUT_FILE}, plot in {PLOT_FILE}")
 
 if __name__ == "__main__":
     main()

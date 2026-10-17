@@ -1,10 +1,13 @@
 
+import os
+import sys
 import pandas as pd
 import logging
 from pathlib import Path
 import matplotlib.pyplot as plt
 import lightgbm as lgb
-from models.game_features import GameFeatureBuilder
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from models.game_features_v2 import GameFeatureBuilder
 from models.backtest import Backtester
 
 # Config
@@ -12,14 +15,14 @@ logging.basicConfig(level=logging.INFO)
 
 def main():
     # 1. Generate Training Set with Archive Odds AND Player Features
-    db_path = r'c:\Users\jorda\nba-model-hybrid\data\nba_stats.db'
-    archive_path = r'c:\Users\jorda\nba-model-hybrid\data\nba_odds_archive.csv'
+    db_path = Path('data/nba_stats.db')
+    archive_path = Path('data/nba_odds_archive.csv')
     
     logging.info("Building Training Set (Archive + Player Features)...")
     builder = GameFeatureBuilder(db_path)
     # Filter for requested seasons
     seasons = ['2019-20', '2020-21', '2021-22', '2022-23']
-    df = builder.build_training_set_with_archive(archive_path, seasons=seasons)
+    df = builder.build_training_set(seasons=seasons, archive_path=archive_path)
     
     # Save for inspection
     output_path = Path('data/processed/training_set_player.csv')

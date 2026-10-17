@@ -7,7 +7,7 @@ from pathlib import Path
 
 # Add project root to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from models.game_features import GameFeatureBuilder
+from models.game_features_v2 import GameFeatureBuilder
 
 logging.basicConfig(level=logging.INFO)
 
