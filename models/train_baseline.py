@@ -397,7 +397,7 @@ class BaselineModel:
             raise ValueError(f"Unknown target: {target}")
 
 
-    def _select_features_from_subset(self, df_subset, target, n_top=150, n_min=20):
+    def _select_features_from_subset(self, df_subset, target, n_top=150, n_min=20, importance_type='split'):
         """
         Two-Stage Feature Selection (No Leakage):
         1. Hierarchical Clustering (Spearman) to remove highly correlated redundant features.
@@ -408,6 +408,10 @@ class BaselineModel:
         Deterministic: columns are processed in alphabetical order (so the CSV column order cannot
         change the clustering), LightGBM runs in deterministic mode, and every tie - in importance or
         in the cluster representative - is broken by feature name.
+
+        importance_type: LightGBM importance used to pick each cluster's representative and to compare
+        with the shuffled-target importances. 'split' (default, the production behaviour) counts splits,
+        which favours the noisier of two highly correlated features; 'gain' ranks by loss reduction.
         """
         # 1. Filter available/valid features from the correct pool
         feature_pool = self._get_pool_for_target(target)
@@ -423,10 +427,12 @@ class BaselineModel:
         # Initial proxy model to gauge baseline importance
         if 'win' in target:
             model = lgb.LGBMClassifier(n_estimators=100, max_depth=4, verbose=-1, random_state=42, n_jobs=-1,
-                                       deterministic=True, force_row_wise=True)
+                                       deterministic=True, force_row_wise=True,
+                                       importance_type=importance_type)
         else:
             model = lgb.LGBMRegressor(n_estimators=100, max_depth=4, verbose=-1, random_state=42, n_jobs=-1,
-                                      deterministic=True, force_row_wise=True)
+                                      deterministic=True, force_row_wise=True,
+                                      importance_type=importance_type)
             
         model.fit(X, y)
         initial_imp = dict(zip(X.columns, model.feature_importances_))
