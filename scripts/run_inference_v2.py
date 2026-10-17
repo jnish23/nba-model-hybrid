@@ -15,6 +15,7 @@ from models.live_features import align_features, build_live_game_frame
 from models.betting import (get_ml_bet, get_spread_bet, get_total_bet, DEFAULT_SPREAD_STD,
                             DEFAULT_TOTAL_STD)
 from models.model_registry import DEPLOYED_SUFFIX, MODEL_DIR, load_bundle
+from models.market_models import predict_markets
 from models import injury_report_features as irf
 from models.game_features_v2 import GameFeatureBuilder
 from update_database import NBADatabaseSync
@@ -274,16 +275,16 @@ class InferenceEngine:
         cols_spread = self.selected_features['spread']
         cols_total = self.selected_features['total']
         logging.info(f"Models expect {len(cols_ml)} / {len(cols_spread)} / {len(cols_total)} features (ML / Spread / Total).")
-        prob_raw = self.model_ml.predict_proba(self.verify_feature_alignment(frame, 'ML', cols_ml))[:, 1]
-        probs = self.calibrator_ml.predict(prob_raw)
-        pred_spreads = self.model_spread.predict(self.verify_feature_alignment(frame, 'Spread', cols_spread))
-        pred_totals = self.model_total.predict(self.verify_feature_alignment(frame, 'Total', cols_total))
-
-        spread_std = self.calib_meta.get('spread_std', DEFAULT_SPREAD_STD)
-        total_std = self.calib_meta.get('total_std', DEFAULT_TOTAL_STD)
+        # models/market_models.predict_markets: handles both model-set generations (isotonic + plain regressors, or the
+        # market-aware set: residual spread model, margin-stack ML calibrator, per-game total sigma)
+        out = predict_markets(self.bundle, frame, align=self.verify_feature_alignment)
+        probs, pred_spreads, pred_totals = out['ml_prob'].to_numpy(), out['spread_pred'].to_numpy(), out['total_pred'].to_numpy()
+        spread_stds = out['spread_std'].fillna(DEFAULT_SPREAD_STD).to_numpy()
+        total_stds = out['total_std'].fillna(DEFAULT_TOTAL_STD).to_numpy()
         preds = []
         for i, g in games_df.iterrows():
             prob, pred_spread, pred_total = float(probs[i]), float(pred_spreads[i]), float(pred_totals[i])
+            spread_std, total_std = float(spread_stds[i]), float(total_stds[i])
 
             # Tradable (current) lines for edges, EV and the prediction log
             line = float(g['curr_odds_home_spread']) if pd.notna(g.get('curr_odds_home_spread')) else np.nan
