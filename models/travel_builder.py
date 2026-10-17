@@ -34,7 +34,15 @@ class TravelFeatureBuilder:
         c = 2 * np.arcsin(np.sqrt(a))
         return R * c
 
-    def build_features(self):
+    def build_features(self, upcoming=None):
+        """Travel features for every historical team-game.
+
+        upcoming: optional frame of NOT-yet-played games with the df_games columns
+        (teamId, teamTricode, gameId, gameDate, MATCHUP). Their features are computed by exactly
+        the same code as the historical rows - from history strictly before the earliest upcoming
+        date - which is how live inference gets training-identical values (road_trip_count,
+        body_clock_lag, ...).
+        """
         logging.info("Building Travel Features...")
         
         if not hasattr(self, 'df_games'):
@@ -42,6 +50,12 @@ class TravelFeatureBuilder:
             
         df = self.df_games.copy()
         df['gameDate'] = pd.to_datetime(df['gameDate'])
+        if upcoming is not None and len(upcoming):
+            upcoming = upcoming[df.columns].copy()
+            upcoming['gameDate'] = pd.to_datetime(upcoming['gameDate'])
+            # Games on/after the first upcoming date are not history (a live run may already find
+            # that day's finished games in the DB; they must not leak into the features)
+            df = pd.concat([df[df['gameDate'] < upcoming['gameDate'].min()], upcoming], ignore_index=True)
         
         # 1. Identify Opponent and Location
         # Matchup format: "BOS @ NYC" (Away) or "BOS vs. NYC" (Home)
@@ -244,185 +258,51 @@ class TravelFeatureBuilder:
 
     def get_travel_features(self, schedule_df: pd.DataFrame) -> pd.DataFrame:
         """
-        Calculate travel features for a given schedule (live inference).
-        
+        Travel features for a live schedule, computed by build_features() itself so they equal
+        the training values (distance, time-zone delta, body-clock lag, road-trip length, altitude).
+
         Args:
-            schedule_df: DataFrame with ['gameDate', 'away_team', 'home_team']
+            schedule_df: DataFrame with 'gameDate' and either ['teamId_home', 'teamId_away'] or
+                team names ['home_team', 'away_team']; an optional 'gameId' column is carried through.
+        Returns one row per team per game: 'gameId', 'teamId', 'team' (name) and the feature columns.
         """
         logging.info("Building live travel features...")
-        
-        # We need IDs or Tricodes for the teams in schedule.
-        # Assuming schedule_df has team names. We need to map them.
-        # This Builder typically works with IDs/Tricodes.
-        # We need 'venueTricode' for distance calc.
-        
-        # 1. Load Arena Data
-        if not hasattr(self, 'df_arenas'):
-             with sqlite3.connect(self.db_path) as conn:
-                 self.df_arenas = pd.read_sql("SELECT * FROM nba_arenas", conn)
-                 
-        # 2. Map Names to Tricodes/IDs
-        unique_teams = pd.concat([schedule_df['home_team'], schedule_df['away_team']]).unique()
-        
-        name_map = {}
+        if not hasattr(self, 'df_games'):
+            self.load_data()
+
         with sqlite3.connect(self.db_path) as conn:
-             # Team Name -> Tricode
-             df_map = pd.read_sql("SELECT DISTINCT teamName, teamTricode FROM team_basic_stats", conn)
-             name_map = dict(zip(df_map['teamName'], df_map['teamTricode']))
-             
-        # 3. Process Each Game in Schedule
-        results = []
-        
-        # We need 'lat', 'long' of venues.
-        arena_map = self.df_arenas.set_index('teamTricode')[['lat', 'long', 'altitude', 'tz_offset']]
-        opp_alt_map = self.df_arenas.set_index('teamTricode')['altitude'].to_dict()
+            teams = pd.read_sql("SELECT DISTINCT teamId, teamName, teamTricode FROM team_basic_stats", conn)
+        by_id = teams.drop_duplicates('teamId').set_index('teamId')
+        by_name = teams.drop_duplicates('teamName').set_index('teamName')
+        use_ids = {'teamId_home', 'teamId_away'} <= set(schedule_df.columns)
 
-        for idx, row in schedule_df.iterrows():
-            g_date = pd.to_datetime(row['gameDate'])
-            
-            # Teams
-            home_name = row['home_team']
-            away_name = row['away_team']
-            
-            home_tri = name_map.get(home_name)
-            away_tri = name_map.get(away_name)
-            
-            if not home_tri or not away_tri:
-                logging.warning(f"Could not resolve tricode for {home_name} or {away_name}")
+        rows = []
+        for i, g in enumerate(schedule_df.to_dict('records')):
+            try:
+                if use_ids:
+                    hid, aid = int(g['teamId_home']), int(g['teamId_away'])
+                    home, away = by_id.loc[hid], by_id.loc[aid]
+                    hname, aname = home['teamName'], away['teamName']
+                else:
+                    home, away = by_name.loc[g['home_team']], by_name.loc[g['away_team']]
+                    hid, aid, hname, aname = int(home['teamId']), int(away['teamId']), g['home_team'], g['away_team']
+            except (KeyError, ValueError, TypeError):
+                logging.warning(f"Could not resolve team ids for game {g}")
                 continue
-                
-            # Current Venue (Home Team's Arena)
-            venue_tri = home_tri
-            current_venue_info = arena_map.loc[venue_tri] if venue_tri in arena_map.index else None
-            
-            if current_venue_info is None:
-                 logging.warning(f"No arena info for {venue_tri}")
-                 continue
-                 
-            cur_lat = current_venue_info['lat']
-            cur_lon = current_venue_info['long']
-            cur_tz = current_venue_info['tz_offset']
-            cur_alt = current_venue_info['altitude']
-            
-            # Helper to calculate team-specific travel metrics
-            def get_metrics(team_tri, opponent_tri, is_home_team):
-                # 1. Query Last Game
-                with sqlite3.connect(self.db_path) as conn:
-                    # We need last game date and LOCATION.
-                    # team_game_full doesn't store Lat/Lon directly, but has MATCHUP -> is_home -> Venue.
-                    # We need to construct the previous state.
-                    query = f"""
-                    SELECT gameDate, MATCHUP, teamTricode FROM team_game_full 
-                    WHERE teamTricode = '{team_tri}' AND gameDate < '{row['gameDate']}'
-                    ORDER BY gameDate DESC LIMIT 1
-                    """
-                    last_game = pd.read_sql(query, conn)
-                    
-                if last_game.empty:
-                    # Default / Season Start
-                    prev_lat, prev_lon, prev_tz = cur_lat, cur_lon, cur_tz # Assume already here
-                    days_rest = 7
-                    is_b2b = 0
-                    games_last_7d = 0 # Approximate
-                else:
-                    lg = last_game.iloc[0]
-                    lg_date = pd.to_datetime(lg['gameDate'])
-                    days_rest = (g_date - lg_date).days
-                    is_b2b = 1 if days_rest == 1 else 0
-                    
-                    # Previous Location
-                    # Determine previous venue
-                    # If last game was Home: Venue = Me. If Away: Venue = Opp.
-                    lg_matchup = lg['MATCHUP']
-                    lg_is_home = 'vs.' in lg_matchup
-                    
-                    if lg_is_home:
-                        prev_venue = team_tri
-                    else:
-                        # Extract opp
-                        prev_venue = lg_matchup.split(' ')[-1]
-                        
-                    # Lookup Prev Venue
-                    if prev_venue in arena_map.index:
-                        prev_info = arena_map.loc[prev_venue]
-                        prev_lat = prev_info['lat']
-                        prev_lon = prev_info['long']
-                        prev_tz = prev_info['tz_offset']
-                    else:
-                        prev_lat, prev_lon, prev_tz = cur_lat, cur_lon, cur_tz # Fallback
-                        
-                    # Games in last 7 days?
-                    # Keep it simple for live inference or query more history. 
-                    # Let's say we assume the feature builder handles this if we just return rest/dist.
-                    # But the model needs 'games_last_7d'. 
-                    # Query count.
-                    with sqlite3.connect(self.db_path) as conn:
-                         q7 = f"""
-                         SELECT COUNT(*) as c FROM team_game_full
-                         WHERE teamTricode = '{team_tri}' 
-                         AND gameDate < '{row['gameDate']}' 
-                         AND gameDate >= date('{row['gameDate']}', '-7 days')
-                         """
-                         games_last_7d = pd.read_sql(q7, conn)['c'][0]
-                
-                # Calculations
-                dist = self.calculate_distance(prev_lat, prev_lon, cur_lat, cur_lon)
-                tz_delta = cur_tz - prev_tz
-                body_clock_lag = cur_tz - prev_tz # Approximation of Lag = Delta for short term
-                
-                # Altitude Diff (Game Level Feature, but assigned to team row usually?)
-                # Model expects 'game_altitude_diff'.
-                # Formula: (MyHome - OppHome) if Home, else (OppHome - MyHome).
-                # Wait, earlier definition:
-                # df['game_altitude_diff'] = np.where(is_home, my_home - opp_home, opp_home - my_home)
-                # So if I am Home: MyHomeAlt - OppHomeAlt.
-                # If I am Away: OppHomeAlt - MyHomeAlt.
-                # Effectively: Host_Home_Alt - Visitor_Home_Alt.
-                # Wait.
-                # If I am Home (Host): MyHome - OppHome (Visitor).
-                # If I am Away (Visitor): OppHome (Host) - MyHome (Visitor).
-                # So ALWAYS: Host - Visitor.
-                # This feature is symmetric/Shared?
-                # Actually, let's stick to the logic:
-                # My Home Alt
-                my_home_alt = opp_alt_map.get(team_tri, 0)
-                opp_home_alt = opp_alt_map.get(opponent_tri, 0)
-                
-                if is_home_team:
-                    alt_diff = my_home_alt - opp_home_alt
-                else:
-                    alt_diff = opp_home_alt - my_home_alt
-                
-                # Road Trip Count?
-                # Requires history. Hard to query cheaply. Default to 0 or 1.
-                road_trip = 0 # Placeholder
-                
-                return {
-                    'team': team_tri, # Add col for join
-                    'dist_miles': dist,
-                    'tz_delta': tz_delta,
-                    'body_clock_lag': body_clock_lag, # Approx
-                    'days_rest': days_rest,
-                    'is_b2b': is_b2b,
-                    'games_last_7d': games_last_7d,
-                    'game_altitude_diff': alt_diff,
-                    'road_trip_count': road_trip,
-                    'venueTricode': venue_tri
-                }
+            gid = str(g.get('gameId', f"live_{i}"))
+            htri, atri = home['teamTricode'], away['teamTricode']
+            rows.append({'teamId': hid, 'teamTricode': htri, 'gameId': gid, 'gameDate': g['gameDate'],
+                         'MATCHUP': f"{htri} vs. {atri}", 'team': hname})
+            rows.append({'teamId': aid, 'teamTricode': atri, 'gameId': gid, 'gameDate': g['gameDate'],
+                         'MATCHUP': f"{atri} @ {htri}", 'team': aname})
+        if not rows:
+            return pd.DataFrame()
 
-            # Calc for Home
-            h_metrics = get_metrics(home_tri, away_tri, True)
-            h_metrics['team'] = home_name # Key for merge in inference
-            
-            # Calc for Away
-            a_metrics = get_metrics(away_tri, home_tri, False)
-            a_metrics['team'] = away_name
-            
-            results.append(h_metrics)
-            results.append(a_metrics)
-            
-        return pd.DataFrame(results) 
-        
+        upcoming = pd.DataFrame(rows)
+        feats = self.build_features(upcoming=upcoming)
+        feats = feats.merge(upcoming[['teamId', 'gameId', 'team']], on=['teamId', 'gameId'], how='inner')
+        return feats.drop(columns=['gameDate', 'venueTricode', 'lat', 'long']).reset_index(drop=True)
+
     def calculate_distance(self, lat1, lon1, lat2, lon2):
         return self._haversine_np(lat1, lon1, lat2, lon2)
 

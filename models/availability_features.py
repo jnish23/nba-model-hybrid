@@ -35,9 +35,10 @@ MIN_ROTATION_MINUTES = 10.0
 
 
 def _team_schedule(conn, seasons):
+    seasons = list(seasons)
     q = f"""SELECT DISTINCT gameId, teamId, gameDate, seasonYear FROM team_game_full
-            WHERE seasonYear IN ({','.join(repr(s) for s in seasons)})"""
-    sched = pd.read_sql(q, conn)
+            WHERE seasonYear IN ({','.join('?' * len(seasons))})"""
+    sched = pd.read_sql(q, conn, params=seasons)
     sched['gameDate'] = pd.to_datetime(sched['gameDate'])
     sched = sched.sort_values(['teamId', 'gameDate', 'gameId'])
     sched['k'] = sched.groupby(['teamId', 'seasonYear']).cumcount()

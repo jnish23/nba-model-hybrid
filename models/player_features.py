@@ -9,14 +9,14 @@ class PlayerFeatureBuilder:
         self.db_path = db_path
         self.bpm_builder = BPMBuilder(db_path)
         
-    def build_roster_features(self, seasons=None):
+    def build_roster_features(self, seasons=None, before=None):
         """
         Builds 'roster_bpm' for every game using PRIOR information only.
         """
         logging.info("Building Player Features (BPM Aggregation - No Leakage)...")
         
         # 1. Calculate BPM for all players/games
-        self.bpm_builder.load_data(seasons)
+        self.bpm_builder.load_data(seasons, before=before)
         df_bpm = self.bpm_builder.calculate_rolling_bpm()
         
         # 2. Get prior game's roster and minutes for each team
@@ -65,21 +65,28 @@ class PlayerFeatureBuilder:
             lambda x: x.shift(1).ewm(span=10, adjust=False).mean()
         ).fillna(0)
         
+        # The roster EWMA runs over the whole history from BPM_HISTORY_START; `seasons` only picks which
+        # games are returned (a different `seasons` must not change any returned value).
+        season_of = df_bpm.drop_duplicates('gameId').set_index('gameId')['seasonYear']
+        grouped['seasonYear'] = grouped['gameId'].map(season_of)
         features = grouped[['gameId', 'teamId', 'roster_bpm', 'roster_bpm_ewma']]
+        if seasons:
+            features = features[grouped['seasonYear'].isin(seasons)]
         
         logging.info(f"Aggregated {len(features)} team-games (leak-free).")
         self._grouped = grouped
         
         return features
 
-    def next_game_roster_features(self, seasons=None):
+    def next_game_roster_features(self, seasons=None, before=None):
         """
         roster_bpm / roster_bpm_ewma for each team's NEXT (unplayed) game, computed exactly as
         build_roster_features computes them for a historical game: the previous game's roster BPM
         and the EWMA (span 10) of roster BPM through the previous game. Use this for live
-        inference so features match training. Returns a DataFrame indexed by teamId.
+        inference so features match training. `before` restricts to games before that date (the
+        features for a past day). Returns a DataFrame indexed by teamId.
         """
-        self.build_roster_features(seasons)
+        self.build_roster_features(seasons, before=before)
         g = self._grouped.sort_values(['teamId', 'gameDate'])
         out = g.groupby('teamId').agg(roster_bpm=('roster_bpm_current', 'last'))
         out['roster_bpm_ewma'] = g.groupby('teamId')['roster_bpm_current'].apply(

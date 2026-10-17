@@ -1,90 +1,138 @@
+"""
+Betting math shared by the live picks, the backtests and the dashboard.
 
+Conventions
+  * American odds in, profit per $100 stake out (calculate_payout); a loss is -100.
+  * Every side is judged against ITS OWN price. The two moneyline prices of a game carry a vig
+    (their implied probabilities sum to > 1), so the away side must never be priced as
+    "1 - home implied": that hands the away bet the overround for free.
+  * One bet-selection rule for all three markets: bet when the model's win probability exceeds the
+    price's break-even probability by more than `threshold` (a probability edge, default 5%).
+    For spreads and totals the win probability is Phi(point edge / residual std), so the rule is
+    expressed in points through points_threshold() when a points view is wanted.
+"""
 import numpy as np
 import pandas as pd
+from scipy.stats import norm
+
+STANDARD_PRICE = -110            # spread / total price when the real one is unknown
+DEFAULT_PROB_EDGE = 0.05
+# Out-of-sample residual std of the spread / total models (points); live and backtests read the
+# value saved with each model set (calibration_meta*.json) and fall back to these.
+DEFAULT_SPREAD_STD = 13.4
+DEFAULT_TOTAL_STD = 18.2
+
 
 def calculate_implied_prob(american_odds):
-    """
-    Calculates implied probability from American odds.
-    Negative odds: -odds / (-odds + 100)
-    Positive odds: 100 / (odds + 100)
-    """
+    """Break-even probability of an American price (vig included)."""
     if pd.isna(american_odds):
         return np.nan
-    
+
     if american_odds > 0:
         return 100 / (american_odds + 100)
     else:
         return -american_odds / (-american_odds + 100)
 
+
 def calculate_payout(american_odds, stake=100):
-    """Calculates profit from American odds."""
+    """Profit on a winning bet at American odds."""
     if pd.isna(american_odds):
         return np.nan
-        
+
     if american_odds > 0:
         return stake * (american_odds / 100)
     else:
         return stake * (100 / -american_odds)
 
+
 def calculate_bet_ev(model_prob, american_odds):
     """
-    Calculate expected value of a $1 bet.
-    EV = P(win) * payout - P(lose) * stake
-    Stake is assumed to be 1.
+    Expected value of a $1 bet: P(win) * payout - P(lose) * stake.
     """
     if pd.isna(model_prob) or pd.isna(american_odds):
         return np.nan
-        
-    if american_odds > 0:
-        payout = american_odds / 100
-    else:
-        payout = 100 / abs(american_odds)
-    
-    # EV = P(win) * payout - P(lose) * stake
-    # stake = 1
-    return model_prob * payout - (1 - model_prob)  # * 1
 
-def get_ml_bet(row, threshold=0.05):
+    return model_prob * calculate_payout(american_odds, stake=1) - (1 - model_prob)
+
+
+def settle_bet(american_odds, won, stake=100):
+    """Profit of a settled bet: the payout at the bet's OWN odds if it won, -stake if it lost."""
+    return calculate_payout(american_odds, stake) if won else -stake
+
+
+# ----------------------------------------------------------------------------------------------
+# Moneyline
+
+def ml_side_edges(home_win_prob, home_ml_odds, away_ml_odds):
+    """(home_edge, away_edge): model probability minus each side's own break-even probability."""
+    home_edge = home_win_prob - calculate_implied_prob(home_ml_odds)
+    away_edge = (1.0 - home_win_prob) - calculate_implied_prob(away_ml_odds)
+    return home_edge, away_edge
+
+
+def get_ml_bet(row, threshold=DEFAULT_PROB_EDGE):
     """
-    Determine ML bet based on edge over market.
-    Requires: 'ml_prob', 'odds_home_ml' (or market_prob pre-calculated)
-    
-    The user snippet uses row['market_prob']. 
-    We will try to use that if present, otherwise calculate it from odds.
-    
-    Returns: ('home', edge) or ('away', edge) or (None, edge)
+    Moneyline bet for one game from 'ml_prob' (model P(home wins)), 'odds_home_ml' and
+    'odds_away_ml'. Each side is compared with its own price; the side with the larger edge is
+    bet if that edge exceeds `threshold`.
+
+    Returns ('home' | 'away' | None, edge of the best side). Without both prices there is no bet
+    (the away price is never inferred from the home price).
     """
-    
-    # Get model probability for home win
     model_prob = row.get('ml_prob')
-    if pd.isna(model_prob):
+    home_odds, away_odds = row.get('odds_home_ml'), row.get('odds_away_ml')
+    if pd.isna(model_prob) or pd.isna(home_odds) or pd.isna(away_odds):
         return None, 0.0
-        
-    # Get market probability (implied from odds)
-    market_prob = row.get('market_prob')
-    if pd.isna(market_prob):
-        # Try to calculate from odds_home_ml
-        # We need the "Fair" market prob, but usually we just use the vig-inclusive implied odds
-        # or we remove vig. 
-        # The user's query implies comparing against "market_prob". 
-        # Let's assume we use the implied prob from the Home Odds.
-        odds = row.get('odds_home_ml')
-        if pd.notna(odds):
-            market_prob = calculate_implied_prob(odds)
-        else:
-            return None, 0.0
 
-    # Calculate Edge
-    # Edge = Model_Home_Prob - Market_Home_Prob
-    edge = model_prob - market_prob
-    
-    if edge > threshold:
-        return 'home', edge
-    elif edge < -threshold:
-        return 'away', abs(edge) # Edge for away is (1-model) - (1-market) = -edge?
-        # Proof:
-        # Home Edge = P_h - M_h
-        # Away Edge = P_a - M_a = (1 - P_h) - (1 - M_h) = -P_h + M_h = -(P_h - M_h) = -Home Edge
-        # So if Home Edge is -0.10 (favored away), Away Edge is +0.10.
+    home_edge, away_edge = ml_side_edges(model_prob, home_odds, away_odds)
+    if home_edge >= away_edge:
+        side, edge = 'home', home_edge
     else:
+        side, edge = 'away', away_edge
+    return (side, edge) if edge > threshold else (None, edge)
+
+
+# ----------------------------------------------------------------------------------------------
+# Spread / total: probability edge from a point edge
+
+def cover_probability(point_edge, std):
+    """P(a bet with `point_edge` points of model edge wins), Normal residual with std `std`."""
+    return norm.cdf(point_edge / std)
+
+
+def points_threshold(std, prob_edge=DEFAULT_PROB_EDGE, price=STANDARD_PRICE):
+    """Point edge at which P(win) - break_even(price) == prob_edge."""
+    return std * norm.ppf(calculate_implied_prob(price) + prob_edge)
+
+
+def implied_prob_edge(point_edge, std, price=STANDARD_PRICE):
+    """The probability edge a given point edge represents (negative = losing bet even if the model is right)."""
+    return cover_probability(point_edge, std) - calculate_implied_prob(price)
+
+
+def get_spread_bet(spread_pred, home_line, std=DEFAULT_SPREAD_STD, threshold=DEFAULT_PROB_EDGE,
+                   price=STANDARD_PRICE):
+    """
+    spread_pred: model's predicted home margin; home_line: the home spread (-3.5 = home favored).
+    Home covers when margin + line > 0, so the model's point edge on home is spread_pred + home_line.
+    Returns ('home' | 'away' | None, probability edge of the better side).
+    """
+    if pd.isna(spread_pred) or pd.isna(home_line):
+        return None, 0.0
+    point_edge = spread_pred + home_line
+    edge = implied_prob_edge(abs(point_edge), std, price)
+    if edge <= threshold:
         return None, edge
+    return ('home' if point_edge > 0 else 'away'), edge
+
+
+def get_total_bet(total_pred, total_line, std=DEFAULT_TOTAL_STD, threshold=DEFAULT_PROB_EDGE,
+                  price=STANDARD_PRICE):
+    """Returns ('over' | 'under' | None, probability edge of the better side)."""
+    if pd.isna(total_pred) or pd.isna(total_line):
+        return None, 0.0
+    point_edge = total_pred - total_line
+    edge = implied_prob_edge(abs(point_edge), std, price)
+    if edge <= threshold:
+        return None, edge
+    return ('over' if point_edge > 0 else 'under'), edge

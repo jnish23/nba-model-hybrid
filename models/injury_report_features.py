@@ -36,6 +36,16 @@ def _norm(s):
     return re.sub(r'[^a-z]', '', s.lower())
 
 
+def map_unique(series, func):
+    """series.map(func), but func runs once per distinct value (the 750k injury-report rows carry only a
+    few thousand distinct names / files). NaN maps to NaN, as func(NaN) does for every use here."""
+    codes, uniques = pd.factorize(series)
+    mapped = pd.Series(uniques).map(func)
+    out = mapped.reindex(codes)               # code -1 (NaN input) is not in the index -> NaN
+    out.index = series.index
+    return out
+
+
 def report_name_key(name):
     """'Williams III, Robert' / 'SamuelsJr.,Jermaine' -> 'robertwilliamsiii' / 'jermainesamuelsjr'."""
     if not isinstance(name, str):
@@ -91,6 +101,27 @@ def parse_all_reports(report_dir=REPORT_DIR, cache=PARSED_CACHE):
     return out
 
 
+MAX_REPORT_AGE_HOURS = 6.0
+
+
+def check_report_freshness(reports, game_date, cutoff, max_age_hours=MAX_REPORT_AGE_HOURS):
+    """
+    How stale is the newest injury report that covers `game_date`, as of `cutoff` (US/Eastern)?
+    Returns (latest report_ts or None, age in hours or None, stale: bool). stale = no report at all
+    for that date, or the newest one was published more than `max_age_hours` before the cutoff.
+    parse_all_reports() only sees PDFs already on disk, so when the live download fails (network, site
+    change) the features silently come from an older report or from none; this makes that visible.
+    """
+    day = reports[pd.to_datetime(reports['game_date']).dt.normalize() == pd.Timestamp(game_date).normalize()]
+    ts = pd.to_datetime(day['report_ts'])
+    ts = ts[ts <= pd.Timestamp(cutoff)]
+    if ts.empty:
+        return None, None, True
+    latest = ts.max()
+    age = (pd.Timestamp(cutoff) - latest) / pd.Timedelta(hours=1)
+    return latest, float(age), bool(age > max_age_hours)
+
+
 # ---------------------------------------------------------------- 2. link
 
 def _team_lookup(conn):
@@ -124,7 +155,7 @@ def link_reports(reports, db_path, upcoming=None):
     games['gameDate'] = pd.to_datetime(games['gameDate']).dt.strftime('%Y-%m-%d')
 
     r = reports.copy()
-    r['teamId'] = r['team'].map(lambda t: team_lookup.get(_norm(t)))
+    r['teamId'] = map_unique(r['team'], lambda t: team_lookup.get(_norm(t)))
 
     # Team cells sometimes wrap ("Minnesota" / "Timberwolves" on separate lines). Resolve leftovers
     # against the two teams in the row's matchup: the one whose full name contains the fragment.
@@ -160,9 +191,9 @@ def link_reports(reports, db_path, upcoming=None):
     #  2. exact key anywhere in the database (player identity only, no outcome information)
     #  3. fuzzy match among the team's earlier appearances this season, only if the key is unknown
     #     everywhere (fuzzy matching a known name once mapped Jalen Williams to Jaylin Williams)
-    players['key'] = players['playerName'].map(db_name_key)
+    players['key'] = map_unique(players['playerName'], db_name_key)
     players['first_date'] = pd.to_datetime(players['first_date'])
-    r['key'] = r['player'].map(report_name_key)
+    r['key'] = map_unique(r['player'], report_name_key)
     first_app = players.sort_values('first_date').groupby(['key', 'teamId', 'seasonYear'])[['personId', 'first_date']].first()
     hit = first_app.reindex(pd.MultiIndex.from_frame(r[['key', 'teamId', 'seasonYear']]))
     prior = hit['first_date'].values < r['game_date'].values
@@ -352,13 +383,14 @@ def build_injury_features(db_path, seasons, snapshot_name='game_day_noon', as_of
     snapshot_name: key of SNAPSHOT_CUTOFFS. as_of: optional timestamp; the cutoff becomes
     min(snapshot cutoff, as_of) - for live use, as_of = now.
     P(play | status) for a season is estimated from report rows of earlier seasons only
-    (the earliest season, which has none, uses the later ones).
+    (the earliest season, which has none, uses STATUS_PRIOR - never later data).
     """
     reports = parse_all_reports(report_dir=Path('nonexistent')) if reports is None else reports
     if as_of is None:
         # Training: only reports on the fixed download grid, so the result does not depend on
         # which extra files live runs happened to save (reproducible retraining).
-        reports = reports[reports['source_file'].map(report_slot).isin(GRID_SLOTS)]
+        on_grid = {f: report_slot(f) in GRID_SLOTS for f in reports['source_file'].unique()}
+        reports = reports[reports['source_file'].map(on_grid).astype(bool)]
     linked = link_reports(reports, db_path, upcoming=upcoming)
     schedule = load_schedule(db_path, upcoming=upcoming)
     from models.availability_features import build_player_game_candidates
@@ -410,10 +442,17 @@ def build_injury_features(db_path, seasons, snapshot_name='game_day_noon', as_of
 STATUS_RATES_PATH = Path('models/saved/injury_status_play_rates.json')
 
 
+# P(play | status) used for the first season, which has no earlier data to estimate from (it used to
+# borrow the pooled rates of all LATER seasons, i.e. the future). These are the conventional meanings
+# of the NBA report categories (Out ~0, Doubtful ~25%, Questionable ~50%, Probable ~75%, Available ~100%);
+# n=0 marks them as a prior, not an estimate.
+STATUS_PRIOR = {'Out': 0.0, 'Doubtful': 0.25, 'Questionable': 0.50, 'Probable': 0.75, 'Available': 1.0}
+
+
 def compute_status_play_rates(db_path, reports=None, snapshot_name='tip_minus_30m'):
     """
     P(played | status) per season, estimated from EARLIER seasons only (the first season, which
-    has no earlier data, uses all later ones), plus 'all' = every season pooled (used for seasons
+    has no earlier data, uses STATUS_PRIOR), plus 'all' = every season pooled (used for seasons
     after the data, i.e. live). Saved to STATUS_RATES_PATH. Rates come from the latest report
     before tip, where a status is closest to the final decision.
     """
@@ -431,7 +470,9 @@ def compute_status_play_rates(db_path, reports=None, snapshot_name='tip_minus_30
         g = df.groupby(level=0)[['played', 'size']].sum()
         return {st: {'p_play': float(r.played / r['size']), 'n': int(r['size'])} for st, r in g.iterrows()}
 
-    table = {s: pooled([k for k in seasons if k < s] or [k for k in seasons if k != s]) for s in seasons}
+    table = {s: pooled([k for k in seasons if k < s]) if any(k < s for k in seasons)
+             else {st: {'p_play': p, 'n': 0} for st, p in STATUS_PRIOR.items()}
+             for s in seasons}
     table['all'] = pooled(seasons)
     STATUS_RATES_PATH.parent.mkdir(parents=True, exist_ok=True)
     STATUS_RATES_PATH.write_text(json.dumps(table, indent=2))
@@ -457,7 +498,7 @@ def rates_for_season(table, season):
 
 
 def add_injury_features(game_df, inj):
-    """Attach *_home / *_away / diff_* injury columns to a one-row-per-game frame."""
+    """Attach *_home / *_away injury columns to a one-row-per-game frame."""
     g = game_df.copy()
     g['_gid'] = g['gameId'].astype(str).str.zfill(10)
     inj = inj.copy()
@@ -469,7 +510,6 @@ def add_injury_features(game_df, inj):
         side_df[tid] = side_df[tid].astype('int64')
         g[tid] = g[tid].astype('int64')
         g = g.merge(side_df, on=['_gid', tid], how='left')
-    g = g.drop(columns='_gid')
-    for c in ('inj_lost', 'inj_lost_new', 'inj_n_out'):
-        g[f'diff_{c}'] = g[f'{c}_home'] - g[f'{c}_away']
-    return g
+    # diff_inj_* are created with every other home/away difference by
+    # GameFeatureBuilder.add_derived_features (call this BEFORE that step).
+    return g.drop(columns='_gid')

@@ -3,6 +3,8 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 
+from models.betting import points_threshold, DEFAULT_SPREAD_STD, DEFAULT_TOTAL_STD, DEFAULT_PROB_EDGE
+
 class BettingSimulator:
     def __init__(self, predictions_path):
         self.df = pd.read_csv(predictions_path)
@@ -65,11 +67,14 @@ class BettingSimulator:
         
         return pd.DataFrame(results)
 
-    def simulate_spread(self, threshold=1.0, flat_stake=100):
+    def simulate_spread(self, threshold=None, flat_stake=100):
         """
-        Bet on the spread if the predicted margin differs from the line by > threshold.
-        Assume standard -110 odds if prices are unavailable.
+        Bet on the spread if the predicted margin differs from the line by > threshold (points).
+        threshold=None uses the shared rule's equivalent: the point edge at which P(cover) beats the
+        -110 break-even by DEFAULT_PROB_EDGE (models/betting.py). Assumes standard -110 odds.
         """
+        if threshold is None:
+            threshold = points_threshold(DEFAULT_SPREAD_STD, DEFAULT_PROB_EDGE)
         results = []
         # Standard -110 price payout multiplier (Profit / Stake)
         standard_payout_mult = 100 / 110 
@@ -152,11 +157,13 @@ class BettingSimulator:
                     
         return pd.DataFrame(results)
 
-    def simulate_total(self, threshold=1.0, flat_stake=100):
+    def simulate_total(self, threshold=None, flat_stake=100):
         """
-        Bet Over/Under if predicted total differs from line by > threshold.
-        Assume -110 odds.
+        Bet Over/Under if predicted total differs from line by > threshold (points).
+        threshold=None uses the shared rule's equivalent (see simulate_spread). Assumes -110 odds.
         """
+        if threshold is None:
+            threshold = points_threshold(DEFAULT_TOTAL_STD, DEFAULT_PROB_EDGE)
         results = []
         standard_payout_mult = 100 / 110
         
@@ -285,10 +292,12 @@ class BettingSimulator:
                 return -odds / (-odds + 100)
         
         df['market_prob'] = df['odds_home_ml'].apply(implied_prob)
-        df = df.dropna(subset=['market_prob', 'ml_prob', 'ml_actual'])
+        df['market_prob_away'] = df['odds_away_ml'].apply(implied_prob)
+        df = df.dropna(subset=['market_prob', 'market_prob_away', 'ml_prob', 'ml_actual'])
         
+        # Each side against its OWN price (1 - home implied would credit the away bet with the vig)
         df['model_edge_home'] = df['ml_prob'] - df['market_prob']
-        df['model_edge_away'] = (1 - df['ml_prob']) - (1 - df['market_prob'])
+        df['model_edge_away'] = (1 - df['ml_prob']) - df['market_prob_away']
         
         print("="*60)
         print("MONEYLINE DIAGNOSTIC")
@@ -318,7 +327,7 @@ class BettingSimulator:
         if len(away_bets) > 0:
             away_wr = 1 - away_bets['ml_actual'].mean()  # Away win rate
             away_model_avg = 1 - away_bets['ml_prob'].mean()
-            away_market_avg = 1 - away_bets['market_prob'].mean()
+            away_market_avg = away_bets['market_prob_away'].mean()
             print(f"\nAWAY BETS ({len(away_bets)} bets):")
             print(f"  Win rate: {away_wr:.1%}")
             print(f"  Model predicted: {away_model_avg:.1%}")
@@ -326,7 +335,7 @@ class BettingSimulator:
             print(f"  Model overconfident by: {away_model_avg - away_wr:.1%}")
             
             # Break down by market probability
-            away_bets['away_is_favorite'] = away_bets['market_prob'] < 0.5
+            away_bets['away_is_favorite'] = away_bets['market_prob_away'] > 0.5
             print("\n  By favorite status:")
             for fav, group in away_bets.groupby('away_is_favorite'):
                 label = "Favorites" if fav else "Underdogs"

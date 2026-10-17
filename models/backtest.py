@@ -3,7 +3,6 @@ import pandas as pd
 import numpy as np
 import logging
 import matplotlib.pyplot as plt
-import seaborn as sns
 from sklearn.calibration import calibration_curve
 from sklearn.metrics import brier_score_loss
 

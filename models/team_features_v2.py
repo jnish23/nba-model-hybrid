@@ -7,9 +7,137 @@ from models.season_utils import season_for_date
 import random
 from datetime import timedelta
 
+
+OPP_STATS = ['FGM', 'FGA', 'FG_PCT', 'FG3M', 'FG3A', 'FG3_PCT',
+             'FTM', 'FTA', 'FT_PCT', 'OREB', 'DREB', 'REB',
+             'AST', 'TOV', 'STL', 'BLK', 'PTS']
+
+
+# ---- Win/loss momentum: ONE implementation shared by the batch build (build_entire_history)
+# and live inference (TeamFeatureBuilder.build_features). Each function takes one team's
+# results in game order and returns, for every row, the value known BEFORE that game
+# (shift(1)); live inference appends a NaN row for the unplayed game and reads the last value.
+
+def win_pct_last10(win: pd.Series) -> pd.Series:
+    """Share of wins in the previous 10 games (needs at least 3)."""
+    return win.shift(1).rolling(10, min_periods=3).mean()
+
+
+def win_streak(win: pd.Series) -> pd.Series:
+    """Win (+n) / loss (-n) streak entering each game; 0 before the first game.
+
+    Vectorized: the length of the current run of identical results (run-length encoding of the shifted
+    series), signed by its result. Equal to the original row-by-row loop (see tests/test_vectorized.py)."""
+    s = win.shift(1)
+    known = s.notna()
+    if known.sum() and not known.iloc[known.to_numpy().argmax():].all():
+        # a NaN inside the series (not just the leading one) - keep the loop semantics exactly
+        return _win_streak_loop(win)
+    run_id = (s != s.shift()).cumsum()
+    length = s.groupby(run_id).cumcount() + 1
+    streak = length * np.where(s == 1, 1, -1)
+    return pd.Series(np.where(known, streak, 0), index=win.index)
+
+
+def _win_streak_loop(win: pd.Series) -> pd.Series:
+    """Reference implementation (and fallback for series with interior NaNs)."""
+    s = win.shift(1)
+    streaks = []
+    current = 0
+    for val in s:
+        if pd.isna(val):
+            streaks.append(0)
+            continue
+        if val == 1:
+            current = max(1, current + 1) if current > 0 else 1
+        else:
+            current = min(-1, current - 1) if current < 0 else -1
+        streaks.append(current)
+    return pd.Series(streaks, index=win.index)
+
+
+def home_win_pct_20g(home_win: pd.Series, is_home: pd.Series) -> pd.Series:
+    """Win rate in home games among the previous 20 games (needs at least 5 games)."""
+    return (home_win.shift(1).rolling(20, min_periods=5).sum() /
+            is_home.shift(1).rolling(20, min_periods=5).sum())
+
+
+def home_win_pct_20g_by_team(home_win: pd.Series, is_home: pd.Series, team: pd.Series) -> pd.Series:
+    """home_win_pct_20g for a frame holding many teams (rows in game order within each team)."""
+    hw = home_win.groupby(team).shift(1)
+    ih = is_home.groupby(team).shift(1)
+    wins = hw.groupby(team).rolling(20, min_periods=5).sum().reset_index(level=0, drop=True).reindex(hw.index)
+    games = ih.groupby(team).rolling(20, min_periods=5).sum().reset_index(level=0, drop=True).reindex(ih.index)
+    return wins / games
+
+
+def is_home_game(matchup: pd.Series) -> pd.Series:
+    return matchup.str.contains('vs.', na=False).astype(int)
+
+
+def normalize_result_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """team_game_full stores WL / MATCHUP upper-case. The momentum code looks for 'wl' / 'matchup',
+    so without this rename those features were silently never built (in training or live)."""
+    return df.rename(columns={c: c.lower() for c in ('WL', 'MATCHUP') if c in df.columns and c.lower() not in df.columns})
+
+
+
+def ewma_pre_game(values, seasons, span, carryover=1.0, season_means=None):
+    """
+    Exponentially weighted mean of a team's PAST games for every game (what `ewm(span).mean().shift(1)`
+    gives), optionally regressing it toward the league mean when a new season starts.
+
+    carryover = 1.0 reproduces the plain EWMA that runs straight across seasons. With carryover k < 1,
+    the first game of a new season sees  k * EWMA_end_of_last_season + (1 - k) * league_mean_of_last_season
+    (the weight of the history is unchanged; only its mean is shrunk, once per season boundary).
+    `season_means` maps season -> league mean of this stat in that season (known once it is over).
+    """
+    alpha = 2.0 / (span + 1.0)
+    decay = 1.0 - alpha
+    out = np.full(len(values), np.nan)
+    num = den = 0.0
+    prev_season = None
+    for i, (x, season) in enumerate(zip(values, seasons)):
+        if prev_season is not None and season != prev_season and carryover < 1.0 and den > 0:
+            mu = season_means.get(prev_season, np.nan) if season_means else np.nan
+            if not np.isnan(mu):
+                num = carryover * num + (1.0 - carryover) * mu * den
+        out[i] = num / den if den > 0 else np.nan
+        num *= decay
+        den *= decay
+        if not np.isnan(x):
+            num += x
+            den += 1.0
+        prev_season = season
+    return out
+
+
+
+def games_in_previous_7_days(team_ids, game_dates):
+    """Number of the team's games in [date - 7 days, date) for every row (same definition as
+    groupby.rolling('7D', closed='left').count()); rows may be in any order."""
+    team_ids = pd.Series(np.asarray(team_ids))
+    dates = pd.Series(pd.to_datetime(np.asarray(game_dates)))
+    out = np.zeros(len(dates))
+    for _, idx in team_ids.groupby(team_ids).groups.items():
+        d = dates.loc[idx].to_numpy()
+        order = np.argsort(d, kind='stable')
+        ds = d[order]
+        before_today = np.searchsorted(ds, ds, side='left')
+        in_window = np.searchsorted(ds, ds - np.timedelta64(7, 'D'), side='left')
+        counts = np.empty(len(ds))
+        counts[order] = before_today - in_window
+        out[np.asarray(list(idx))] = counts
+    return out
+
+
 class TeamFeatureBuilder:
-    def __init__(self, db_path):
+    def __init__(self, db_path, season_carryover=1.0):
+        """season_carryover < 1 is an EXPERIMENT (batch build only): shrink each team's EWMA features
+        toward the league mean when a new season starts. 1.0 (default) = the production behaviour,
+        EWMAs that run unchanged across the offseason."""
         self.db_path = db_path
+        self.season_carryover = season_carryover
         self.feature_categories = {
              'team_offense': [
                 # Efficiency (don't include made + attempted + pct — just pct and volume)
@@ -52,9 +180,12 @@ class TeamFeatureBuilder:
                 logging.warning(f"Could not build team map: {e}")
                 return {}
 
-    def get_latest_team_features(self, date=None):
+    def get_latest_team_features(self, date=None, game_ids=None):
         """
-        Get the most recent feature vector for ALL teams as of 'date'.
+        Feature vector for every team as of 'date' (history strictly before it).
+
+        game_ids: optional {teamId: gameId} of the games being predicted (sets is_playoff from the
+        NBA game id, as the batch build does).
         """
         if date is None:
             # Usage: Date for "today's" prediction (features from history before today)
@@ -63,66 +194,62 @@ class TeamFeatureBuilder:
             
         logging.info(f"Building latest team features as of {date}...")
         
-        # Get all team IDs
+        # One query for all teams (was one per team), then split in memory
         with sqlite3.connect(self.db_path) as conn:
-             ids = pd.read_sql("SELECT DISTINCT teamId FROM team_game_full", conn)['teamId'].tolist()
-             
-        # Build for each
-        # This might call DB 30 times. It's acceptable for live inference (few seconds).
-        # We could optimize by batch fetching history for all teams then splitting, but simpler to reuse logic.
-        
+            history = pd.read_sql(
+                "SELECT * FROM team_game_full WHERE gameDate < ? ORDER BY teamId, gameDate ASC",
+                conn, params=[str(date)])
+        season = season_for_date(date)
+        game_ids = game_ids or {}
         features_map = {}
-        for tid in ids:
-            feats = self.build_features(tid, date, season_for_date(date))
+        for tid, df_team in history.groupby('teamId'):
+            feats = self._features_from_history(df_team.reset_index(drop=True), tid, date, season,
+                                                game_ids.get(tid))
             if feats:
                 features_map[tid] = feats
-                
         return features_map
 
-    def build_features(self, team_id: int, game_date: str, season: str) -> dict:
-        features = {}
-        
+    def build_features(self, team_id: int, game_date: str, season: str, game_id: str = None) -> dict:
         with sqlite3.connect(self.db_path) as conn:
             # Query history before game_date
-            query = f"""
-            SELECT *, case when gameId like '004%' then 1 else 0 end as is_playoff 
-            FROM team_game_full 
-            WHERE teamId = {team_id} 
-            AND gameDate < '{game_date}'
-            ORDER BY gameDate ASC
-            """
-            df_history = pd.read_sql(query, conn)
-            
-        # Opponent totals: team_game_full has exact OPP_<stat> columns (from the opponent's box
-        # score). Only fall back to the positional C/F/G columns for an old table without them -
-        # those buckets overlap and overstate totals by ~23% (see update_database.rebuild_team_game_full).
-        for stat in ['FGM', 'FGA', 'FG_PCT', 'FG3M', 'FG3A', 'FG3_PCT', 
-                     'FTM', 'FTA', 'FT_PCT', 'OREB', 'DREB', 'REB',
-                     'AST', 'TOV', 'STL', 'BLK', 'PTS']:
-            if f'OPP_{stat}' in df_history.columns:
-                continue
-            pos_cols = [f'OPP_{stat}_{p}' for p in ['C', 'F', 'G']]
-            existing = [c for c in pos_cols if c in df_history.columns]
-            if existing:
-                if 'PCT' in stat:
-                    df_history[f'OPP_{stat}'] = df_history[existing].mean(axis=1)
-                else:
-                    df_history[f'OPP_{stat}'] = df_history[existing].sum(axis=1)
-        
+            df_history = pd.read_sql(
+                "SELECT * FROM team_game_full WHERE teamId = ? AND gameDate < ? ORDER BY gameDate ASC",
+                conn, params=[int(team_id), str(game_date)])
+        return self._features_from_history(df_history, team_id, game_date, season, game_id)
+
+    def _features_from_history(self, df_history: pd.DataFrame, team_id, game_date, season, game_id=None) -> dict:
+        """Features for one team's next game from its game log (rows before game_date, oldest first)."""
+        features = {}
+        df_history = self._with_opponent_totals(normalize_result_columns(df_history))
+
         if df_history.empty:
             logging.warning(f"No history found for team {team_id} before {game_date}")
             return {} # Or return NaNs? Return empty dict will likely be handled downstream
-            
+
         features.update(self._offensive_features(df_history))
         features.update(self._defensive_features(df_history))
-        features.update(self._rest_features(team_id, game_date, conn)) # Pass conn for fresh query
-        
-        # Additional placeholders for requested groups
-        # (Opponent strength needs opponent ID which isn't passed here, 
-        # usually handled by merging feature vectors of both teams)
-        features.update(self._contextual_features(df_history, game_date, season))
-        
+        features.update(self._momentum_features(df_history))
+        features.update(self._rest_features(df_history, game_date))
+        features.update(self._contextual_features(df_history, game_date, season, game_id))
         return features
+
+    def _with_opponent_totals(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Check that team_game_full carries the exact OPP_<stat> opponent box-score totals.
+
+        There is deliberately no fallback to the positional OPP_<stat>_<C|F|G> columns: those
+        buckets overlap (hybrid positions fall in more than one), so their sum overstates every
+        opponent total by ~22%. A table without the exact columns must be rebuilt with
+        NBADatabaseSync.rebuild_team_game_full() (scripts/create_team_full_table.py does).
+        """
+        if df.empty:
+            return df
+        missing = [f'OPP_{stat}' for stat in OPP_STATS if f'OPP_{stat}' not in df.columns]
+        if missing:
+            raise ValueError(
+                f"team_game_full has no exact opponent columns ({missing[:3]}...). Rebuild it with "
+                f"scripts/create_team_full_table.py (NBADatabaseSync.rebuild_team_game_full); the "
+                f"positional C/F/G columns cannot be summed into opponent totals.")
+        return df
 
     def _calculate_ewma(self, df: pd.DataFrame, columns: list, prefix: str) -> dict:
         feats = {}
@@ -151,70 +278,75 @@ class TeamFeatureBuilder:
     def _defensive_features(self, df: pd.DataFrame) -> dict:
         return self._calculate_ewma(df, self.feature_categories['team_defense'], 'def')
 
-    def _rest_features(self, team_id, game_date, conn=None) -> dict:
-        # Need to query gameDate including current game to know days rest?
-        # User said "Queries games before game_date only".
-        # So we check the LAST game date in history.
+    def _momentum_features(self, df: pd.DataFrame) -> dict:
+        """win_pct_last10, win_streak, home_win_pct_20g for the NEXT game: the batch functions
+        applied to the game log plus one unplayed (NaN) row, reading the last value."""
         feats = {}
-        
-        # We need a connection if not provided?
-        local_conn = False
-        if conn is None:
-            conn = sqlite3.connect(self.db_path)
-            local_conn = True
-            
-        try:
-             # Get the last game date before current
-             last_game_query = f"""
-             SELECT MAX(gameDate) as last_date 
-             FROM team_game_full 
-             WHERE teamId = {team_id} AND gameDate < '{game_date}'
-             """
-             last_date_str = pd.read_sql(last_game_query, conn)['last_date'][0]
-             
-             if not last_date_str:
-                 feats['days_rest'] = 7 # Default long rest
-             else:
-                 current_dt = pd.to_datetime(game_date)
-                 last_dt = pd.to_datetime(last_date_str)
-                 feats['days_rest'] = (current_dt - last_dt).days
-                 feats['days_rest'] =int(np.where(feats['days_rest'] > 7, 7, feats['days_rest']))
-                 
-             feats['is_b2b'] = 1 if feats.get('days_rest', 10) == 1 else 0
-             
-             # Calculate 3-in-4, 4-in-5
-             # Need last 5 games dates
-             dates_query = f"""
-             SELECT gameDate FROM team_game_full
-             WHERE teamId = {team_id} AND gameDate < '{game_date}'
-             ORDER BY gameDate DESC
-             LIMIT 5
-             """
-             dates = pd.read_sql(dates_query, conn)['gameDate'].tolist()
-             dates = [pd.to_datetime(d) for d in dates]
-             
-             feats['games_last_7d'] = sum(1 for d in dates if (pd.to_datetime(game_date) - d).days <= 7)
-             
-        finally:
-            if local_conn:
-                conn.close()
-                
+        if 'wl' not in df.columns:
+            return feats
+        nan_row = pd.Series([np.nan])
+        win = pd.concat([(df['wl'] == 'W').astype(int), nan_row], ignore_index=True)
+        feats['win_pct_last10'] = win_pct_last10(win).iloc[-1]
+        feats['win_streak'] = win_streak(win).iloc[-1]
+        if 'matchup' in df.columns:
+            is_home = pd.concat([is_home_game(df['matchup']), nan_row], ignore_index=True)
+            home_win = pd.concat([is_home_game(df['matchup']) * (df['wl'] == 'W').astype(int), nan_row],
+                                 ignore_index=True)
+            feats['home_win_pct_20g'] = home_win_pct_20g(home_win, is_home).iloc[-1]
         return feats
 
-    def _contextual_features(self, df: pd.DataFrame, game_date, season) -> dict:
+    def _rest_features(self, df: pd.DataFrame, game_date) -> dict:
+        """days_rest / is_b2b / games_last_7d exactly as build_entire_history defines them:
+        days since the previous game (7 if none; NOT capped), and games in [date - 7d, date)."""
+        feats = {}
+        current = pd.to_datetime(game_date)
+        dates = pd.to_datetime(df['gameDate'])
+        if dates.empty:
+            days_rest = 7
+        else:
+            days_rest = (current - dates.max()).days
+        feats['days_rest'] = days_rest
+        feats['is_b2b'] = 1 if days_rest == 1 else 0
+        feats['games_last_7d'] = int((dates >= current - pd.Timedelta(days=7)).sum())
+        return feats
+
+    def _contextual_features(self, df: pd.DataFrame, game_date, season, game_id=None) -> dict:
         feats = {}
         # Game number within the season, matching build_entire_history
         if 'seasonYear' in df.columns:
             feats['season_game_number'] = int((df['seasonYear'] == season).sum()) + 1
         else:
             feats['season_game_number'] = len(df) + 1
-        # For inference/simulation, check if 'season' is playoffs?
-        # Or check if game_date > April 15?
-        # Simpler: Check last game nature from df?
-        # For live inference we usually assume Regular Season unless specified.
-        feats['is_playoff'] = 0 
-        
+        # Playoff games carry NBA game ids starting '004' (as in the batch build)
+        feats['is_playoff'] = int(str(game_id)[:3] == '004') if game_id is not None else 0
         return feats
+
+    def _ewma_frames(self, df):
+        """{span: DataFrame of every EWMA source column} = past-games EWMA (ewm().shift(1) per team), computed
+        with one groupby.ewm per span instead of one groupby.transform(lambda) per column and span. Returns
+        None for the carry-over experiment, which uses its own per-team recursion."""
+        if self.season_carryover < 1.0:
+            return None
+        cols = [c for cat in ('team_offense', 'team_defense') for c in self.feature_categories[cat] if c in df.columns]
+        cols = list(dict.fromkeys(cols))
+        frames = {}
+        for span in self.spans:
+            ew = df.groupby('teamId')[cols].ewm(span=span).mean().reset_index(level=0, drop=True).reindex(df.index)
+            frames[span] = ew.groupby(df['teamId']).shift(1)
+        return frames
+
+    def _ewma_feature(self, df, grp, col, span):
+        """Past-games EWMA of `col` per team (the production definition unless season_carryover < 1)."""
+        if self.season_carryover >= 1.0:
+            return grp.transform(lambda x: x.ewm(span=span).mean().shift(1))
+        # Experiment: regress to the league mean at season boundaries. season_means[s] = league mean of
+        # `col` over season s (a finished season only enters the next one, so nothing from the future).
+        season_means = df.groupby('seasonYear')[col].mean().to_dict()
+        out = pd.Series(np.nan, index=df.index)
+        for _, g in df.groupby('teamId'):
+            out.loc[g.index] = ewma_pre_game(g[col].to_numpy(dtype=float), g['seasonYear'].to_numpy(), span,
+                                             self.season_carryover, season_means)
+        return out
 
     def build_entire_history(self) -> pd.DataFrame:
         """
@@ -227,20 +359,7 @@ class TeamFeatureBuilder:
             
         df['gameDate'] = pd.to_datetime(df['gameDate'])
         
-        # Opponent totals: use the exact OPP_<stat> columns in team_game_full; only fall back to
-        # the overlapping positional C/F/G columns for an old table without them (same as build_features)
-        for stat in ['FGM', 'FGA', 'FG_PCT', 'FG3M', 'FG3A', 'FG3_PCT',
-                     'FTM', 'FTA', 'FT_PCT', 'OREB', 'DREB', 'REB',
-                     'AST', 'TOV', 'STL', 'BLK', 'PTS']:
-            if f'OPP_{stat}' in df.columns:
-                continue
-            pos_cols = [f'OPP_{stat}_{p}' for p in ['C', 'F', 'G']]
-            existing = [c for c in pos_cols if c in df.columns]
-            if existing:
-                if 'PCT' in stat:
-                    df[f'OPP_{stat}'] = df[existing].mean(axis=1)
-                else:
-                    df[f'OPP_{stat}'] = df[existing].sum(axis=1)
+        df = self._with_opponent_totals(normalize_result_columns(df))
         
         # 1. EWMA Features
         logging.info("Calculating vectorized EWMA features...")
@@ -248,6 +367,8 @@ class TeamFeatureBuilder:
         # Collect new columns in a dictionary to avoid fragmentation
         new_features = {}
         
+        ewma = self._ewma_frames(df)
+
         # Offense
         for col in self.feature_categories['team_offense']:
             if col not in df.columns: continue
@@ -256,18 +377,14 @@ class TeamFeatureBuilder:
             grp = df.groupby('teamId')[col] 
             for span in self.spans:
                 # shift(1) ensures we strictly use PAST data
-                new_features[f"off_{col}_{span}g"] = grp.transform(
-                    lambda x: x.ewm(span=span).mean().shift(1)
-                )
+                new_features[f"off_{col}_{span}g"] = ewma[span][col] if ewma else self._ewma_feature(df, grp, col, span)
                 
         # Defense
         for col in self.feature_categories['team_defense']:
             if col not in df.columns: continue
             grp = df.groupby('teamId')[col]
             for span in self.spans:
-                 new_features[f"def_{col}_{span}g"] = grp.transform(
-                    lambda x: x.ewm(span=span).mean().shift(1)
-                )
+                 new_features[f"def_{col}_{span}g"] = ewma[span][col] if ewma else self._ewma_feature(df, grp, col, span)
 
         # Trend features
         logging.info("Calculating trend features...")
@@ -285,38 +402,18 @@ class TeamFeatureBuilder:
             df['_win'] = (df['wl'] == 'W').astype(int)
             
             # Last-10 record (shifted to avoid leakage)
-            new_features['win_pct_last10'] = df.groupby('teamId')['_win'].transform(
-                lambda x: x.shift(1).rolling(10, min_periods=3).mean()
-            )
-            
+            new_features['win_pct_last10'] = df.groupby('teamId')['_win'].transform(win_pct_last10)
+
             # Win streak (positive = win streak, negative = loss streak)
-            def streak(series):
-                s = series.shift(1)
-                streaks = []
-                current = 0
-                for val in s:
-                    if pd.isna(val):
-                        streaks.append(0)
-                        continue
-                    if val == 1:
-                        current = max(1, current + 1) if current > 0 else 1
-                    else:
-                        current = min(-1, current - 1) if current < 0 else -1
-                    streaks.append(current)
-                return pd.Series(streaks, index=series.index)
-            
-            new_features['win_streak'] = df.groupby('teamId')['_win'].transform(streak)
+            new_features['win_streak'] = df.groupby('teamId')['_win'].transform(win_streak)
             df.drop(columns=['_win'], inplace=True)
 
         # Home/away historical performance
         if 'matchup' in df.columns:
-            df['_is_home'] = df['matchup'].str.contains('vs.', na=False).astype(int)
+            df['_is_home'] = is_home_game(df['matchup'])
             if 'wl' in df.columns:
                 df['_home_win'] = df['_is_home'] * (df['wl'] == 'W').astype(int)
-                new_features['home_win_pct_20g'] = df.groupby('teamId').apply(
-                    lambda g: g['_home_win'].shift(1).rolling(20, min_periods=5).sum() / 
-                              g['_is_home'].shift(1).rolling(20, min_periods=5).sum()
-                ).reset_index(level=0, drop=True)
+                new_features['home_win_pct_20g'] = home_win_pct_20g_by_team(df['_home_win'], df['_is_home'], df['teamId'])
             df.drop(columns=[c for c in ['_is_home', '_home_win'] if c in df.columns], inplace=True)
 
         # 2. Rest Features
@@ -339,8 +436,12 @@ class TeamFeatureBuilder:
             # Since df is sorted by teamId, gameDate, the row order matches df.
             # We can use .values to bypass index alignment issues.
             new_features['games_last_7d'] = g7.values
-        except:
-             new_features['games_last_7d'] = 3 # Placeholder
+        except (ValueError, KeyError, TypeError) as e:
+            # e.g. a non-monotonic date column. Compute the same count another way instead of filling a
+            # constant (a made-up feature for every row is worse than a failure).
+            logging.error(f"rolling('7D') failed for games_last_7d ({type(e).__name__}: {e}); "
+                          f"using the exact searchsorted count")
+            new_features['games_last_7d'] = games_in_previous_7_days(df['teamId'], df['gameDate'])
         
         # Fill NA for this specific col if needed, though concat handles it mainly
         # new_features['games_last_7d'] = new_features['games_last_7d'].fillna(0) # Do after concat

@@ -18,12 +18,20 @@ logging.basicConfig(
 )
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="Build the point-in-time training set")
+    parser.add_argument('--season-carryover', type=float, default=1.0,
+                        help="EXPERIMENT: shrink team EWMAs toward the league mean at each season start "
+                             "(1.0 = production behaviour). Output goes to a differently named file that "
+                             "latest_training_set() never picks up.")
+    args = parser.parse_args()
     db_path = Path.cwd() / 'data' / 'nba_stats.db'
+
     output_dir = Path.cwd() / 'data' / 'processed'
     output_dir.mkdir(exist_ok=True)
     
     logging.info("Initializing GameFeatureBuilder...")
-    builder = GameFeatureBuilder(db_path)
+    builder = GameFeatureBuilder(db_path, season_carryover=args.season_carryover)
     
     # All seasons in the database from 2013-14 on (new seasons are picked up automatically)
     import sqlite3
@@ -37,11 +45,14 @@ def main():
     
     # Save to CSV
     today = date.today()
-    output_path = output_dir / f'training_set_v1_reduced_{today}.csv'
+    tag = '' if args.season_carryover >= 1.0 else f'_carryover{args.season_carryover:g}'
+    output_path = output_dir / f'training_set_v1_reduced_{today}{tag}.csv'
+
     df.to_csv(output_path, index=False)
     
-    logging.info(f"Training set saved to {output_path}")
-    print(f"Final Odds Coverage: {df['odds_home_ml'].notna().mean():.2%}")
+    ml_cov = df['odds_home_ml'].notna().mean() if 'odds_home_ml' in df.columns else 0
+    spread_cov = df['odds_home_spread'].notna().mean() if 'odds_home_spread' in df.columns else 0
+    logging.info(f"Final Odds Coverage -> Spread: {spread_cov:.2%}, Moneyline: {ml_cov:.2%}")
     logging.info(f"Shape: {df.shape}")
     logging.info(f"Columns: {list(df.columns)[:20]} ...")
 

@@ -4,6 +4,11 @@ import numpy as np
 import sqlite3
 import logging
 
+# First season of player history used for every BPM value (cumulative minutes, EWMA and the league mean
+# all start here). Fixed so training, live inference and the injury features agree.
+BPM_HISTORY_START = '2013-14'
+
+
 class BPMBuilder:
     """
     Calculates Box Plus/Minus (BPM) 2.0 using official coefficients.
@@ -30,27 +35,45 @@ class BPMBuilder:
             'fta': (-0.246, -0.343)
         }
         
-    def load_data(self, seasons=None):
+    def load_data(self, seasons=None, before=None):
+        """Load player box scores.
+
+        History always starts at BPM_HISTORY_START and runs to the latest requested season, whatever
+        `seasons` says: a player's BPM depends on his cumulative minutes (reliability weight), his
+        40-game EWMA and the trailing league mean, so the same game got different values depending
+        on which season the load happened to start at (2013-14 for the training set, 2019-20 for the
+        injury features, a handful of seasons in ad-hoc runs). Callers pick the rows they need from
+        the result.
+
+        `before` (YYYY-MM-DD) keeps only games strictly before that date (point-in-time features
+        for a given day; every value is built from earlier games only, so cutting the data changes
+        nothing about the rows that remain).
+        """
+        cols = [
+            'gameId', 'teamId', 'personId', 'playerName', 'gameDate', 'seasonYear',
+            'minutes', 'fieldGoalsMade', 'fieldGoalsAttempted',
+            'threePointersMade', 'threePointersAttempted', 'freeThrowsMade', 'freeThrowsAttempted',
+            'offensiveRebounds', 'defensiveRebounds', 'assists', 'steals', 'blocks',
+            'turnovers', 'personalFouls', 'points'
+        ]
         with sqlite3.connect(self.db_path) as conn:
-            query = "SELECT * FROM player_basic_stats"
+            query = f"SELECT {', '.join(cols)} FROM player_basic_stats"
+            where, params = [], []
             if seasons:
-                query += f" WHERE seasonYear IN ({','.join(repr(s) for s in seasons)})"
-            self.df_stats = pd.read_sql(query, conn)
+                db_seasons = [r[0] for r in conn.execute("SELECT DISTINCT seasonYear FROM player_basic_stats")]
+                last = max(seasons)
+                history = sorted(x for x in set(db_seasons) | set(seasons) if BPM_HISTORY_START <= x <= last)
+                where.append(f"seasonYear IN ({','.join('?' * len(history))})")
+                params += history
+            if before is not None:
+                where.append("gameDate < ?")
+                params.append(str(before)[:10])
+            if where:
+                query += " WHERE " + " AND ".join(where)
+            self.df_stats = pd.read_sql(query, conn, params=params)
             
             # Load Positions
             self.df_info = pd.read_sql("SELECT PERSON_ID as personId, POSITION FROM player_info", conn)
-            
-            # Load Team Advanced Stats (For BPM Adjustment)
-            # JOIN with basic stats to get seasonYear
-            query_team = """
-                SELECT adv.teamId, adv.gameId, bst.seasonYear, adv.netRating 
-                FROM team_advanced_stats_v3 adv
-                JOIN team_basic_stats bst ON adv.gameId = bst.gameId AND adv.teamId = bst.teamId
-            """
-            if seasons:
-                # filter by seasonYear from basic stats
-                query_team += f" WHERE bst.seasonYear IN ({','.join(repr(s) for s in seasons)})"
-            self.df_team_adv = pd.read_sql(query_team, conn)
             
         self.df = self.df_stats.merge(self.df_info, on='personId', how='left')
 
@@ -93,9 +116,11 @@ class BPMBuilder:
         self.df[stat_cols] = self.df[stat_cols].fillna(0)
         
         # 1. Rolling EWMA Stats (this part is fine - ewm looks backward only)
-        ewma_stats = self.df.groupby('personId')[stat_cols].transform(
-            lambda x: x.shift(1).ewm(span=40, adjust=False).mean()  # ADD shift(1) to exclude current game
-        )
+        # (shift(1) excludes the current game; one groupby.ewm over all stat columns instead of a lambda per player)
+        by_player = self.df['personId']
+        shifted = self.df.groupby('personId')[stat_cols].shift(1)
+        ewma_stats = (shifted.groupby(by_player).ewm(span=40, adjust=False).mean()
+                      .reset_index(level=0, drop=True).reindex(self.df.index))
         ewma_stats.columns = [f"e_{c}" for c in stat_cols]
         self.df = pd.concat([self.df, ewma_stats], axis=1)
 
@@ -115,9 +140,8 @@ class BPMBuilder:
         MIN_MINUTES_FULL_WEIGHT = 200  # ~8-10 games of starter minutes
         
         # Calculate cumulative minutes (shifted - only prior games)
-        self.df['cumulative_minutes'] = self.df.groupby('personId')['minutes'].transform(
-            lambda x: x.shift(1).cumsum()
-        ).fillna(0)
+        prior_minutes = self.df.groupby('personId')['minutes'].shift(1)
+        self.df['cumulative_minutes'] = prior_minutes.groupby(self.df['personId']).cumsum().fillna(0)
         
         self.df['reliability'] = (self.df['cumulative_minutes'] / MIN_MINUTES_FULL_WEIGHT).clip(0, 1)
         
@@ -125,17 +149,9 @@ class BPMBuilder:
                     f"median={self.df['reliability'].median():.3f}, "
                     f"max={self.df['reliability'].max():.3f}")
             
-        # 3. Position & Role Scalars
-        self.df['pos_scalar'] = self.df['POSITION'].apply(self._map_position)
-        
-        ast_p100 = p100['assists']
-        self.df['role_scalar'] = 5.0 - (0.4 * ast_p100)
-        self.df['role_scalar'] = self.df['role_scalar'].clip(1.0, 5.0)
-
-
-
         # 3. Position & Role Scalars (same as before)
-        self.df['pos_scalar'] = self.df['POSITION'].apply(self._map_position)
+        pos_map = {label: self._map_position(label) for label in self.df['POSITION'].unique()}
+        self.df['pos_scalar'] = self.df['POSITION'].map(pos_map).astype(float)
         
         ast_p100 = p100['assists']
         self.df['role_scalar'] = 5.0 - (0.4 * ast_p100)
@@ -145,28 +161,29 @@ class BPMBuilder:
         raw_bpm = 0.0
         
         def get_coeff(c_tuple, scalar):
+            """Coefficient interpolated linearly between its two anchors (elementwise on a Series)."""
             slope = (c_tuple[1] - c_tuple[0]) / 4.0
             return c_tuple[0] + slope * (scalar - 1.0)
             
         raw_bpm += p100['points'] * self.coeffs_pos['pts']
         raw_bpm += p100['threePointersMade'] * self.coeffs_pos['3pm']
-        c_ast = self.df['pos_scalar'].apply(lambda x: get_coeff(self.coeffs_pos['ast'], x))
+        c_ast = get_coeff(self.coeffs_pos['ast'], self.df['pos_scalar'])
         raw_bpm += p100['assists'] * c_ast
         raw_bpm += p100['turnovers'] * self.coeffs_pos['tov']
-        c_orb = self.df['pos_scalar'].apply(lambda x: get_coeff(self.coeffs_pos['orb'], x))
+        c_orb = get_coeff(self.coeffs_pos['orb'], self.df['pos_scalar'])
         raw_bpm += p100['offensiveRebounds'] * c_orb
-        c_drb = self.df['pos_scalar'].apply(lambda x: get_coeff(self.coeffs_pos['drb'], x))
+        c_drb = get_coeff(self.coeffs_pos['drb'], self.df['pos_scalar'])
         raw_bpm += p100['defensiveRebounds'] * c_drb
-        c_stl = self.df['pos_scalar'].apply(lambda x: get_coeff(self.coeffs_pos['stl'], x))
+        c_stl = get_coeff(self.coeffs_pos['stl'], self.df['pos_scalar'])
         raw_bpm += p100['steals'] * c_stl
-        c_blk = self.df['pos_scalar'].apply(lambda x: get_coeff(self.coeffs_pos['blk'], x))
+        c_blk = get_coeff(self.coeffs_pos['blk'], self.df['pos_scalar'])
         raw_bpm += p100['blocks'] * c_blk
         raw_bpm += p100['personalFouls'] * self.coeffs_pos['pf']
         
-        c_fga = self.df['role_scalar'].apply(lambda x: get_coeff(self.coeffs_role['fga'], x))
+        c_fga = get_coeff(self.coeffs_role['fga'], self.df['role_scalar'])
         raw_bpm += p100['fieldGoalsAttempted'] * c_fga
         
-        c_fta = self.df['role_scalar'].apply(lambda x: get_coeff(self.coeffs_role['fta'], x))
+        c_fta = get_coeff(self.coeffs_role['fta'], self.df['role_scalar'])
         raw_bpm += (p100['freeThrowsAttempted'] * 0.44) * c_fta 
         
         # =====================================================
@@ -279,7 +296,7 @@ class BPMBuilder:
         # Handle any remaining NaNs (early season games with no history)
         self.df['bpm'] = self.df['bpm'].fillna(self.df['raw_bpm'])
         
-        return self.df[['gameId', 'gameDate', 'personId', 'playerName', 'teamId', 'bpm', 'e_minutes']]
+        return self.df[['gameId', 'gameDate', 'seasonYear', 'personId', 'playerName', 'teamId', 'bpm', 'e_minutes']]
 
 
     def save_player_bpm_to_db(self):

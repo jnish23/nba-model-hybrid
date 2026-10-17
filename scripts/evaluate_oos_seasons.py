@@ -3,12 +3,14 @@ Score out-of-sample season predictions against the betting lines, per season.
 
 Inputs: reports/oos_predictions_<season>.csv (scripts/generate_season_predictions.py --eval-only)
 and predictions/predictions_2025-26.csv. Each season's models were trained only on earlier
-seasons. Bets use the dashboard's rule: spread when |spread_pred + home line| > T, total when
-|total_pred - total line| > T. Lines in the files are the DraftKings openers (the model's own
-inputs); results are also scored at the consensus closing line, with closing line value (CLV).
+seasons. Bets use the shared rule in models/betting.py (the same one live picks and the dashboard
+use): bet when P(win) = Phi(point edge / residual std) beats the -110 break-even by more than 5%,
+which is a point edge of T = std * Phi^-1(0.5238 + 0.05) on each market (about 2.5 pts on spreads and
+3.4 pts on totals). Lines in the files are the DraftKings openers (the model's own inputs); results
+are also scored at the consensus closing line, with closing line value (CLV).
 
-The primary rule (T = 1, chosen from the 2025-26 dashboard before the other seasons were run)
-is the test; other thresholds are shown for context only.
+The primary rule is the 5% probability edge above; flat point thresholds are shown for context only
+(a flat 1.0 pt is only a +0.6% edge on spreads and -0.2% on totals).
 
 Usage: python scripts/evaluate_oos_seasons.py
 """
@@ -23,10 +25,12 @@ import pandas as pd
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from models.odds_clean import load_clean_odds
+from models.betting import points_threshold, DEFAULT_SPREAD_STD, DEFAULT_TOTAL_STD, DEFAULT_PROB_EDGE
 
 PAY = 100 / 110
 BREAK_EVEN = 110 / 210
-PRIMARY_T = 1.0
+PRIMARY_T = {'spread': round(points_threshold(DEFAULT_SPREAD_STD, DEFAULT_PROB_EDGE), 2),
+             'total': round(points_threshold(DEFAULT_TOTAL_STD, DEFAULT_PROB_EDGE), 2)}
 THRESHOLDS = [0.0, 1.0, 2.0, 3.0]
 
 
@@ -81,7 +85,7 @@ def main():
     df = load()
     rows = []
     for market in ('spread', 'total'):
-        for t in THRESHOLDS:
+        for t in sorted(set(THRESHOLDS + [PRIMARY_T[market]])):
             for season, g in list(df.groupby('season')) + [('ALL', df)]:
                 o, c, clv = bets(g, market, t)
                 wr_o, roi_o, z_o, n = summarize(o)
@@ -92,8 +96,10 @@ def main():
                              'win% close': wr_c * 100, 'ROI% close': roi_c * 100, 'z close': z_c,
                              'CLV pts': clv.mean(), 'CLV t': clv.mean() / clv.std() * np.sqrt(len(clv)) if len(clv) > 1 else np.nan})
     out = pd.DataFrame(rows).round(2)
-    print(f"PRIMARY RULE (T = {PRIMARY_T} pt), by season. Break-even win% at -110 = {BREAK_EVEN:.2%}")
-    print(out[out['T'] == PRIMARY_T].drop(columns='T').to_string(index=False))
+    print(f"PRIMARY RULE (5% probability edge: spread T = {PRIMARY_T['spread']} pts, total T = {PRIMARY_T['total']} pts), "
+          f"by season. Break-even win% at -110 = {BREAK_EVEN:.2%}")
+    primary = out[[abs(t - PRIMARY_T[m]) < 1e-9 for m, t in zip(out['market'], out['T'])]]
+    print(primary.to_string(index=False))
     print("\nAll thresholds, pooled over seasons (context only)")
     print(out[out['season'] == 'ALL'].drop(columns='season').to_string(index=False))
     out.to_csv('reports/oos_multi_season_eval.csv', index=False)

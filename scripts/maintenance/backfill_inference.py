@@ -8,14 +8,15 @@ from pathlib import Path
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-sys.path.insert(0, str(Path(__file__).parent))
+ROOT = Path(__file__).resolve().parent.parent.parent
+sys.path[:0] = [str(ROOT), str(ROOT / 'scripts')]
 
-from scripts.run_inference import InferenceEngine
+from scripts.run_inference_v2 import InferenceEngine
 from update_database import NBADatabaseSync
+from models.model_registry import DEPLOYED_SUFFIX
 
 if __name__ == "__main__":
     db_path = Path.cwd() / 'data' / 'nba_stats.db'
-    model_path = Path.cwd() / 'models' / 'saved' / 'model_ml_with_odds_v3.pkl'
     
     # Dates to backfill
     dates_to_backfill = ['2026-01-26', '2026-01-27']
@@ -32,7 +33,7 @@ if __name__ == "__main__":
         logging.info(f"{'='*70}")
         
         try:
-            engine = InferenceEngine(db_path, model_path, target_date=date_str)
+            engine = InferenceEngine(db_path, suffix=DEPLOYED_SUFFIX, target_date=date_str)
             engine.run()
             logging.info(f"✓ Successfully backfilled predictions for {date_str}")
         except Exception as e:

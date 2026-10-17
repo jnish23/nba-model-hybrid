@@ -1,3 +1,9 @@
+import os
+import sys
+
+# Allow `python models/train_baseline.py` (the script's own folder, not the project root, is on sys.path)
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import pandas as pd
 import numpy as np
 import lightgbm as lgb
@@ -15,6 +21,29 @@ import json
 from pathlib import Path
 from flaml import AutoML, tune
 from datetime import date
+
+from models.model_registry import DEPLOYED_SUFFIX
+
+# Fixed LightGBM settings used when no hyperparameter search is run. They were NOT chosen by looking
+# at any test season, which is what makes them safe for a walk-forward backtest.
+NEUTRAL_PARAMS = dict(n_estimators=1000, learning_rate=0.01, max_depth=6,
+                      num_leaves=31, min_child_samples=30, reg_alpha=0.5, reg_lambda=0.5)
+
+# FLAML tunes on the first FLAML_TRAIN_FRAC of the model-train rows and validates on the rest. Feature
+# selection must therefore also stop at that boundary, otherwise the validation block has already
+# shaped the feature set the tuner is scored on.
+FLAML_TRAIN_FRAC = 0.8
+
+FLAML_CUSTOM_HP = {
+    "lgbm": {
+        "reg_alpha": {"domain": tune.loguniform(lower=0.01, upper=50.0)},
+        "reg_lambda": {"domain": tune.loguniform(lower=0.01, upper=50.0)},
+        "colsample_bytree": {"domain": tune.uniform(lower=0.4, upper=0.9)},
+        "min_child_samples": {"domain": tune.randint(lower=20, upper=100)},
+        "n_estimators": {"domain": 1000},
+    }
+}
+
 
 class BaselineModel:
     def __init__(self, data_path, model_dir='models/saved'):
@@ -61,7 +90,8 @@ class BaselineModel:
 
         # --- Build two feature pools ---
         # 1. Diff pool (for ML / Spread): diff_*, matchup_*, odds_*, plus context cols
-        #    that are NOT per-team (e.g. roster_bpm_ewma_x/y are already differential-style)
+        #    that are NOT per-team (e.g. season_game_number-style context). Per-team pairs such as
+        #    roster_bpm_home/away enter the diff pool only through diff_roster_bpm*.
         self.features_diff = [
             c for c in all_features
             if c.startswith('diff_') or c.startswith('matchup_') or c.startswith('odds_')
@@ -174,27 +204,43 @@ class BaselineModel:
         market_acc = (y_true == (market_probs > 0.5).astype(int)).mean()
         print(f"Accuracy  - Model: {model_acc:.4f}, Market: {market_acc:.4f}")
         
-        # Edge analysis using the cleaned dataframe
-        df_clean = df.iloc[np.where(valid_mask)[0]] if len(valid_mask) == len(df) else df
-        df_clean['model_edge'] = df_clean['ml_prob'] - df_clean['market_prob']
+        # Edge analysis using the cleaned dataframe. Each side is judged against its OWN price:
+        # "1 - home implied" is not the away price (the two implied probabilities sum to > 1),
+        # and using it credits every away bet with the vig.
+        df_clean = df.iloc[np.where(valid_mask)[0]].copy() if len(valid_mask) == len(df) else df.copy()
+        df_clean['market_prob_away'] = df_clean['odds_away_ml'].apply(self.implied_prob_from_american)
+        df_clean = df_clean.dropna(subset=['market_prob_away'])
+        df_clean['edge_home'] = df_clean['ml_prob'] - df_clean['market_prob']
+        df_clean['edge_away'] = (1 - df_clean['ml_prob']) - df_clean['market_prob_away']
         
-        print("\n--- Edge Analysis ---")
+        print("\n--- Edge Analysis (each side vs its own price) ---")
         for thresh in [0.05, 0.10, 0.15]:
-            home_bets = df_clean[df_clean['model_edge'] > thresh]
+            home_bets = df_clean[(df_clean['edge_home'] > thresh) & (df_clean['edge_home'] >= df_clean['edge_away'])]
             if len(home_bets) > 0:
                 actual_wr = home_bets['ml_actual'].mean()
                 model_avg = home_bets['ml_prob'].mean()
                 market_avg = home_bets['market_prob'].mean()
                 print(f"\nHome edge > {thresh:.0%}: {len(home_bets)} bets")
                 print(f"  Actual win rate: {actual_wr:.1%} | Model: {model_avg:.1%} | Market: {market_avg:.1%}")
+                print(f"  ROI at the actual moneylines: {self._ml_roi(home_bets, 'home'):+.1%}")
             
-            away_bets = df_clean[df_clean['model_edge'] < -thresh]
+            away_bets = df_clean[(df_clean['edge_away'] > thresh) & (df_clean['edge_away'] > df_clean['edge_home'])]
             if len(away_bets) > 0:
                 actual_wr = 1 - away_bets['ml_actual'].mean()
                 model_avg = 1 - away_bets['ml_prob'].mean()
-                market_avg = 1 - away_bets['market_prob'].mean()
+                market_avg = away_bets['market_prob_away'].mean()
                 print(f"\nAway edge > {thresh:.0%}: {len(away_bets)} bets")
                 print(f"  Actual win rate: {actual_wr:.1%} | Model: {model_avg:.1%} | Market: {market_avg:.1%}")
+                print(f"  ROI at the actual moneylines: {self._ml_roi(away_bets, 'away'):+.1%}")
+
+    @staticmethod
+    def _ml_roi(bets, side):
+        """ROI of flat $100 moneyline bets on `side`, each settled at ITS OWN price (not a flat -110)."""
+        from models.betting import settle_bet
+        odds = bets['odds_home_ml'] if side == 'home' else bets['odds_away_ml']
+        won = bets['ml_actual'] == (1 if side == 'home' else 0)
+        profit = sum(settle_bet(o, w) for o, w in zip(odds, won))
+        return profit / (100 * len(bets))
 
     def sanity_check_odds(self):
         """Verify odds data makes sense."""
@@ -357,17 +403,27 @@ class BaselineModel:
             raise ValueError(f"Unknown target: {target}")
 
 
-    def _select_features_from_subset(self, df_subset, target, n_top=150, n_min=20):
+    def _select_features_from_subset(self, df_subset, target, n_top=150, n_min=20, importance_type='split', seed=42):
         """
         Two-Stage Feature Selection (No Leakage):
         1. Hierarchical Clustering (Spearman) to remove highly correlated redundant features.
         2. Null Importance Selection to filter out noise.
         
         Uses the target-appropriate feature pool (diff for ML/Spread, sep for Totals).
+
+        Deterministic: columns are processed in alphabetical order (so the CSV column order cannot
+        change the clustering), LightGBM runs in deterministic mode, and every tie - in importance or
+        in the cluster representative - is broken by feature name.
+
+        importance_type: LightGBM importance used to pick each cluster's representative and to compare
+        with the shuffled-target importances. 'split' (default, the production behaviour) counts splits,
+        which favours the noisier of two highly correlated features; 'gain' ranks by loss reduction.
+        seed: random state of the proxy models and of the shuffled-target permutations (default 42);
+        varying it measures how much of a result is selection noise.
         """
         # 1. Filter available/valid features from the correct pool
         feature_pool = self._get_pool_for_target(target)
-        available_features = [f for f in feature_pool if f in df_subset.columns]
+        available_features = sorted(f for f in feature_pool if f in df_subset.columns)
         X = df_subset[available_features].copy().replace([np.inf, -np.inf], np.nan)
         
         # Drop zero-variance columns
@@ -378,9 +434,13 @@ class BaselineModel:
         
         # Initial proxy model to gauge baseline importance
         if 'win' in target:
-            model = lgb.LGBMClassifier(n_estimators=100, max_depth=4, verbose=-1, random_state=42, n_jobs=-1)
+            model = lgb.LGBMClassifier(n_estimators=100, max_depth=4, verbose=-1, random_state=seed, n_jobs=-1,
+                                       deterministic=True, force_row_wise=True,
+                                       importance_type=importance_type)
         else:
-            model = lgb.LGBMRegressor(n_estimators=100, max_depth=4, verbose=-1, random_state=42, n_jobs=-1)
+            model = lgb.LGBMRegressor(n_estimators=100, max_depth=4, verbose=-1, random_state=seed, n_jobs=-1,
+                                      deterministic=True, force_row_wise=True,
+                                      importance_type=importance_type)
             
         model.fit(X, y)
         initial_imp = dict(zip(X.columns, model.feature_importances_))
@@ -404,29 +464,24 @@ class BaselineModel:
         # Group features with < 0.15 distance (> 0.85 correlation)
         labels = sch.fcluster(linked, t=0.15, criterion='distance')
         
-        cluster_to_feature = {}
+        # Keep, per cluster, the feature with the highest initial LightGBM importance (ties: smallest name)
+        cluster_members = {}
         for feat, label in zip(X.columns, labels):
-            if label not in cluster_to_feature:
-                cluster_to_feature[label] = feat
-            else:
-                # Keep the one with the highest initial LightGBM importance
-                current_best = cluster_to_feature[label]
-                if initial_imp[feat] > initial_imp[current_best]:
-                    cluster_to_feature[label] = feat
-                    
-        stage1_features = list(cluster_to_feature.values())
+            cluster_members.setdefault(label, []).append(feat)
+        stage1_features = sorted(min(members, key=lambda f: (-initial_imp[f], f))
+                                 for members in cluster_members.values())
         logging.info(f"[{target}] Stage 1 (Clustering): Reduced from {len(X.columns)} to {len(stage1_features)} independent features.")
         
         # If we have very few features, just return what we have
         if len(stage1_features) <= n_min:
-            return sorted(stage1_features, key=lambda f: initial_imp[f], reverse=True)
+            return sorted(stage1_features, key=lambda f: (-initial_imp[f], f))
             
         # ==========================================
         # STAGE 2: Noise Filter (Null Importance)
         # ==========================================
         X_stage1 = X[stage1_features]
         n_permutations = 10
-        rng = np.random.default_rng(42)
+        rng = np.random.default_rng(seed)
         null_importances = np.zeros((n_permutations, len(stage1_features)))
         
         for i in range(n_permutations):
@@ -448,7 +503,7 @@ class BaselineModel:
                 final_candidates.append((feat, actual_imp[idx]))
                 
         # Sort by actual importance
-        final_candidates.sort(key=lambda x: x[1], reverse=True)
+        final_candidates.sort(key=lambda x: (-x[1], x[0]))
         selected = [f[0] for f in final_candidates]
         
         logging.info(f"[{target}] Stage 2 (Null Imp): Reduced from {len(stage1_features)} to {len(selected)} high-signal features.")
@@ -459,7 +514,7 @@ class BaselineModel:
         elif len(selected) < n_min:
             # Fallback to the top stage1 features if too many were stripped
             logging.warning(f"[{target}] Too few features passed Null Imp. Padding to {n_min}.")
-            fallback = sorted(stage1_features, key=lambda f: initial_imp[f], reverse=True)
+            fallback = sorted(stage1_features, key=lambda f: (-initial_imp[f], f))
             for f in fallback:
                 if f not in selected:
                     selected.append(f)
@@ -470,38 +525,51 @@ class BaselineModel:
 
 
 
-    def backtest_walk_forward(self, start_season='2019-20', use_tuned_params=True, 
+    @staticmethod
+    def selection_rows(model_train_df, tuning):
+        """Rows feature selection may look at: all model-train rows, or - when a FLAML search will
+        validate on the last (1 - FLAML_TRAIN_FRAC) of them - only the rows before that block."""
+        return model_train_df.iloc[:int(len(model_train_df) * FLAML_TRAIN_FRAC)] if tuning else model_train_df
+
+    def _tune_fold_params(self, X, y, task, time_budget):
+        """FLAML search on ONE fold's training rows only (last 20% of them is the validation block)."""
+        n = int(len(X) * FLAML_TRAIN_FRAC)
+        automl = AutoML()
+        automl.fit(X.iloc[:n], y.iloc[:n], task=task, time_budget=time_budget,
+                   metric='log_loss' if task == 'classification' else 'mse',
+                   estimator_list=['lgbm'], custom_hp=FLAML_CUSTOM_HP,
+                   X_val=X.iloc[n:], y_val=y.iloc[n:], verbose=0)
+        return automl.best_config.copy()
+
+    def backtest_walk_forward(self, start_season='2019-20', use_tuned_params=False,
                             use_odds=False, save_suffix='_no_odds', calibrate=True,
-                            calib_holdout_frac=0.2):
+                            calib_holdout_frac=0.2, tune_per_fold=False, tune_time_budget=60):
         """
         Walk-forward validation with optional isotonic calibration.
         
         If calibrate=True, each fold's training data is split:
         - (1 - calib_holdout_frac) for model training
         - calib_holdout_frac for fitting calibrators
+
+        Hyperparameters (none of these may see a test season):
+        - default: the fixed NEUTRAL_PARAMS;
+        - tune_per_fold=True: FLAML runs inside every fold on that fold's training rows only
+          (tune_time_budget seconds per target);
+        - use_tuned_params=True: loads models/saved/best_config_{ml,spread,total}.json. Those files
+          were tuned on ALL seasons, so the test folds were seen during tuning - the backtest is then
+          optimistic. Kept only to reproduce old numbers.
         """
-        
-        # Load params (same as before)
-        if use_tuned_params and (self.model_dir / 'best_config_ml.json').exists():
-            with open(self.model_dir / 'best_config_ml.json') as f:
-                ml_params = json.load(f)
-        else:
-            ml_params = dict(n_estimators=1000, learning_rate=0.01, max_depth=6,
-                            num_leaves=31, min_child_samples=30, reg_alpha=0.5, reg_lambda=0.5)
+        if use_tuned_params:
+            logging.warning("use_tuned_params=True loads configs tuned on ALL seasons: the walk-forward "
+                            "results are NOT out-of-sample")
 
-        if use_tuned_params and (self.model_dir / 'best_config_spread.json').exists():
-            with open(self.model_dir / 'best_config_spread.json') as f:
-                spread_params = json.load(f)
-        else:
-            spread_params = dict(n_estimators=1000, learning_rate=0.01, max_depth=6,
-                                num_leaves=31, min_child_samples=30, reg_alpha=0.5, reg_lambda=0.5)
+        def load_params(name):
+            path = self.model_dir / f'best_config_{name}.json'
+            if use_tuned_params and path.exists():
+                return json.loads(path.read_text())
+            return dict(NEUTRAL_PARAMS)
 
-        if use_tuned_params and (self.model_dir / 'best_config_total.json').exists():
-            with open(self.model_dir / 'best_config_total.json') as f:
-                total_params = json.load(f)
-        else:
-            total_params = dict(n_estimators=1000, learning_rate=0.01, max_depth=6,
-                                num_leaves=31, min_child_samples=30, reg_alpha=0.5, reg_lambda=0.5)
+        ml_params, spread_params, total_params = load_params('ml'), load_params('spread'), load_params('total')
 
         self.load_data(use_odds=use_odds)
         
@@ -580,11 +648,21 @@ class BaselineModel:
                         f"train std: {model_train_df['target_total_pts'].std():.1f}")
 
             # Feature selection on model_train only (no leakage)
-            features_ml = self._select_features_from_subset(model_train_df, 'target_home_win')
-            features_spread = self._select_features_from_subset(model_train_df, 'target_point_diff')
-            features_total = self._select_features_from_subset(model_train_df, 'target_total_pts')
+            sel_df = self.selection_rows(model_train_df, tuning=tune_per_fold)
+            features_ml = self._select_features_from_subset(sel_df, 'target_home_win')
+            features_spread = self._select_features_from_subset(sel_df, 'target_point_diff')
+            features_total = self._select_features_from_subset(sel_df, 'target_total_pts')
             
             logging.info(f"Fold {test_season} features - ML: {len(features_ml)}, Spread: {len(features_spread)}, Total: {len(features_total)}")
+
+            if tune_per_fold:
+                ml_params = self._tune_fold_params(model_train_df[features_ml], model_train_df['target_home_win'],
+                                                   'classification', tune_time_budget)
+                spread_params = self._tune_fold_params(model_train_df[features_spread], model_train_df['target_point_diff'],
+                                                       'regression', tune_time_budget)
+                total_params = self._tune_fold_params(model_train_df[features_total], model_train_df['target_total_pts'],
+                                                      'regression', tune_time_budget)
+                logging.info(f"Fold {test_season}: tuned on {len(model_train_df)} training rows only")
 
             # =====================================================================
             # DIAGNOSTIC 2: Feature Stability (Jaccard similarity vs previous fold)
@@ -1204,9 +1282,11 @@ class BaselineModel:
         logging.info(f"Final training split: model_train={len(model_train_df)}, calib={len(calib_df)}")
         
         # Select features from model_train only (no leakage)
-        self.features_ml = self._select_features_from_subset(model_train_df, 'target_home_win')
-        self.features_spread = self._select_features_from_subset(model_train_df, 'target_point_diff')
-        self.features_total = self._select_features_from_subset(model_train_df, 'target_total_pts')
+        # (FLAML validates on the last 20% of model_train, so selection stops before that block)
+        sel_df = self.selection_rows(model_train_df, tuning=True)
+        self.features_ml = self._select_features_from_subset(sel_df, 'target_home_win')
+        self.features_spread = self._select_features_from_subset(sel_df, 'target_point_diff')
+        self.features_total = self._select_features_from_subset(sel_df, 'target_total_pts')
         
         # Save feature config
         feature_config = {
@@ -1220,15 +1300,7 @@ class BaselineModel:
 
         calibration_meta = {}
 
-        custom_hp = {
-            "lgbm": {
-                "reg_alpha": {"domain": tune.loguniform(lower=0.01, upper=50.0)},
-                "reg_lambda": {"domain": tune.loguniform(lower=0.01, upper=50.0)},
-                "colsample_bytree": {"domain": tune.uniform(lower=0.4, upper=0.9)},
-                "min_child_samples": {"domain": tune.randint(lower=20, upper=100)},
-                "n_estimators": {"domain": 1000},
-            }
-        }
+        custom_hp = FLAML_CUSTOM_HP
 
         # ===== MONEYLINE =====
         X_model_train_ml = model_train_df[self.features_ml]
@@ -1237,7 +1309,7 @@ class BaselineModel:
         y_calib_ml = calib_df['target_home_win']
         
         # Temporal split for FLAML validation (within model_train)
-        n_flaml_train = int(len(X_model_train_ml) * 0.8)
+        n_flaml_train = int(len(X_model_train_ml) * FLAML_TRAIN_FRAC)
         
         logging.info("Training FLAML AutoML for Moneyline...")
         automl_ml = AutoML()
@@ -1286,7 +1358,7 @@ class BaselineModel:
         X_calib_spread = calib_df[self.features_spread]
         y_calib_spread = calib_df['target_point_diff']
         
-        n_flaml_train = int(len(X_model_train_spread) * 0.8)
+        n_flaml_train = int(len(X_model_train_spread) * FLAML_TRAIN_FRAC)
         
         logging.info("Training FLAML AutoML for Spread...")
         automl_spread = AutoML()
@@ -1331,7 +1403,7 @@ class BaselineModel:
         X_calib_total = calib_df[self.features_total]
         y_calib_total = calib_df['target_total_pts']
         
-        n_flaml_train = int(len(X_model_train_total) * 0.8)
+        n_flaml_train = int(len(X_model_train_total) * FLAML_TRAIN_FRAC)
         
         logging.info("Training FLAML AutoML for Total...")
         automl_total = AutoML()
@@ -1394,29 +1466,47 @@ class BaselineModel:
         print(f"Calibration Meta: calibration_meta{save_suffix}.json")
 
 
-if __name__ == "__main__":
+def main():
+    import argparse
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--skip-backtest', action='store_true', help='skip the walk-forward backtest')
+    parser.add_argument('--deploy', action='store_true',
+                        help=f'train the production model set (opening odds as inputs) and save it as '
+                             f'"{DEPLOYED_SUFFIX}", the set scripts/run_inference_v2.py loads')
+    parser.add_argument('--no-research-model', action='store_true', help='skip the dated no-odds research model')
+    parser.add_argument('--time-budget', type=int, default=600, help='FLAML seconds per model when training final models')
+    args = parser.parse_args()
     logging.basicConfig(level=logging.INFO)
-    
-    # Assuming script run from project root
+
     # Latest dated training set written by scripts/generate_training_set.py (ISO dates sort lexically)
     from models.data_paths import latest_training_set
     data_path = latest_training_set()
     
     model = BaselineModel(data_path)
-    
-    date = date.today()
+    today = date.today()
 
-    metrics, preds = model.backtest_walk_forward(
-        start_season='2019-20',
-        use_odds=False,
-        calibrate=True,
-        save_suffix = '_calibrated'
-        )
-    
-    model.evaluate_vs_market(preds)
+    if not args.skip_backtest:
+        metrics, preds = model.backtest_walk_forward(
+            start_season='2019-20',
+            use_odds=False,
+            calibrate=True,
+            save_suffix='_calibrated'
+            )
+        model.evaluate_vs_market(preds)
 
-    print("\n" + "="*80)
-    print("TRAINING FINAL MODELS (NO ODDS)")
-    print("="*80)
-    model.train_and_save_all(use_odds=False, save_suffix=f'_no_odds_{date}')
-    
+    if not args.no_research_model:
+        print("\n" + "="*80)
+        print("TRAINING FINAL MODELS (NO ODDS)")
+        print("="*80)
+        model.train_and_save_all(use_odds=False, save_suffix=f'_no_odds_{today}', time_budget=args.time_budget)
+
+    if args.deploy:
+        print("\n" + "="*80)
+        print(f"TRAINING DEPLOYED MODEL SET ({DEPLOYED_SUFFIX}, WITH opening odds)")
+        print("="*80)
+        BaselineModel(data_path).train_and_save_all(use_odds=True, save_suffix=DEPLOYED_SUFFIX,
+                                                    time_budget=args.time_budget)
+
+
+if __name__ == "__main__":
+    main()

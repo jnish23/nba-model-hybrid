@@ -1,0 +1,34 @@
+import numpy as np
+
+from models.live_odds import first_book_value, split_open_and_current
+
+
+def _g(**markets):
+    return {k: {'draftkings': v} for k, v in markets.items()}
+
+
+def test_model_inputs_are_opening_and_current_kept_separately():
+    curr = _g(home_ml=-150, away_ml=130, home_spread=-4.0, away_spread=4.0, total=221.5)
+    opened = _g(home_ml=-135, away_ml=115, home_spread=-3.0, away_spread=3.0, total=219.0)
+    out = split_open_and_current(curr, opened)
+    assert out['odds_home_spread'] == -3.0 and out['curr_odds_home_spread'] == -4.0
+    assert out['odds_total'] == 219.0 and out['curr_odds_total'] == 221.5
+    assert out['odds_home_ml'] == -135 and out['curr_odds_home_ml'] == -150
+    assert out['odds_open_missing'] == 0
+
+
+def test_falls_back_to_current_only_when_open_missing():
+    curr = _g(home_ml=-150, away_ml=130, home_spread=-4.0, away_spread=4.0, total=221.5)
+    opened = _g(home_spread=-3.0, away_spread=3.0, total=219.0)      # no moneylines opened
+    out = split_open_and_current(curr, opened)
+    assert out['odds_home_spread'] == -3.0
+    assert out['odds_home_ml'] == -150            # fell back
+    assert out['odds_open_missing'] == 2
+    out = split_open_and_current(curr, None)
+    assert out['odds_open_missing'] == 5 and out['odds_total'] == 221.5
+
+
+def test_pickem_spread_zero_is_a_real_value():
+    assert first_book_value({'draftkings': 0}) == 0.0
+    assert np.isnan(first_book_value({'draftkings': None, 'fanduel': ''}))
+    assert first_book_value({'draftkings': None, 'fanduel': '-3.5'}) == -3.5
