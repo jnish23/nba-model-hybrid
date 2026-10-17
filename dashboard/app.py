@@ -15,7 +15,8 @@ if str(root_path) not in sys.path:
     sys.path.append(str(root_path))
 
 from models.betting import (calculate_implied_prob, calculate_payout, calculate_bet_ev, get_ml_bet,
-                            settle_bet, STANDARD_PRICE)
+                            settle_bet, STANDARD_PRICE, get_spread_bet, get_total_bet, points_threshold,
+                            DEFAULT_SPREAD_STD, DEFAULT_TOTAL_STD, DEFAULT_PROB_EDGE)
 
 # Set page config
 st.set_page_config(
@@ -294,9 +295,9 @@ def simulate_strategies(df, threshold, bet_type):
             line = row.get('odds_home_spread')
             
             if pd.notna(spread_pred) and pd.notna(line):
-                cover_margin = spread_pred + line
+                side, _ = get_spread_bet(spread_pred, line, DEFAULT_SPREAD_STD, threshold)
                 
-                if cover_margin > threshold:
+                if side == 'home':
                     # Bet Home Spread
                     bet_placed = True
                     is_fav = line < 0
@@ -305,7 +306,7 @@ def simulate_strategies(df, threshold, bet_type):
                     sim_df.at[idx, 'bet_intersection'] = 'Home Fav' if is_fav else 'Home Dog'
                     if (row['home_score'] + line) > row['away_score']:
                         won = True
-                elif cover_margin < -threshold:
+                elif side == 'away':
                     # Bet Away Spread
                     bet_placed = True
                     is_fav = (-line) < 0
@@ -316,21 +317,20 @@ def simulate_strategies(df, threshold, bet_type):
                         won = True
 
         elif bet_type == 'Totals':
-            # Threshold is Points Edge
-            # Compare total_pred vs odds_total
+            # Threshold is the probability edge (same rule as ML and the live picks)
             total_pred = row.get('total_pred')
             line = row.get('odds_total')
             
             if pd.notna(total_pred) and pd.notna(line):
-                diff = total_pred - line
+                side, _ = get_total_bet(total_pred, line, DEFAULT_TOTAL_STD, threshold)
                 
-                if diff > threshold:
+                if side == 'over':
                     # Bet Over
                     bet_placed = True
                     sim_df.at[idx, 'bet_subgroup'] = 'Over'
                     if (row['home_score'] + row['away_score']) > line:
                         won = True
-                elif diff < -threshold:
+                elif side == 'under':
                     # Bet Under
                     bet_placed = True
                     sim_df.at[idx, 'bet_subgroup'] = 'Under'
@@ -527,8 +527,8 @@ def build_team_breakdown(df, team, bet_type, threshold):
             sp = g.get('spread_pred')
             line = g.get('odds_home_spread')
             if pd.notna(sp) and pd.notna(line):
-                cover_margin = sp + line
-                if cover_margin > threshold:
+                side, _ = get_spread_bet(sp, line, DEFAULT_SPREAD_STD, threshold)
+                if side == 'home':
                     # Model bets home
                     if is_home:
                         model_bet_on_team = True
@@ -536,7 +536,7 @@ def build_team_breakdown(df, team, bet_type, threshold):
                         model_bet_odds = -110
                     else:
                         model_bet_on_team = False
-                elif cover_margin < -threshold:
+                elif side == 'away':
                     # Model bets away
                     if not is_home:
                         model_bet_on_team = True
@@ -549,10 +549,10 @@ def build_team_breakdown(df, team, bet_type, threshold):
             tp = g.get('total_pred')
             tl = g.get('odds_total')
             if pd.notna(tp) and pd.notna(tl):
-                diff = tp - tl
-                if abs(diff) > threshold:
+                side, _ = get_total_bet(tp, tl, DEFAULT_TOTAL_STD, threshold)
+                if side is not None:
                     model_bet_on_team = True  # Totals are team-agnostic, counts for both
-                    if diff > 0:
+                    if side == 'over':
                         model_bet_won = over_hit
                     else:
                         model_bet_won = (not over_hit) if over_hit is not None else None
@@ -690,10 +690,14 @@ def main():
     
     bet_type = st.sidebar.selectbox("Bet Type", ["Moneyline", "Spread", "Totals"])
     
-    if bet_type == "Moneyline":
-        threshold = st.sidebar.slider("Edge Threshold", 0.0, 0.20, 0.05, 0.005, format="%.3f", help="Bet only when model prob exceeds market prob by this amount.")
-    else:
-        threshold = st.sidebar.slider("Points Edge Threshold", 0.0, 10.0, 1.0, 0.5, help="Bet only when predicted score differs from line by this much.")
+    # One rule for every market: bet when the model's win probability beats the price's break-even
+    # probability by this much (spread/total win probability = Phi(point edge / residual std)).
+    threshold = st.sidebar.slider("Edge Threshold (probability)", 0.0, 0.20, DEFAULT_PROB_EDGE, 0.005, format="%.3f",
+                                  help="Bet only when the model's win probability exceeds the price's break-even probability by this amount.")
+    if bet_type == "Spread":
+        st.sidebar.caption(f"= a {points_threshold(DEFAULT_SPREAD_STD, threshold):.1f}-point edge over the line (residual std {DEFAULT_SPREAD_STD} pts).")
+    elif bet_type == "Totals":
+        st.sidebar.caption(f"= a {points_threshold(DEFAULT_TOTAL_STD, threshold):.1f}-point edge over the total (residual std {DEFAULT_TOTAL_STD} pts).")
 
     # Filter Data for Display
     mask = (df['game_date'] >= start_date) & (df['game_date'] <= end_date)

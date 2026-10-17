@@ -20,7 +20,8 @@ from models.bpm_builder import BPMBuilder
 from models.prediction_logger import PredictionLogger
 from models.live_odds import split_open_and_current
 from models.live_features import align_features, build_live_game_frame
-from models.betting import get_ml_bet
+from models.betting import (get_ml_bet, get_spread_bet, get_total_bet, DEFAULT_SPREAD_STD,
+                            DEFAULT_TOTAL_STD)
 from models.model_registry import DEPLOYED_SUFFIX, MODEL_DIR, load_bundle
 from models.player_features import PlayerFeatureBuilder
 from models import injury_report_features as irf
@@ -531,6 +532,8 @@ class InferenceEngine:
         pred_spreads = self.model_spread.predict(self.verify_feature_alignment(frame, 'Spread', cols_spread))
         pred_totals = self.model_total.predict(self.verify_feature_alignment(frame, 'Total', cols_total))
 
+        spread_std = self.calib_meta.get('spread_std', DEFAULT_SPREAD_STD)
+        total_std = self.calib_meta.get('total_std', DEFAULT_TOTAL_STD)
         preds = []
         for i, g in games_df.iterrows():
             prob, pred_spread, pred_total = float(probs[i]), float(pred_spreads[i]), float(pred_totals[i])
@@ -561,24 +564,19 @@ class InferenceEngine:
             except Exception as e:
                 logging.error(f"Failed to log prediction: {e}")
 
-            # Recommendation Logic
-            # User Criteria: 
-            # - Over: Edge >= 5 (Higher confidence if >= 7)
-            # - Under: Edge >= 7 (High confidence only)
-            
-            # Moneyline: each side against its own current price
+            # Recommendations: ONE rule for all markets (models/betting.py, shared with the backtests and
+            # the dashboard): bet when the model's win probability beats the price's break-even
+            # probability by more than DEFAULT_PROB_EDGE. Spread/total win probability is
+            # Phi(point edge / residual std) with the std saved with the model set.
             ml_bet, ml_edge = get_ml_bet({'ml_prob': prob, 'odds_home_ml': ml_home, 'odds_away_ml': ml_away})
+            spread_bet, spread_edge = get_spread_bet(pred_spread, line, spread_std)
+            total_bet, total_edge = get_total_bet(pred_total, total_line, total_std)
+            recommendation = "; ".join(
+                f"{market} {side.upper()} ({edge:+.1%})"
+                for market, side, edge in (('ML', ml_bet, ml_edge), ('SPREAD', spread_bet, spread_edge),
+                                           ('TOTAL', total_bet, total_edge))
+                if side)
 
-            raw_edge_over = pred_total - total_line
-            recommendation = ""
-            
-            if raw_edge_over >= 7.0:
-                recommendation = "STRONG OVER"
-            elif raw_edge_over >= 5.0:
-                recommendation = "BET OVER"
-            elif raw_edge_over <= -7.0:
-                recommendation = "STRONG UNDER"
-                
             preds.append({
                 'game_id': g['gameId'],
                 'game_date': g['gameDate'],
@@ -598,6 +596,10 @@ class InferenceEngine:
                 'status': 'PENDING',
                 'ml_bet': ml_bet,
                 'ml_edge': round(ml_edge, 4),
+                'spread_bet': spread_bet,
+                'spread_edge': round(spread_edge, 4),
+                'total_bet': total_bet,
+                'total_edge': round(total_edge, 4),
                 'recommendation': recommendation # Keeping as extra column for CSV utility
             })
             

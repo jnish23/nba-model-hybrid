@@ -76,3 +76,62 @@ def test_evaluate_vs_market_reports_roi_at_actual_odds(capsys):
     BaselineModel('unused.csv').evaluate_vs_market(df)
     out = capsys.readouterr().out
     assert 'ROI at the actual moneylines' in out
+
+
+# ---- item 11: one threshold definition for spreads / totals --------------------------------
+
+def test_flat_one_point_rule_is_not_a_five_percent_edge():
+    # residual stds of the deployed models (spread ~13.4, total ~18.2 points)
+    assert b.implied_prob_edge(1.0, 13.4) == pytest.approx(0.0059, abs=2e-4)     # barely above break-even
+    assert b.implied_prob_edge(1.0, 18.2) < 0                                    # a losing bet by the model's own odds
+    assert b.points_threshold(13.4, 0.05) == pytest.approx(2.49, abs=0.02)
+    assert b.points_threshold(18.2, 0.05) == pytest.approx(3.39, abs=0.02)
+
+
+def test_points_threshold_is_the_inverse_of_implied_prob_edge():
+    for std in (12.0, 13.4, 18.2):
+        for edge in (0.0, 0.02, 0.05, 0.1):
+            assert b.implied_prob_edge(b.points_threshold(std, edge), std) == pytest.approx(edge)
+
+
+def test_spread_and_total_sides():
+    # model: home by 6.5; line home -3.5 -> 3.0 points on home; at std 13.4 that is a 5.9% edge
+    side, edge = b.get_spread_bet(6.5, -3.5, 13.4, 0.05)
+    assert side == 'home' and edge == pytest.approx(b.implied_prob_edge(3.0, 13.4))
+    assert b.get_spread_bet(6.5, -3.5, 13.4, 0.10)[0] is None
+    assert b.get_spread_bet(-1.0, -3.5, 13.4, 0.05)[0] == 'away'       # model: home by -1 -> 4.5 on away
+    assert b.get_total_bet(226.0, 221.5, 18.2, 0.05)[0] == 'over'
+    assert b.get_total_bet(216.0, 221.5, 18.2, 0.05)[0] == 'under'
+    assert b.get_total_bet(222.5, 221.5, 18.2, 0.05)[0] is None
+    assert b.get_spread_bet(np.nan, -3.5) == (None, 0.0)
+
+
+def test_backtest_and_live_pick_the_same_bets():
+    """scripts/backtest_analysis.py and the live engine both route through models.betting."""
+    import backtest_analysis as bt
+    df = pd.DataFrame({'spread_pred': [6.5, -1.0, 1.0], 'odds_home_spread': [-3.5, -3.5, -3.5],
+                       'home_score': [110, 100, 100], 'away_score': [100, 95, 95],
+                       'total_pred': [226.0, 216.0, 222.5], 'odds_total': [221.5, 221.5, 221.5],
+                       'seasonYear': ['2024-25'] * 3, 'spread_std': [13.4] * 3, 'total_std': [18.2] * 3})
+    sp = bt.get_spread_bets(df, 0.05)
+    assert [s.lower() for s in sp['side']] == [b.get_spread_bet(r.spread_pred, r.odds_home_spread, 13.4)[0]
+                                              for r in df.itertuples()
+                                              if b.get_spread_bet(r.spread_pred, r.odds_home_spread, 13.4)[0]]
+    tl = bt.get_totals_bets(df, 0.05)
+    assert list(tl['side'].str.lower()) == ['over', 'under']
+
+
+def test_live_engine_uses_the_shared_rule():
+    import inspect
+    import run_inference_v2
+    src = inspect.getsource(run_inference_v2.InferenceEngine.run)
+    assert 'get_spread_bet' in src and 'get_total_bet' in src and 'get_ml_bet' in src
+    assert 'raw_edge_over' not in src          # the old flat 5/7-point total rule is gone
+
+
+def test_pushes_are_not_losses_in_the_backtest():
+    import backtest_analysis as bt
+    df = pd.DataFrame({'spread_pred': [10.0], 'odds_home_spread': [-3.0], 'home_score': [103], 'away_score': [100],
+                       'total_pred': [200.0], 'odds_total': [200.0], 'seasonYear': ['2024-25']})
+    bets = bt.get_spread_bets(df, 0.0)
+    assert bool(bets.loc[0, 'push']) and bets.loc[0, 'profit'] == 0.0
