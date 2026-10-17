@@ -24,7 +24,23 @@ def win_pct_last10(win: pd.Series) -> pd.Series:
 
 
 def win_streak(win: pd.Series) -> pd.Series:
-    """Win (+n) / loss (-n) streak entering each game; 0 before the first game."""
+    """Win (+n) / loss (-n) streak entering each game; 0 before the first game.
+
+    Vectorized: the length of the current run of identical results (run-length encoding of the shifted
+    series), signed by its result. Equal to the original row-by-row loop (see tests/test_vectorized.py)."""
+    s = win.shift(1)
+    known = s.notna()
+    if known.sum() and not known.iloc[known.to_numpy().argmax():].all():
+        # a NaN inside the series (not just the leading one) - keep the loop semantics exactly
+        return _win_streak_loop(win)
+    run_id = (s != s.shift()).cumsum()
+    length = s.groupby(run_id).cumcount() + 1
+    streak = length * np.where(s == 1, 1, -1)
+    return pd.Series(np.where(known, streak, 0), index=win.index)
+
+
+def _win_streak_loop(win: pd.Series) -> pd.Series:
+    """Reference implementation (and fallback for series with interior NaNs)."""
     s = win.shift(1)
     streaks = []
     current = 0
@@ -44,6 +60,15 @@ def home_win_pct_20g(home_win: pd.Series, is_home: pd.Series) -> pd.Series:
     """Win rate in home games among the previous 20 games (needs at least 5 games)."""
     return (home_win.shift(1).rolling(20, min_periods=5).sum() /
             is_home.shift(1).rolling(20, min_periods=5).sum())
+
+
+def home_win_pct_20g_by_team(home_win: pd.Series, is_home: pd.Series, team: pd.Series) -> pd.Series:
+    """home_win_pct_20g for a frame holding many teams (rows in game order within each team)."""
+    hw = home_win.groupby(team).shift(1)
+    ih = is_home.groupby(team).shift(1)
+    wins = hw.groupby(team).rolling(20, min_periods=5).sum().reset_index(level=0, drop=True).reindex(hw.index)
+    games = ih.groupby(team).rolling(20, min_periods=5).sum().reset_index(level=0, drop=True).reindex(ih.index)
+    return wins / games
 
 
 def is_home_game(matchup: pd.Series) -> pd.Series:
@@ -296,6 +321,20 @@ class TeamFeatureBuilder:
         feats['is_playoff'] = int(str(game_id)[:3] == '004') if game_id is not None else 0
         return feats
 
+    def _ewma_frames(self, df):
+        """{span: DataFrame of every EWMA source column} = past-games EWMA (ewm().shift(1) per team), computed
+        with one groupby.ewm per span instead of one groupby.transform(lambda) per column and span. Returns
+        None for the carry-over experiment, which uses its own per-team recursion."""
+        if self.season_carryover < 1.0:
+            return None
+        cols = [c for cat in ('team_offense', 'team_defense') for c in self.feature_categories[cat] if c in df.columns]
+        cols = list(dict.fromkeys(cols))
+        frames = {}
+        for span in self.spans:
+            ew = df.groupby('teamId')[cols].ewm(span=span).mean().reset_index(level=0, drop=True).reindex(df.index)
+            frames[span] = ew.groupby(df['teamId']).shift(1)
+        return frames
+
     def _ewma_feature(self, df, grp, col, span):
         """Past-games EWMA of `col` per team (the production definition unless season_carryover < 1)."""
         if self.season_carryover >= 1.0:
@@ -328,6 +367,8 @@ class TeamFeatureBuilder:
         # Collect new columns in a dictionary to avoid fragmentation
         new_features = {}
         
+        ewma = self._ewma_frames(df)
+
         # Offense
         for col in self.feature_categories['team_offense']:
             if col not in df.columns: continue
@@ -336,14 +377,14 @@ class TeamFeatureBuilder:
             grp = df.groupby('teamId')[col] 
             for span in self.spans:
                 # shift(1) ensures we strictly use PAST data
-                new_features[f"off_{col}_{span}g"] = self._ewma_feature(df, grp, col, span)
+                new_features[f"off_{col}_{span}g"] = ewma[span][col] if ewma else self._ewma_feature(df, grp, col, span)
                 
         # Defense
         for col in self.feature_categories['team_defense']:
             if col not in df.columns: continue
             grp = df.groupby('teamId')[col]
             for span in self.spans:
-                 new_features[f"def_{col}_{span}g"] = self._ewma_feature(df, grp, col, span)
+                 new_features[f"def_{col}_{span}g"] = ewma[span][col] if ewma else self._ewma_feature(df, grp, col, span)
 
         # Trend features
         logging.info("Calculating trend features...")
@@ -372,9 +413,7 @@ class TeamFeatureBuilder:
             df['_is_home'] = is_home_game(df['matchup'])
             if 'wl' in df.columns:
                 df['_home_win'] = df['_is_home'] * (df['wl'] == 'W').astype(int)
-                new_features['home_win_pct_20g'] = df.groupby('teamId').apply(
-                    lambda g: home_win_pct_20g(g['_home_win'], g['_is_home'])
-                ).reset_index(level=0, drop=True)
+                new_features['home_win_pct_20g'] = home_win_pct_20g_by_team(df['_home_win'], df['_is_home'], df['teamId'])
             df.drop(columns=[c for c in ['_is_home', '_home_win'] if c in df.columns], inplace=True)
 
         # 2. Rest Features

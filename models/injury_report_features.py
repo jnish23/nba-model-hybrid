@@ -36,6 +36,16 @@ def _norm(s):
     return re.sub(r'[^a-z]', '', s.lower())
 
 
+def map_unique(series, func):
+    """series.map(func), but func runs once per distinct value (the 750k injury-report rows carry only a
+    few thousand distinct names / files). NaN maps to NaN, as func(NaN) does for every use here."""
+    codes, uniques = pd.factorize(series)
+    mapped = pd.Series(uniques).map(func)
+    out = mapped.reindex(codes)               # code -1 (NaN input) is not in the index -> NaN
+    out.index = series.index
+    return out
+
+
 def report_name_key(name):
     """'Williams III, Robert' / 'SamuelsJr.,Jermaine' -> 'robertwilliamsiii' / 'jermainesamuelsjr'."""
     if not isinstance(name, str):
@@ -145,7 +155,7 @@ def link_reports(reports, db_path, upcoming=None):
     games['gameDate'] = pd.to_datetime(games['gameDate']).dt.strftime('%Y-%m-%d')
 
     r = reports.copy()
-    r['teamId'] = r['team'].map(lambda t: team_lookup.get(_norm(t)))
+    r['teamId'] = map_unique(r['team'], lambda t: team_lookup.get(_norm(t)))
 
     # Team cells sometimes wrap ("Minnesota" / "Timberwolves" on separate lines). Resolve leftovers
     # against the two teams in the row's matchup: the one whose full name contains the fragment.
@@ -181,9 +191,9 @@ def link_reports(reports, db_path, upcoming=None):
     #  2. exact key anywhere in the database (player identity only, no outcome information)
     #  3. fuzzy match among the team's earlier appearances this season, only if the key is unknown
     #     everywhere (fuzzy matching a known name once mapped Jalen Williams to Jaylin Williams)
-    players['key'] = players['playerName'].map(db_name_key)
+    players['key'] = map_unique(players['playerName'], db_name_key)
     players['first_date'] = pd.to_datetime(players['first_date'])
-    r['key'] = r['player'].map(report_name_key)
+    r['key'] = map_unique(r['player'], report_name_key)
     first_app = players.sort_values('first_date').groupby(['key', 'teamId', 'seasonYear'])[['personId', 'first_date']].first()
     hit = first_app.reindex(pd.MultiIndex.from_frame(r[['key', 'teamId', 'seasonYear']]))
     prior = hit['first_date'].values < r['game_date'].values
@@ -379,7 +389,8 @@ def build_injury_features(db_path, seasons, snapshot_name='game_day_noon', as_of
     if as_of is None:
         # Training: only reports on the fixed download grid, so the result does not depend on
         # which extra files live runs happened to save (reproducible retraining).
-        reports = reports[reports['source_file'].map(report_slot).isin(GRID_SLOTS)]
+        on_grid = {f: report_slot(f) in GRID_SLOTS for f in reports['source_file'].unique()}
+        reports = reports[reports['source_file'].map(on_grid).astype(bool)]
     linked = link_reports(reports, db_path, upcoming=upcoming)
     schedule = load_schedule(db_path, upcoming=upcoming)
     from models.availability_features import build_player_game_candidates
