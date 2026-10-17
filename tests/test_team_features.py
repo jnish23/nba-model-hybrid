@@ -153,3 +153,21 @@ def test_default_builder_is_unchanged_by_the_experiment_flag(team_db):
     assert not np.allclose(a.loc[first_new_season, col], c.loc[first_new_season, col])
     in_first_season = c[c['seasonYear'] == '2024-25'].index
     np.testing.assert_allclose(a.loc[in_first_season, col], c.loc[in_first_season, col], equal_nan=True)
+
+
+def test_live_team_features_use_a_constant_number_of_queries(team_db, monkeypatch):
+    """Was one history query + two rest queries per team (and several per game for travel): ~130 for a night."""
+    import sqlite3
+    real_connect = sqlite3.connect
+    statements = []
+
+    def counting_connect(*a, **k):
+        conn = real_connect(*a, **k)
+        conn.set_trace_callback(lambda s: statements.append(s) if s.lstrip().upper().startswith('SELECT') else None)
+        return conn
+
+    monkeypatch.setattr(sqlite3, 'connect', counting_connect)
+    feats = TeamFeatureBuilder(team_db).get_latest_team_features('2025-12-20')
+    assert set(feats) == {1, 2}
+    history_loads = [s for s in statements if 'team_game_full' in s]
+    assert len(history_loads) == 1
