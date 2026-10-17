@@ -44,7 +44,7 @@ NBA injury PDFs ────┘                                                �
 - **Schedule:** rest, back-to-backs, games in the last 7 days, travel distance, time zones and altitude.
 - **Injuries:** I archived and parsed the official NBA injury report PDFs and use the report as published at a fixed time on game day. Each absence is weighted by the player's value and by the empirical probability that a player with that categorization status sits out.
   - Out plays 0% of the time, Doubtful about 2%, Questionable about 57%, Probable about 93%.
-  - Training and live inference build these features with the same code. My parity tests match to floating-point precision.
+  - Training and live inference build these features with the same code (team form, travel, roster BPM and injury features, then one shared difference/matchup step). `tests/test_parity.py` rebuilds the training set and checks that, for historical dates, every live feature column equals the training-set value.
 
 **Models.** I train one LightGBM model each for win probability, margin and total.
 - Feature selection in two steps: I cluster correlated features, then keep only features that beat a shuffled-target importance baseline.
@@ -61,9 +61,10 @@ NBA injury PDFs ────┘                                                �
 | Path | Description |
 |---|---|
 | `dashboard/app.py` | Streamlit dashboard: today's picks, recent performance, strategy simulator, team and league breakdowns |
-| `models/` | Feature builders (`team_features_v2`, `player_features`, `bpm_builder`, `travel_builder`, `game_features_v2`), injury reports (`injury_report_parser`, `injury_report_features`), odds cleaning (`odds_clean`), training (`train_baseline`) |
+| `models/` | Feature builders (`team_features_v2`, `player_features`, `bpm_builder`, `travel_builder`, `game_features_v2`), live row assembly (`live_features`, `live_odds`), injury reports (`injury_report_parser`, `injury_report_features`), odds cleaning (`odds_clean`), betting math (`betting`), training (`train_baseline`), model/config pairing (`model_registry`) |
 | `scripts/` | DB sync (`update_database`), training set (`generate_training_set`), daily inference (`run_inference_v2`), evaluation (`evaluate_vs_market`, `evaluate_injury_reports`), collectors (`scrape_injury_reports`, `snapshot_odds`) |
-| `models/saved/` | Deployed models (`*_with_odds_v2_injury`) with calibrator, feature lists and metadata |
+| `models/saved/` | Deployed models (`model_registry.DEPLOYED_SUFFIX`, currently `*_with_odds_v5`) with calibrator, feature lists and metadata; loading checks that the feature list matches each pickle |
+| `tests/` | pytest suite (feature builders, betting math, train/serve parity, leakage guards) |
 | `reports/` | Backtest and market-evaluation outputs |
 
 ## Running it
@@ -80,7 +81,9 @@ Without the local database, the app loads predictions from the `dashboard-data` 
 pip install -r requirements.txt
 python scripts/scrape_injury_reports.py            # official injury report archive (2019-20 onward)
 python scripts/generate_training_set.py            # point-in-time training set
-python models/train_baseline.py                    # walk-forward backtest, then train final models
+python models/train_baseline.py                    # walk-forward backtest (fixed neutral hyperparameters), then a no-odds research model
+python models/train_baseline.py --skip-backtest --no-research-model --deploy   # train the deployed model set
+python -m pytest tests                              # unit tests; the db-marked parity tests need data/nba_stats.db
 python scripts/evaluate_vs_market.py --preds models/saved/backtest_predictions_calibrated.csv
 python scripts/run_inference_v2.py                 # sync today's data and predict
 ```
@@ -89,7 +92,7 @@ python scripts/run_inference_v2.py                 # sync today's data and predi
 - `scripts/run_snapshot_odds.bat` runs every 30 minutes on game days. It records timestamped lines from each sportsbook and the latest injury report.
 - `scripts/run_daily_inference.bat` runs daily at 12:15 PM ET. It syncs the data, predicts the day's games and publishes the dashboard data.
 
-GitHub Actions runs smoke checks only, because the database is not in the repo.
+GitHub Actions runs the smoke checks and the pytest suite; the parity tests that need the database skip themselves there.
 
 ## Limitations and next steps
 

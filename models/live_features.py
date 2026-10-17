@@ -1,7 +1,6 @@
 """Helpers for building model input rows at inference time."""
 import logging
 
-import numpy as np
 import pandas as pd
 
 
@@ -57,7 +56,6 @@ def build_live_game_frame(db_path, games, injury_features=None, roster_before=No
     from models.player_features import PlayerFeatureBuilder
     from models.team_features_v2 import TeamFeatureBuilder
     from models.travel_builder import TravelFeatureBuilder
-    import sqlite3
 
     games = games.reset_index(drop=True).copy()
     dates = pd.to_datetime(games['gameDate']).dt.strftime('%Y-%m-%d').unique()
