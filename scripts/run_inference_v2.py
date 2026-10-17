@@ -19,6 +19,7 @@ from models.live_rotation_v2 import LiveRotationBuilder
 from models.bpm_builder import BPMBuilder
 from models.prediction_logger import PredictionLogger
 from models.live_odds import split_open_and_current
+from models.live_features import align_features
 from models.player_features import PlayerFeatureBuilder
 from models import injury_report_features as irf
 from models.game_features_v2 import GameFeatureBuilder
@@ -562,20 +563,8 @@ class InferenceEngine:
         return []
 
     def verify_feature_alignment(self, row_df, model_name, expected_cols):
-        """Check and report feature misalignment."""
-        available = set(row_df.columns)
-        expected = set(expected_cols)
-        
-        missing = expected - available
-        
-        if missing:
-            logging.warning(f"{model_name}: Missing {len(missing)} features: {list(missing)[:5]}...")
-            # Fill missing with 0 or NaN
-            for col in missing:
-                row_df[col] = 0.0
-        
-        # Ensure correct order
-        return row_df[expected_cols]
+        """Select the model's columns in order; missing features become NaN and are logged loudly."""
+        return align_features(row_df, expected_cols, model_name)
 
     def run(self):
         logging.info("Starting Inference Run...")
