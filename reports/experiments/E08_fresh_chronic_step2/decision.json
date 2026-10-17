@@ -1,0 +1,13 @@
+{
+ "decision": false,
+ "main_criterion": {
+  "ML log loss": false,
+  "Spread MAE": false,
+  "Total MAE": false
+ },
+ "no_harm": {
+  "ML log loss": false,
+  "Spread MAE": true,
+  "Total MAE": true
+ }
+}
