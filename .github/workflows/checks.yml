@@ -2,7 +2,8 @@ name: Checks
 # Production inference runs locally on a Windows Task Scheduler job (scripts/run_daily_inference.bat,
 # daily 9:15 AM PT from 2026-10-20): it needs data/nba_stats.db and the injury-report archive, which
 # are gitignored and too large for the repo. This workflow only checks that the code imports and
-# that key date/cutoff logic is correct - no database or network needed.
+# that key date/cutoff logic is correct - no database or network needed. The pytest suite runs here too:
+# tests marked "db" (train/serve parity on the real database) skip themselves when data/nba_stats.db is absent.
 on:
   push:
   pull_request:
@@ -20,3 +21,4 @@ jobs:
       - run: pip install -r requirements.txt
       - run: python -m compileall -q models scripts
       - run: python scripts/smoke_check.py
+      - run: python -m pytest tests -q -ra
