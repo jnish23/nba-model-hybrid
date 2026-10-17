@@ -63,3 +63,15 @@ def test_deployed_suffix_is_what_the_entry_points_use():
     from models import train_baseline
     assert inspect.signature(run_inference_v2.InferenceEngine).parameters['suffix'].default == mr.DEPLOYED_SUFFIX
     assert 'DEPLOYED_SUFFIX' in inspect.getsource(train_baseline.main)
+
+
+def test_train_baseline_runs_as_a_script():
+    """README: `python models/train_baseline.py ...` - the script folder is on sys.path, not the project root."""
+    import subprocess
+    import sys
+    from pathlib import Path
+    root = Path(__file__).resolve().parent.parent
+    out = subprocess.run([sys.executable, str(root / 'models' / 'train_baseline.py'), '--help'], cwd=root,
+                         capture_output=True, text=True, timeout=120)
+    assert out.returncode == 0, out.stderr[-500:]
+    assert '--deploy' in out.stdout

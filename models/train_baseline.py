@@ -1,3 +1,9 @@
+import os
+import sys
+
+# Allow `python models/train_baseline.py` (the script's own folder, not the project root, is on sys.path)
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import pandas as pd
 import numpy as np
 import lightgbm as lgb
@@ -397,7 +403,7 @@ class BaselineModel:
             raise ValueError(f"Unknown target: {target}")
 
 
-    def _select_features_from_subset(self, df_subset, target, n_top=150, n_min=20, importance_type='split'):
+    def _select_features_from_subset(self, df_subset, target, n_top=150, n_min=20, importance_type='split', seed=42):
         """
         Two-Stage Feature Selection (No Leakage):
         1. Hierarchical Clustering (Spearman) to remove highly correlated redundant features.
@@ -412,6 +418,8 @@ class BaselineModel:
         importance_type: LightGBM importance used to pick each cluster's representative and to compare
         with the shuffled-target importances. 'split' (default, the production behaviour) counts splits,
         which favours the noisier of two highly correlated features; 'gain' ranks by loss reduction.
+        seed: random state of the proxy models and of the shuffled-target permutations (default 42);
+        varying it measures how much of a result is selection noise.
         """
         # 1. Filter available/valid features from the correct pool
         feature_pool = self._get_pool_for_target(target)
@@ -426,11 +434,11 @@ class BaselineModel:
         
         # Initial proxy model to gauge baseline importance
         if 'win' in target:
-            model = lgb.LGBMClassifier(n_estimators=100, max_depth=4, verbose=-1, random_state=42, n_jobs=-1,
+            model = lgb.LGBMClassifier(n_estimators=100, max_depth=4, verbose=-1, random_state=seed, n_jobs=-1,
                                        deterministic=True, force_row_wise=True,
                                        importance_type=importance_type)
         else:
-            model = lgb.LGBMRegressor(n_estimators=100, max_depth=4, verbose=-1, random_state=42, n_jobs=-1,
+            model = lgb.LGBMRegressor(n_estimators=100, max_depth=4, verbose=-1, random_state=seed, n_jobs=-1,
                                       deterministic=True, force_row_wise=True,
                                       importance_type=importance_type)
             
@@ -473,7 +481,7 @@ class BaselineModel:
         # ==========================================
         X_stage1 = X[stage1_features]
         n_permutations = 10
-        rng = np.random.default_rng(42)
+        rng = np.random.default_rng(seed)
         null_importances = np.zeros((n_permutations, len(stage1_features)))
         
         for i in range(n_permutations):
