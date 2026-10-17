@@ -41,6 +41,7 @@ import pandas as pd
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from models.train_baseline import BaselineModel
 from models.data_paths import latest_training_set
+from models.prediction_logger import replace_rows_in_date_range
 
 DB_PATH = Path('data/nba_stats.db')
 MODEL_DIR = Path('models/saved')
@@ -157,11 +158,7 @@ def main():
         if not conn.execute("SELECT 1 FROM sqlite_master WHERE name = ?", [backup_table]).fetchone():
             conn.execute(f"CREATE TABLE {backup_table} AS SELECT * FROM predictions_log_v2")
             logging.info(f"Backed up predictions_log_v2 to {backup_table}")
-        existing = pd.read_sql("SELECT * FROM predictions_log_v2", conn)
-        lo, hi = log['game_date'].min(), log['game_date'].max()
-        keep = existing[~existing['game_date'].astype(str).str[:10].between(lo, hi)]
-        combined = pd.concat([keep, log], ignore_index=True)
-        combined.to_sql('predictions_log_v2', conn, if_exists='replace', index=False)
+        lo, hi = replace_rows_in_date_range(conn, log)
     logging.info(f"Wrote {len(log)} out-of-sample predictions for {season} ({lo}..{hi}); "
                  f"training data ended {train_max:%Y-%m-%d}")
 

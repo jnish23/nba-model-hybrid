@@ -4,6 +4,81 @@ import datetime
 import logging
 import sqlite3
 
+TABLE = 'predictions_log_v2'
+CREATE_TABLE_SQL = """
+    CREATE TABLE IF NOT EXISTS {table} (
+        game_id TEXT PRIMARY KEY,
+        game_date TEXT,
+        prediction_date TEXT,
+        home_team TEXT,
+        away_team TEXT,
+        matchup TEXT,
+        ml_prob REAL,
+        spread_pred REAL,
+        total_pred REAL,
+        odds_home_ml REAL,
+        odds_away_ml REAL,
+        odds_home_spread REAL,
+        odds_total REAL,
+        home_score INTEGER,
+        away_score INTEGER,
+        status TEXT DEFAULT 'PENDING',
+        model_version TEXT
+    )
+"""
+COLUMNS = ['game_id', 'game_date', 'prediction_date', 'home_team', 'away_team', 'matchup', 'ml_prob',
+           'spread_pred', 'total_pred', 'odds_home_ml', 'odds_away_ml', 'odds_home_spread', 'odds_total',
+           'home_score', 'away_score', 'status', 'model_version']
+
+
+def ensure_primary_key(conn):
+    """
+    Make sure predictions_log_v2 has game_id as PRIMARY KEY and the model_version column. A
+    `DataFrame.to_sql(if_exists='replace')` rewrite drops the key (and with it the uniqueness that
+    INSERT OR REPLACE / ON CONFLICT rely on, so repeated logging silently piled up duplicate rows).
+    Repair = copy the table aside, keep one row per game_id (a COMPLETED row beats a PENDING one, then
+    the latest prediction_date), and rebuild it with the key. Returns True if a repair was needed.
+    """
+    info = conn.execute(f"PRAGMA table_info({TABLE})").fetchall()
+    cols = [r[1] for r in info]
+    if any(r[5] for r in info):                     # r[5] = pk position
+        if 'model_version' not in cols:
+            conn.execute(f"ALTER TABLE {TABLE} ADD COLUMN model_version TEXT")
+        return False
+
+    stamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+    backup = f"{TABLE}_prepk_{stamp}"
+    conn.execute(f'CREATE TABLE "{backup}" AS SELECT * FROM {TABLE}')
+    df = pd.read_sql(f"SELECT * FROM {TABLE}", conn)
+    for c in COLUMNS:
+        if c not in df.columns:
+            df[c] = None
+    df['_done'] = (df['status'] == 'COMPLETED').astype(int)
+    df = (df.sort_values(['game_id', '_done', 'prediction_date']).drop_duplicates('game_id', keep='last')
+            [COLUMNS])
+    logging.warning(f"{TABLE} had no PRIMARY KEY; rebuilding it with one ({len(df)} unique games; "
+                    f"previous contents kept in {backup})")
+    conn.execute(f"DROP TABLE {TABLE}")
+    conn.execute(CREATE_TABLE_SQL.format(table=TABLE))
+    df.to_sql(TABLE, conn, if_exists='append', index=False)
+    return True
+
+
+def replace_rows_in_date_range(conn, log):
+    """
+    Replace the rows whose game_date lies in [min, max] of `log` (a DataFrame in the table's columns,
+    e.g. a regenerated season) with the new rows, inside the existing table. The table is never
+    dropped or recreated (pandas to_sql(if_exists='replace') rebuilds it WITHOUT the primary key).
+    Returns (lo, hi).
+    """
+    conn.execute(CREATE_TABLE_SQL.format(table=TABLE))
+    ensure_primary_key(conn)
+    lo, hi = log['game_date'].min(), log['game_date'].max()
+    conn.execute(f"DELETE FROM {TABLE} WHERE substr(game_date, 1, 10) BETWEEN ? AND ?", (lo, hi))
+    log[[c for c in COLUMNS if c in log.columns]].to_sql(TABLE, conn, if_exists='append', index=False)
+    return lo, hi
+
+
 class PredictionLogger:
     def __init__(self, db_path, log_path=None):
         if log_path is None:
@@ -15,28 +90,10 @@ class PredictionLogger:
         self._init_db()
         
     def _init_db(self):
-        """Initialize predictions_log table."""
+        """Create predictions_log_v2 (game_id is the PRIMARY KEY) and repair an older copy that lost it."""
         with sqlite3.connect(self.db_path) as conn:
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS predictions_log_v2 (
-                    game_id TEXT PRIMARY KEY,
-                    game_date TEXT,
-                    prediction_date TEXT,
-                    home_team TEXT,
-                    away_team TEXT,
-                    matchup TEXT,
-                    ml_prob REAL,
-                    spread_pred REAL,
-                    total_pred REAL,
-                    odds_home_ml REAL,
-                    odds_away_ml REAL,
-                    odds_home_spread REAL,
-                    odds_total REAL,
-                    home_score INTEGER,
-                    away_score INTEGER,
-                    status TEXT DEFAULT 'PENDING'
-                )
-            """)
+            conn.execute(CREATE_TABLE_SQL.format(table=TABLE))
+            ensure_primary_key(conn)
             
     def log_prediction(self, prediction: dict, overwrite: bool = True):
         """
