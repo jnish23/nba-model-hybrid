@@ -1,3 +1,4 @@
+import re
 import sqlite3
 import numpy as np
 import pandas as pd
@@ -33,6 +34,20 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from models.prediction_logger import PredictionLogger
+
+
+_IDENT_RE = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
+
+
+def _ident(name):
+    """SQL identifiers (table / column names) cannot be bound as parameters. Every one interpolated into
+    a statement comes from a constant in this module; this refuses anything that is not a plain identifier
+    so that stays true. Values are always bound with ? placeholders."""
+    name = str(name)
+    if not _IDENT_RE.match(name):
+        raise ValueError(f"unsafe SQL identifier: {name!r}")
+    return name
+
 
 def custom_backoff_generator(**kwargs):
     """
@@ -91,7 +106,7 @@ def fix_neutral_site_matchups(conn, tables=('team_basic_stats', 'team_game_full'
         new_matchup = f"{host_row['teamTricode']} vs. {other_row['teamTricode']}"
         for table in tables:
             if conn.execute("SELECT 1 FROM sqlite_master WHERE name = ?", [table]).fetchone():
-                conn.execute(f"UPDATE {table} SET MATCHUP = ? WHERE gameId = ? AND teamId = ?",
+                conn.execute(f"UPDATE {_ident(table)} SET MATCHUP = ? WHERE gameId = ? AND teamId = ?",
                              [new_matchup, game_id, int(host_id)])
         logging.info(f"Neutral-site game {game_id} ({date}): {host_row['MATCHUP']} -> {new_matchup}")
         fixed += 1
@@ -129,9 +144,9 @@ def fill_odds_team_ids(conn, tables=('nba_odds', 'nba_odds_opening')) -> int:
         for side in ('home', 'away'):
             for name, team_id in ODDS_TEAM_IDS.items():
                 filled += conn.execute(
-                    f"UPDATE {table} SET teamId_{side} = ? WHERE teamId_{side} IS NULL AND {side}_team = ?",
+                    f"UPDATE {_ident(table)} SET teamId_{_ident(side)} = ? WHERE teamId_{_ident(side)} IS NULL AND {_ident(side)}_team = ?",
                     [team_id, name]).rowcount
-            left = conn.execute(f"SELECT DISTINCT {side}_team FROM {table} WHERE teamId_{side} IS NULL").fetchall()
+            left = conn.execute(f"SELECT DISTINCT {_ident(side)}_team FROM {_ident(table)} WHERE teamId_{_ident(side)} IS NULL").fetchall()
             if left:
                 logging.warning(f"{table}: unmapped {side} team names left without teamId: {[r[0] for r in left][:8]}")
     conn.commit()
@@ -256,9 +271,9 @@ class NBADatabaseSync:
     def _dedupe_season(conn, table_name: str, key_cols: str, season: str) -> None:
         """Keep the latest row per key within one season (cheaper than a whole-table pass)."""
         conn.execute(f'''
-            DELETE FROM {table_name}
+            DELETE FROM {_ident(table_name)}
             WHERE seasonYear = ? AND rowid NOT IN (
-                SELECT max(rowid) FROM {table_name} WHERE seasonYear = ? GROUP BY {key_cols}
+                SELECT max(rowid) FROM {_ident(table_name)} WHERE seasonYear = ? GROUP BY {key_cols}
             )
         ''', [season, season])
 
@@ -299,7 +314,7 @@ class NBADatabaseSync:
         if df is None or df.empty:
             return
         if self._table_exists(conn, table):
-            cols = [r[1] for r in conn.execute(f'PRAGMA table_info("{table}")')]
+            cols = [r[1] for r in conn.execute(f'PRAGMA table_info("{_ident(table)}")')]
             extra = [c for c in df.columns if c not in cols]
             if extra:
                 logging.warning(f"{table}: ignoring {len(extra)} new API column(s) not in the table: {extra[:10]}")
@@ -324,10 +339,10 @@ class NBADatabaseSync:
                                conn, params=[season])
         if per == 'game':
             expected['n'] = expected['n_teams'] // 2
-            have_sql = f"SELECT gameDate, COUNT(*) AS have FROM {table} WHERE season = ? GROUP BY gameDate"
+            have_sql = f"SELECT gameDate, COUNT(*) AS have FROM {_ident(table)} WHERE season = ? GROUP BY gameDate"
         else:
             expected['n'] = expected['n_teams']
-            have_sql = f"SELECT gameDate, COUNT(DISTINCT teamId) AS have FROM {table} WHERE season = ? GROUP BY gameDate"
+            have_sql = f"SELECT gameDate, COUNT(DISTINCT teamId) AS have FROM {_ident(table)} WHERE season = ? GROUP BY gameDate"
         if self._table_exists(conn, table):
             have = pd.read_sql(have_sql, conn, params=[season])
         else:
@@ -338,7 +353,7 @@ class NBADatabaseSync:
         if null_check_cols and self._table_exists(conn, table):
             cutoff = (pd.Timestamp.today() - pd.Timedelta(days=self.RECHECK_DAYS)).strftime('%Y-%m-%d')
             cond = ' OR '.join(f'"{c}" IS NULL' for c in null_check_cols)
-            todo |= set(pd.read_sql(f"SELECT DISTINCT gameDate FROM {table} WHERE season = ? AND gameDate >= ? AND ({cond})",
+            todo |= set(pd.read_sql(f"SELECT DISTINCT gameDate FROM {_ident(table)} WHERE season = ? AND gameDate >= ? AND ({cond})",
                                     conn, params=[season, cutoff])['gameDate'])
         types = dict(self.fetch_game_date_and_season_type(season))
         out = [(d, types.get(d, 'Regular Season')) for d in sorted(todo) if self._should_attempt(conn, table, d)]
@@ -938,7 +953,7 @@ class NBADatabaseSync:
                     # tables (it was incomplete before) so it is cleanly re-fetched next run
                     for table in (table_pair.player_table, table_pair.team_table):
                         if self._table_exists(conn, table):
-                            conn.execute(f"DELETE FROM {table} WHERE gameId = ?", [game_id])
+                            conn.execute(f"DELETE FROM {_ident(table)} WHERE gameId = ?", [game_id])
                     conn.commit()
                     raise
 
@@ -1112,18 +1127,18 @@ class NBADatabaseSync:
                 
                 # Construct deduplication query
                 dedup_query = f"""
-                DELETE FROM {table_name}
+                DELETE FROM {_ident(table_name)}
                 WHERE rowid NOT IN (
                     SELECT MAX(rowid)
-                    FROM {table_name}
-                    GROUP BY {id_column}, {game_id_col}
+                    FROM {_ident(table_name)}
+                    GROUP BY {_ident(id_column)}, {_ident(game_id_col)}
                 )
                 """
                 
                 cursor = conn.cursor()
                 
                 # Get count before deletion
-                cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
+                cursor.execute(f"SELECT COUNT(*) FROM {_ident(table_name)}")
                 count_before = cursor.fetchone()[0]
                 
                 # Execute deduplication
@@ -1131,7 +1146,7 @@ class NBADatabaseSync:
                 conn.commit()
                 
                 # Get count after deletion
-                cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
+                cursor.execute(f"SELECT COUNT(*) FROM {_ident(table_name)}")
                 count_after = cursor.fetchone()[0]
                 
                 duplicates_removed = count_before - count_after
@@ -1207,7 +1222,7 @@ class NBADatabaseSync:
                 def ids(table):
                     if not self._table_exists(conn, table):
                         return set()
-                    return set(pd.read_sql(f"SELECT DISTINCT {table_pair.id_column} FROM {table}", conn)[table_pair.id_column])
+                    return set(pd.read_sql(f"SELECT DISTINCT {_ident(table_pair.id_column)} FROM {_ident(table)}", conn)[table_pair.id_column])
 
                 complete = ids(table_pair.team_table) & ids(table_pair.player_table)
                 missing = sorted(g for g in all_game_ids - complete
