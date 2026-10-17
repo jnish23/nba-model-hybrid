@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 from pathlib import Path
 import datetime
@@ -97,11 +98,13 @@ class PredictionLogger:
             
     def log_prediction(self, prediction: dict, overwrite: bool = True):
         """
-        Log a prediction (UPSERT).
+        Log a prediction (UPSERT keyed on game_id).
+
+        A re-run refreshes the prediction columns but never touches home_score / away_score / status:
+        a game that is already COMPLETED keeps its result, and its pre-game prediction is kept as
+        well (a post-game re-prediction must not rewrite history). overwrite=False leaves any
+        existing row for the game untouched.
         """
-        # Map input dict keys to db schema if necessary
-        # Assuming input has keys matching our schema or we map them here
-        
         # Normalize game id to canonical 10-char NBA id (pad with leading zeros)
         def _normalize_game_id(gid):
             if gid is None:
@@ -120,44 +123,48 @@ class PredictionLogger:
             'spread_pred': prediction.get('pred_spread'),
             'total_pred': prediction.get('pred_total'),
             'odds_home_ml': prediction.get('line_ml_home'),
-            'odds_away_ml': prediction.get('line_ml_away'), # Need to ensure this is passed
+            'odds_away_ml': prediction.get('line_ml_away'),
             'odds_home_spread': prediction.get('line_spread'),
             'odds_total': prediction.get('line_total'),
-            'status': 'PENDING'
+            'status': 'PENDING',            # only used when the game is new
+            'model_version': prediction.get('model_version'),
         }
-        
+        refreshed = [c for c in row if c not in ('game_id', 'status')]
+
         # 1. Save to DB
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cols = ', '.join(row.keys())
                 placeholders = ', '.join(['?'] * len(row))
-                verb = "INSERT OR REPLACE" if overwrite else "INSERT OR IGNORE"
-                sql = f"{verb} INTO predictions_log_v2 ({cols}) VALUES ({placeholders})"
+                if overwrite:
+                    updates = ', '.join(f"{c} = excluded.{c}" for c in refreshed)
+                    sql = (f"INSERT INTO {TABLE} ({cols}) VALUES ({placeholders}) "
+                           f"ON CONFLICT(game_id) DO UPDATE SET {updates} "
+                           f"WHERE {TABLE}.status IS NOT 'COMPLETED'")
+                else:
+                    sql = f"INSERT OR IGNORE INTO {TABLE} ({cols}) VALUES ({placeholders})"
                 conn.execute(sql, list(row.values()))
         except Exception as e:
             logging.error(f"Failed to log prediction to DB: {e}")
-            
-        # 2. Save to CSV (mirroring DB behavior to avoid duplicates)
-        df_row = pd.DataFrame([row])
+
+        # 2. Save to CSV, mirroring the DB (same columns as the table; scores/status carried over)
+        df_row = pd.DataFrame([row]).reindex(columns=COLUMNS)
         if self.log_path.exists():
-            # Read the CSV's game_ids once per logger, not on every call
-            if getattr(self, '_csv_game_ids', None) is None:
-                self._csv_game_ids = set(pd.read_csv(self.log_path, dtype=str, usecols=['game_id'])['game_id'])
-            already_exists = row['game_id'] in self._csv_game_ids
-            if not already_exists:
-                df_row.to_csv(self.log_path, mode='a', header=False, index=False)
-            elif overwrite:
-                # Replace existing row (same as INSERT OR REPLACE) — only rewrite the file in this case
-                existing = pd.read_csv(self.log_path, dtype=str)
-                existing = existing[existing['game_id'] != row['game_id']]
-                updated = pd.concat([existing, df_row.astype(str)], ignore_index=True)
-                updated.to_csv(self.log_path, index=False)
-            # else: skip (same as INSERT OR IGNORE)
+            existing = pd.read_csv(self.log_path, dtype=str).reindex(columns=COLUMNS)
+            match = existing['game_id'] == row['game_id']
+            new_row = df_row.astype(object).where(df_row.notna(), None).astype(str).replace('None', np.nan)
+            if not match.any():
+                updated = pd.concat([existing, new_row], ignore_index=True)
+            elif overwrite and not (existing.loc[match, 'status'] == 'COMPLETED').any():
+                keep = existing.loc[match, ['home_score', 'away_score', 'status']].iloc[0]
+                new_row[['home_score', 'away_score', 'status']] = keep.values
+                updated = pd.concat([existing[~match], new_row], ignore_index=True)
+            else:
+                updated = existing                  # completed (or overwrite=False): keep the row as it is
+            updated.to_csv(self.log_path, index=False)
         else:
             df_row.to_csv(self.log_path, index=False)
-            self._csv_game_ids = set()
-        self._csv_game_ids.add(row['game_id'])
-            
+
         logging.info(f"Logged prediction for {row['matchup']}")
 
     def update_actual_scores(self):

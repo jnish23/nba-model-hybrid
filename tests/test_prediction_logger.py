@@ -66,3 +66,52 @@ def test_replacing_a_season_keeps_the_primary_key(tmp_path):
                                           {'game_id': 'c', 'model_version': 'new'}]
         with pytest.raises(sqlite3.IntegrityError):
             conn.execute(f"INSERT INTO {pl.TABLE} (game_id) VALUES ('b')")
+
+
+def _entry(game_id='0022500001', prob=0.6):
+    return {'gameId': game_id, 'gameDate': '2026-01-05', 'home_team': 'Home', 'away_team': 'Away',
+            'pred_home_win_prob': prob, 'pred_spread': 2.0, 'pred_total': 220.0, 'line_spread': -3.0,
+            'line_total': 221.0, 'line_ml_home': -150, 'line_ml_away': 130, 'model_version': 'v-test'}
+
+
+def test_rerun_refreshes_the_prediction_but_keeps_scores_and_status(tmp_path):
+    db, csv = tmp_path / 'x.db', tmp_path / 'p.csv'
+    lg = pl.PredictionLogger(str(db), log_path=str(csv))
+    lg.log_prediction(_entry(prob=0.60))
+    with sqlite3.connect(db) as conn:       # the game finishes
+        conn.execute(f"UPDATE {pl.TABLE} SET home_score = 110, away_score = 101, status = 'COMPLETED'")
+    lg.log_prediction(_entry(prob=0.99))     # inference re-run after the result is known
+    with sqlite3.connect(db) as conn:
+        r = pd.read_sql(f"SELECT * FROM {pl.TABLE}", conn).iloc[0]
+    assert (r.home_score, r.away_score, r.status) == (110, 101, 'COMPLETED')
+    assert r.ml_prob == pytest.approx(0.60)       # history is not rewritten after the fact
+
+
+def test_rerun_before_the_game_refreshes_prediction_and_stays_pending(tmp_path):
+    db, csv = tmp_path / 'x.db', tmp_path / 'p.csv'
+    lg = pl.PredictionLogger(str(db), log_path=str(csv))
+    lg.log_prediction(_entry(prob=0.60))
+    lg.log_prediction(_entry(prob=0.65))
+    with sqlite3.connect(db) as conn:
+        df = pd.read_sql(f"SELECT * FROM {pl.TABLE}", conn)
+    assert len(df) == 1 and df.ml_prob.iloc[0] == pytest.approx(0.65) and df.status.iloc[0] == 'PENDING'
+    assert df.model_version.iloc[0] == 'v-test'
+
+
+def test_csv_mirror_keeps_completed_rows_and_column_alignment(tmp_path):
+    db, csv = tmp_path / 'x.db', tmp_path / 'p.csv'
+    lg = pl.PredictionLogger(str(db), log_path=str(csv))
+    lg.log_prediction(_entry('0022500001', 0.6))
+    lg.log_prediction(_entry('0022500002', 0.5))
+    done = pd.read_csv(csv, dtype=str)
+    done.loc[done.game_id == '0022500001', ['home_score', 'away_score', 'status']] = ['110', '101', 'COMPLETED']
+    done.to_csv(csv, index=False)
+    lg2 = pl.PredictionLogger(str(db), log_path=str(csv))
+    lg2.log_prediction(_entry('0022500001', 0.9))        # completed: untouched
+    lg2.log_prediction(_entry('0022500002', 0.4))        # pending: refreshed
+    lg2.log_prediction(_entry('0022500003', 0.3))        # new
+    out = pd.read_csv(csv, dtype=str).set_index('game_id')
+    assert list(pd.read_csv(csv, nrows=0).columns) == pl.COLUMNS
+    assert out.loc['0022500001', ['ml_prob', 'home_score', 'status']].tolist() == ['0.6', '110', 'COMPLETED']
+    assert out.loc['0022500002', 'ml_prob'] == '0.4' and out.loc['0022500002', 'status'] == 'PENDING'
+    assert out.loc['0022500003', 'status'] == 'PENDING' and len(out) == 3
