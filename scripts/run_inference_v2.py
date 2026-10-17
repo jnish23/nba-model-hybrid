@@ -700,17 +700,17 @@ class InferenceEngine:
         # Roster/BPM Logic
             if hid in roster_feats.index:
                 row['roster_bpm_home'] = roster_feats.loc[hid, 'roster_bpm']
-                row['roster_bpm_ewma_x'] = roster_feats.loc[hid, 'roster_bpm_ewma']
+                row['roster_bpm_ewma_home'] = roster_feats.loc[hid, 'roster_bpm_ewma']
             else:
                 row['roster_bpm_home'] = 0.0 # Default/Neutral
-                row['roster_bpm_ewma_x'] = 0.0
+                row['roster_bpm_ewma_home'] = 0.0
             
             if aid in roster_feats.index:
                 row['roster_bpm_away'] = roster_feats.loc[aid, 'roster_bpm']
-                row['roster_bpm_ewma_y'] = roster_feats.loc[aid, 'roster_bpm_ewma']
+                row['roster_bpm_ewma_away'] = roster_feats.loc[aid, 'roster_bpm_ewma']
             else:
                 row['roster_bpm_away'] = 0.0
-                row['roster_bpm_ewma_y'] = 0.0
+                row['roster_bpm_ewma_away'] = 0.0
 
             # Injury report features; when unavailable, the values training uses for a team with
             # no report (inj_missing=1, zeros)

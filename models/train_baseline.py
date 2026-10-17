@@ -61,7 +61,8 @@ class BaselineModel:
 
         # --- Build two feature pools ---
         # 1. Diff pool (for ML / Spread): diff_*, matchup_*, odds_*, plus context cols
-        #    that are NOT per-team (e.g. roster_bpm_ewma_x/y are already differential-style)
+        #    that are NOT per-team (e.g. season_game_number-style context). Per-team pairs such as
+        #    roster_bpm_home/away enter the diff pool only through diff_roster_bpm*.
         self.features_diff = [
             c for c in all_features
             if c.startswith('diff_') or c.startswith('matchup_') or c.startswith('odds_')

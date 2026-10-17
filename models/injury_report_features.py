@@ -457,7 +457,7 @@ def rates_for_season(table, season):
 
 
 def add_injury_features(game_df, inj):
-    """Attach *_home / *_away / diff_* injury columns to a one-row-per-game frame."""
+    """Attach *_home / *_away injury columns to a one-row-per-game frame."""
     g = game_df.copy()
     g['_gid'] = g['gameId'].astype(str).str.zfill(10)
     inj = inj.copy()
@@ -469,7 +469,6 @@ def add_injury_features(game_df, inj):
         side_df[tid] = side_df[tid].astype('int64')
         g[tid] = g[tid].astype('int64')
         g = g.merge(side_df, on=['_gid', tid], how='left')
-    g = g.drop(columns='_gid')
-    for c in ('inj_lost', 'inj_lost_new', 'inj_n_out'):
-        g[f'diff_{c}'] = g[f'{c}_home'] - g[f'{c}_away']
-    return g
+    # diff_inj_* are created with every other home/away difference by
+    # GameFeatureBuilder.add_derived_features (call this BEFORE that step).
+    return g.drop(columns='_gid')

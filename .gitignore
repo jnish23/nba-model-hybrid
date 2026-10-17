@@ -100,3 +100,6 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+# pytest modules live in tests/ (the debug/test patterns above are for ad-hoc scripts)
+!tests/
+!tests/**/test_*.py
