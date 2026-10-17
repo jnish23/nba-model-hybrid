@@ -20,6 +20,7 @@ from models.bpm_builder import BPMBuilder
 from models.prediction_logger import PredictionLogger
 from models.live_odds import split_open_and_current
 from models.live_features import align_features, build_live_game_frame
+from models.betting import get_ml_bet
 from models.model_registry import DEPLOYED_SUFFIX, MODEL_DIR, load_bundle
 from models.player_features import PlayerFeatureBuilder
 from models import injury_report_features as irf
@@ -565,6 +566,9 @@ class InferenceEngine:
             # - Over: Edge >= 5 (Higher confidence if >= 7)
             # - Under: Edge >= 7 (High confidence only)
             
+            # Moneyline: each side against its own current price
+            ml_bet, ml_edge = get_ml_bet({'ml_prob': prob, 'odds_home_ml': ml_home, 'odds_away_ml': ml_away})
+
             raw_edge_over = pred_total - total_line
             recommendation = ""
             
@@ -592,6 +596,8 @@ class InferenceEngine:
                 'home_score': np.nan, # Pending
                 'away_score': np.nan, # Pending
                 'status': 'PENDING',
+                'ml_bet': ml_bet,
+                'ml_edge': round(ml_edge, 4),
                 'recommendation': recommendation # Keeping as extra column for CSV utility
             })
             

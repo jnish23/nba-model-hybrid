@@ -285,10 +285,12 @@ class BettingSimulator:
                 return -odds / (-odds + 100)
         
         df['market_prob'] = df['odds_home_ml'].apply(implied_prob)
-        df = df.dropna(subset=['market_prob', 'ml_prob', 'ml_actual'])
+        df['market_prob_away'] = df['odds_away_ml'].apply(implied_prob)
+        df = df.dropna(subset=['market_prob', 'market_prob_away', 'ml_prob', 'ml_actual'])
         
+        # Each side against its OWN price (1 - home implied would credit the away bet with the vig)
         df['model_edge_home'] = df['ml_prob'] - df['market_prob']
-        df['model_edge_away'] = (1 - df['ml_prob']) - (1 - df['market_prob'])
+        df['model_edge_away'] = (1 - df['ml_prob']) - df['market_prob_away']
         
         print("="*60)
         print("MONEYLINE DIAGNOSTIC")
@@ -318,7 +320,7 @@ class BettingSimulator:
         if len(away_bets) > 0:
             away_wr = 1 - away_bets['ml_actual'].mean()  # Away win rate
             away_model_avg = 1 - away_bets['ml_prob'].mean()
-            away_market_avg = 1 - away_bets['market_prob'].mean()
+            away_market_avg = away_bets['market_prob_away'].mean()
             print(f"\nAWAY BETS ({len(away_bets)} bets):")
             print(f"  Win rate: {away_wr:.1%}")
             print(f"  Model predicted: {away_model_avg:.1%}")
@@ -326,7 +328,7 @@ class BettingSimulator:
             print(f"  Model overconfident by: {away_model_avg - away_wr:.1%}")
             
             # Break down by market probability
-            away_bets['away_is_favorite'] = away_bets['market_prob'] < 0.5
+            away_bets['away_is_favorite'] = away_bets['market_prob_away'] > 0.5
             print("\n  By favorite status:")
             for fav, group in away_bets.groupby('away_is_favorite'):
                 label = "Favorites" if fav else "Underdogs"

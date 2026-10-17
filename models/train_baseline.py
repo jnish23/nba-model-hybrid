@@ -177,13 +177,18 @@ class BaselineModel:
         market_acc = (y_true == (market_probs > 0.5).astype(int)).mean()
         print(f"Accuracy  - Model: {model_acc:.4f}, Market: {market_acc:.4f}")
         
-        # Edge analysis using the cleaned dataframe
-        df_clean = df.iloc[np.where(valid_mask)[0]] if len(valid_mask) == len(df) else df
-        df_clean['model_edge'] = df_clean['ml_prob'] - df_clean['market_prob']
+        # Edge analysis using the cleaned dataframe. Each side is judged against its OWN price:
+        # "1 - home implied" is not the away price (the two implied probabilities sum to > 1),
+        # and using it credits every away bet with the vig.
+        df_clean = df.iloc[np.where(valid_mask)[0]].copy() if len(valid_mask) == len(df) else df.copy()
+        df_clean['market_prob_away'] = df_clean['odds_away_ml'].apply(self.implied_prob_from_american)
+        df_clean = df_clean.dropna(subset=['market_prob_away'])
+        df_clean['edge_home'] = df_clean['ml_prob'] - df_clean['market_prob']
+        df_clean['edge_away'] = (1 - df_clean['ml_prob']) - df_clean['market_prob_away']
         
-        print("\n--- Edge Analysis ---")
+        print("\n--- Edge Analysis (each side vs its own price) ---")
         for thresh in [0.05, 0.10, 0.15]:
-            home_bets = df_clean[df_clean['model_edge'] > thresh]
+            home_bets = df_clean[(df_clean['edge_home'] > thresh) & (df_clean['edge_home'] >= df_clean['edge_away'])]
             if len(home_bets) > 0:
                 actual_wr = home_bets['ml_actual'].mean()
                 model_avg = home_bets['ml_prob'].mean()
@@ -191,11 +196,11 @@ class BaselineModel:
                 print(f"\nHome edge > {thresh:.0%}: {len(home_bets)} bets")
                 print(f"  Actual win rate: {actual_wr:.1%} | Model: {model_avg:.1%} | Market: {market_avg:.1%}")
             
-            away_bets = df_clean[df_clean['model_edge'] < -thresh]
+            away_bets = df_clean[(df_clean['edge_away'] > thresh) & (df_clean['edge_away'] > df_clean['edge_home'])]
             if len(away_bets) > 0:
                 actual_wr = 1 - away_bets['ml_actual'].mean()
                 model_avg = 1 - away_bets['ml_prob'].mean()
-                market_avg = 1 - away_bets['market_prob'].mean()
+                market_avg = away_bets['market_prob_away'].mean()
                 print(f"\nAway edge > {thresh:.0%}: {len(away_bets)} bets")
                 print(f"  Actual win rate: {actual_wr:.1%} | Model: {model_avg:.1%} | Market: {market_avg:.1%}")
 

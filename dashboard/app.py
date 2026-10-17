@@ -257,8 +257,9 @@ def simulate_strategies(df, threshold, bet_type):
         if bet_type == 'Moneyline':
             home_prob = row.get('ml_prob')
             market_home_prob = calculate_implied_prob(row.get('odds_home_ml'))
+            market_away_prob = calculate_implied_prob(row.get('odds_away_ml'))
             
-            if pd.notna(home_prob) and pd.notna(market_home_prob):
+            if pd.notna(home_prob) and pd.notna(market_home_prob) and pd.notna(market_away_prob):
                 pick, edge = get_ml_bet(row, threshold=threshold)
                 
                 if pick == 'home':
@@ -500,7 +501,7 @@ def build_team_breakdown(df, team, bet_type, threshold):
         model_bet_type_label = None
 
         if bet_type == 'Moneyline':
-            if pd.notna(g.get('ml_prob')) and pd.notna(g.get('odds_home_ml')):
+            if pd.notna(g.get('ml_prob')) and pd.notna(g.get('odds_home_ml')) and pd.notna(g.get('odds_away_ml')):
                 pick, edge = get_ml_bet(g, threshold=threshold)
                 if pick == 'home' and is_home:
                     model_bet_on_team = True
@@ -724,11 +725,8 @@ def main():
             todays_games['Model Away Prob (%)'] = (100.0 * (1 - todays_games['ml_prob'])).round(2)
             # 2. Picks
             def get_ml_pick_display(row):
-                # Using 5% threshold as default for "ML Pick" display recommendation
-                # Ensure we have market_prob or compute it
-                if 'market_prob' not in row:
-                    row['market_prob'] = calculate_implied_prob(row['odds_home_ml'])
-                
+                # Using 5% threshold as default for "ML Pick" display recommendation.
+                # get_ml_bet prices each side with its own moneyline (odds_home_ml / odds_away_ml).
                 pick, edge = get_ml_bet(row, threshold=0.05)
                 
                 if pick == 'home':
