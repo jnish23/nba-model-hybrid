@@ -225,6 +225,17 @@ class InferenceEngine:
                                         as_of=now, upcoming=upcoming, reports=reports)
         inj = inj[inj['gameId'].isin(upcoming['gameId'])]
         logging.info(f"Injury features for {len(inj)} team-games; missing report for {int(inj['inj_missing'].sum())}")
+        # Informational only (never a model input): noon-to-latest status downgrades, and both injury sources side by side
+        self.downgrades = {}
+        try:
+            from models.injury_downgrades import build_downgrade_features
+            d, _, _ = build_downgrade_features(self.db_path, [season], as_of=now, upcoming=upcoming, reports=reports)
+            d = d[d['gameId'].isin(upcoming['gameId'])]
+            self.downgrades = {(r.gameId, int(r.teamId)): r.inj_downgrade_lost for r in d.itertuples()}
+        except Exception as e:
+            logging.warning(f"Downgrade flags unavailable: {e}")
+        from models.injury_source_compare import log_side_by_side
+        log_side_by_side(self.db_path, game_date, reports=reports, as_of=now)
         return inj.set_index(['gameId', 'teamId'])
 
     def verify_feature_alignment(self, row_df, model_name, expected_cols):
@@ -336,6 +347,8 @@ class InferenceEngine:
                 'spread_edge': round(spread_edge, 4),
                 'total_bet': total_bet,
                 'total_edge': round(total_edge, 4),
+                'inj_downgrade_lost_home': getattr(self, 'downgrades', {}).get((str(g['gameId']), int(g['teamId_home'])), 0.0),
+                'inj_downgrade_lost_away': getattr(self, 'downgrades', {}).get((str(g['gameId']), int(g['teamId_away'])), 0.0),
                 'recommendation': recommendation # Keeping as extra column for CSV utility
             })
             
