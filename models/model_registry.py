@@ -3,6 +3,7 @@ The one place that says which trained models production uses, and how a model se
 
 A "model set" is the files that share a suffix in models/saved/:
     model_ml<suffix>.pkl  calibrator_ml<suffix>.pkl  model_spread<suffix>.pkl  model_total<suffix>.pkl
+    sigma_total<suffix>.pkl (optional: per-game total sigma, see models/market_models.py)
     feature_config<suffix>.json  calibration_meta<suffix>.json  best_config_<target><suffix>.json
 `train_baseline.py --deploy` writes the set named DEPLOYED_SUFFIX; `scripts/run_inference_v2.py`
 (and therefore run_daily_inference.bat) and scripts/maintenance/backfill_inference.py load it.
@@ -64,6 +65,7 @@ class ModelBundle:
     total: object
     features: dict
     calib_meta: dict = field(default_factory=dict)
+    sigma_total: object = None          # models/market_models.HeteroSigma; None for sets trained before E4 (global std)
 
 
 def load_bundle(suffix=DEPLOYED_SUFFIX, model_dir=MODEL_DIR):
@@ -89,6 +91,11 @@ def load_bundle(suffix=DEPLOYED_SUFFIX, model_dir=MODEL_DIR):
         features=features,
         calib_meta=json.loads(path('calibration_meta', 'json').read_text()),
     )
+    sigma_path = path('sigma_total', 'pkl')
+    if sigma_path.exists():
+        bundle.sigma_total = joblib.load(sigma_path)
+    elif bundle.calib_meta.get('total_sigma_model'):
+        raise FileNotFoundError(f"Model set '{suffix}' says it uses a per-game total sigma but {sigma_path.name} is missing")
     for target in TARGETS:
         assert_config_matches_model(target, getattr(bundle, target), features[target])
     logging.info(f"Loaded model set '{suffix}' ({', '.join(f'{t}: {len(features[t])} features' for t in TARGETS)})")
