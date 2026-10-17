@@ -1,0 +1,12 @@
+{
+ "decision": false,
+ "main_criterion": {
+  "games with >=1 Out: Spread MAE": false,
+  "games with >=1 Out: Total MAE": false
+ },
+ "no_harm": {
+  "ML log loss": true,
+  "Spread MAE": true,
+  "Total MAE": true
+ }
+}
