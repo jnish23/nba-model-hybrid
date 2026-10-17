@@ -23,6 +23,11 @@ from models.model_registry import DEPLOYED_SUFFIX
 NEUTRAL_PARAMS = dict(n_estimators=1000, learning_rate=0.01, max_depth=6,
                       num_leaves=31, min_child_samples=30, reg_alpha=0.5, reg_lambda=0.5)
 
+# FLAML tunes on the first FLAML_TRAIN_FRAC of the model-train rows and validates on the rest. Feature
+# selection must therefore also stop at that boundary, otherwise the validation block has already
+# shaped the feature set the tuner is scored on.
+FLAML_TRAIN_FRAC = 0.8
+
 FLAML_CUSTOM_HP = {
     "lgbm": {
         "reg_alpha": {"domain": tune.loguniform(lower=0.01, upper=50.0)},
@@ -505,9 +510,15 @@ class BaselineModel:
 
 
 
+    @staticmethod
+    def selection_rows(model_train_df, tuning):
+        """Rows feature selection may look at: all model-train rows, or - when a FLAML search will
+        validate on the last (1 - FLAML_TRAIN_FRAC) of them - only the rows before that block."""
+        return model_train_df.iloc[:int(len(model_train_df) * FLAML_TRAIN_FRAC)] if tuning else model_train_df
+
     def _tune_fold_params(self, X, y, task, time_budget):
         """FLAML search on ONE fold's training rows only (last 20% of them is the validation block)."""
-        n = int(len(X) * 0.8)
+        n = int(len(X) * FLAML_TRAIN_FRAC)
         automl = AutoML()
         automl.fit(X.iloc[:n], y.iloc[:n], task=task, time_budget=time_budget,
                    metric='log_loss' if task == 'classification' else 'mse',
@@ -622,9 +633,10 @@ class BaselineModel:
                         f"train std: {model_train_df['target_total_pts'].std():.1f}")
 
             # Feature selection on model_train only (no leakage)
-            features_ml = self._select_features_from_subset(model_train_df, 'target_home_win')
-            features_spread = self._select_features_from_subset(model_train_df, 'target_point_diff')
-            features_total = self._select_features_from_subset(model_train_df, 'target_total_pts')
+            sel_df = self.selection_rows(model_train_df, tuning=tune_per_fold)
+            features_ml = self._select_features_from_subset(sel_df, 'target_home_win')
+            features_spread = self._select_features_from_subset(sel_df, 'target_point_diff')
+            features_total = self._select_features_from_subset(sel_df, 'target_total_pts')
             
             logging.info(f"Fold {test_season} features - ML: {len(features_ml)}, Spread: {len(features_spread)}, Total: {len(features_total)}")
 
@@ -1255,9 +1267,11 @@ class BaselineModel:
         logging.info(f"Final training split: model_train={len(model_train_df)}, calib={len(calib_df)}")
         
         # Select features from model_train only (no leakage)
-        self.features_ml = self._select_features_from_subset(model_train_df, 'target_home_win')
-        self.features_spread = self._select_features_from_subset(model_train_df, 'target_point_diff')
-        self.features_total = self._select_features_from_subset(model_train_df, 'target_total_pts')
+        # (FLAML validates on the last 20% of model_train, so selection stops before that block)
+        sel_df = self.selection_rows(model_train_df, tuning=True)
+        self.features_ml = self._select_features_from_subset(sel_df, 'target_home_win')
+        self.features_spread = self._select_features_from_subset(sel_df, 'target_point_diff')
+        self.features_total = self._select_features_from_subset(sel_df, 'target_total_pts')
         
         # Save feature config
         feature_config = {
@@ -1280,7 +1294,7 @@ class BaselineModel:
         y_calib_ml = calib_df['target_home_win']
         
         # Temporal split for FLAML validation (within model_train)
-        n_flaml_train = int(len(X_model_train_ml) * 0.8)
+        n_flaml_train = int(len(X_model_train_ml) * FLAML_TRAIN_FRAC)
         
         logging.info("Training FLAML AutoML for Moneyline...")
         automl_ml = AutoML()
@@ -1329,7 +1343,7 @@ class BaselineModel:
         X_calib_spread = calib_df[self.features_spread]
         y_calib_spread = calib_df['target_point_diff']
         
-        n_flaml_train = int(len(X_model_train_spread) * 0.8)
+        n_flaml_train = int(len(X_model_train_spread) * FLAML_TRAIN_FRAC)
         
         logging.info("Training FLAML AutoML for Spread...")
         automl_spread = AutoML()
@@ -1374,7 +1388,7 @@ class BaselineModel:
         X_calib_total = calib_df[self.features_total]
         y_calib_total = calib_df['target_total_pts']
         
-        n_flaml_train = int(len(X_model_train_total) * 0.8)
+        n_flaml_train = int(len(X_model_train_total) * FLAML_TRAIN_FRAC)
         
         logging.info("Training FLAML AutoML for Total...")
         automl_total = AutoML()

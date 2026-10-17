@@ -72,3 +72,28 @@ def test_per_fold_tuning_runs_on_training_rows_only(tmp_path, caplog):
         m.backtest_walk_forward(start_season='2019-20', tune_per_fold=True, tune_time_budget=2, save_suffix='_t')
     # 800 earlier-season rows, 80% of them model-train (the rest is the calibration holdout); 3 targets
     assert seen == [640, 640, 640]
+
+
+def test_feature_selection_stops_before_the_flaml_validation_block(tmp_path):
+    csv = tmp_path / 'train.csv'
+    _training_csv(csv)
+    m = BaselineModel(csv, model_dir=str(tmp_path / 'out'))
+    seen = []
+    orig = m._select_features_from_subset
+
+    def spy(df, target, *a, **k):
+        seen.append((len(df), df['gameDate'].max()))
+        return orig(df, target, *a, **k)
+
+    m._select_features_from_subset = spy
+    m.train_and_save_all(use_odds=False, save_suffix='_t', time_budget=1)
+    data = pd.read_csv(csv, parse_dates=['gameDate']).sort_values('gameDate').reset_index(drop=True)
+    n_model_train = int(len(data) * 0.8)                # model_train | calibration holdout
+    n_flaml_train = int(n_model_train * 0.8)            # FLAML train | FLAML validation
+    flaml_val_start = data['gameDate'].iloc[n_flaml_train]
+    assert len(seen) == 3
+    for n_rows, last_date in seen:
+        assert n_rows == n_flaml_train
+        assert last_date < flaml_val_start
+    # the final model is still fit on all of model_train (selection restriction only)
+    assert (tmp_path / 'out' / 'model_ml_t.pkl').exists()
