@@ -26,3 +26,25 @@ def test_first_season_rates_use_no_later_data(tmp_path, monkeypatch):
     second_n = {k: v['n'] for k, v in table[seasons[1]].items()}
     all_n = {k: v['n'] for k, v in table['all'].items()}
     assert all(second_n[k] < all_n[k] for k in second_n)
+
+
+def _reports(*rows):
+    return pd.DataFrame(rows, columns=['report_ts', 'game_date']).assign(
+        report_ts=lambda d: pd.to_datetime(d['report_ts']), game_date=lambda d: pd.to_datetime(d['game_date']))
+
+
+def test_freshness_flags_missing_and_old_reports():
+    cutoff = pd.Timestamp('2026-01-15 12:00')
+    fresh = _reports(('2026-01-15 11:30', '2026-01-15'), ('2026-01-14 20:00', '2026-01-15'))
+    latest, age, stale = irf.check_report_freshness(fresh, '2026-01-15', cutoff)
+    assert latest == pd.Timestamp('2026-01-15 11:30') and age == pytest.approx(0.5) and not stale
+
+    old = _reports(('2026-01-14 20:00', '2026-01-15'))          # the morning download failed
+    latest, age, stale = irf.check_report_freshness(old, '2026-01-15', cutoff)
+    assert stale and age == pytest.approx(16.0)
+
+    none = _reports(('2026-01-14 20:00', '2026-01-14'))         # nothing covers the game date
+    assert irf.check_report_freshness(none, '2026-01-15', cutoff) == (None, None, True)
+
+    future = _reports(('2026-01-15 13:00', '2026-01-15'))       # published after the cutoff: not usable
+    assert irf.check_report_freshness(future, '2026-01-15', cutoff)[2] is True

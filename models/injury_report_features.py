@@ -91,6 +91,27 @@ def parse_all_reports(report_dir=REPORT_DIR, cache=PARSED_CACHE):
     return out
 
 
+MAX_REPORT_AGE_HOURS = 6.0
+
+
+def check_report_freshness(reports, game_date, cutoff, max_age_hours=MAX_REPORT_AGE_HOURS):
+    """
+    How stale is the newest injury report that covers `game_date`, as of `cutoff` (US/Eastern)?
+    Returns (latest report_ts or None, age in hours or None, stale: bool). stale = no report at all
+    for that date, or the newest one was published more than `max_age_hours` before the cutoff.
+    parse_all_reports() only sees PDFs already on disk, so when the live download fails (network, site
+    change) the features silently come from an older report or from none; this makes that visible.
+    """
+    day = reports[pd.to_datetime(reports['game_date']).dt.normalize() == pd.Timestamp(game_date).normalize()]
+    ts = pd.to_datetime(day['report_ts'])
+    ts = ts[ts <= pd.Timestamp(cutoff)]
+    if ts.empty:
+        return None, None, True
+    latest = ts.max()
+    age = (pd.Timestamp(cutoff) - latest) / pd.Timedelta(hours=1)
+    return latest, float(age), bool(age > max_age_hours)
+
+
 # ---------------------------------------------------------------- 2. link
 
 def _team_lookup(conn):

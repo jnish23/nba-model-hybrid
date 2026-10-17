@@ -404,8 +404,17 @@ class InferenceEngine:
         now = now_et()
         cutoff = min(now, game_date + clock) if clock is not None else now
         report_path = fetch_report(as_of=cutoff)  # saves into data/raw/injury_reports
+        if report_path is None:
+            logging.error("Injury report download FAILED; using only the reports already on disk")
         logging.info(f"Injury report for snapshot {GameFeatureBuilder.INJURY_SNAPSHOT} (cutoff {cutoff:%Y-%m-%d %H:%M} ET): {report_path}")
-        reports = irf.parse_all_reports()
+        reports = irf.parse_all_reports()      # re-scans the report folder: picks up the PDF just fetched
+        latest, age, stale = irf.check_report_freshness(reports, game_date, cutoff)
+        if stale:
+            logging.error(f"STALE INJURY DATA: newest report for {game_date:%Y-%m-%d} is "
+                          f"{'missing' if latest is None else f'{age:.1f} h older than the {cutoff:%H:%M} ET cutoff ({latest})'}; "
+                          f"teams without a covering report are flagged inj_missing=1")
+        else:
+            logging.info(f"Newest injury report for {game_date:%Y-%m-%d}: {latest} ({age:.1f} h before the cutoff)")
         upcoming = pd.concat([
             pd.DataFrame({'gameId': games_df['gameId'].astype(str), 'teamId': games_df['teamId_home'].astype(int)}),
             pd.DataFrame({'gameId': games_df['gameId'].astype(str), 'teamId': games_df['teamId_away'].astype(int)}),
