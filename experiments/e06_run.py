@@ -48,6 +48,14 @@ def main(skip_runs=False):
     test = pd.concat(parts, ignore_index=True)
     (OUT / NAME).mkdir(parents=True, exist_ok=True)
     test.to_csv(OUT / NAME / 'predictions.csv', index=False)
+    from experiments.lib import label_calib_folds, load_games
+    _, df_all = load_games()
+    cparts = []
+    for k, nm in {1.0: 'baseline', **KAPPAS}.items():
+        c = load_run(nm)[1]
+        c['fold'] = label_calib_folds(df_all, c)
+        cparts.append(c[c['fold'].map(chosen) == k].drop(columns='fold'))
+    pd.concat(cparts).sort_values(['gameDate']).to_csv(OUT / NAME / 'calibration_set_predictions.csv', index=False)
     res = evaluate(NAME, test)
     cmp = compare(NAME, exp_test=test, base_test=base)
     keep, passed, nh_ok = standard_decision(cmp)
