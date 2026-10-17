@@ -18,6 +18,22 @@ from datetime import date
 
 from models.model_registry import DEPLOYED_SUFFIX
 
+# Fixed LightGBM settings used when no hyperparameter search is run. They were NOT chosen by looking
+# at any test season, which is what makes them safe for a walk-forward backtest.
+NEUTRAL_PARAMS = dict(n_estimators=1000, learning_rate=0.01, max_depth=6,
+                      num_leaves=31, min_child_samples=30, reg_alpha=0.5, reg_lambda=0.5)
+
+FLAML_CUSTOM_HP = {
+    "lgbm": {
+        "reg_alpha": {"domain": tune.loguniform(lower=0.01, upper=50.0)},
+        "reg_lambda": {"domain": tune.loguniform(lower=0.01, upper=50.0)},
+        "colsample_bytree": {"domain": tune.uniform(lower=0.4, upper=0.9)},
+        "min_child_samples": {"domain": tune.randint(lower=20, upper=100)},
+        "n_estimators": {"domain": 1000},
+    }
+}
+
+
 class BaselineModel:
     def __init__(self, data_path, model_dir='models/saved'):
         self.data_path = data_path
@@ -489,38 +505,45 @@ class BaselineModel:
 
 
 
-    def backtest_walk_forward(self, start_season='2019-20', use_tuned_params=True, 
+    def _tune_fold_params(self, X, y, task, time_budget):
+        """FLAML search on ONE fold's training rows only (last 20% of them is the validation block)."""
+        n = int(len(X) * 0.8)
+        automl = AutoML()
+        automl.fit(X.iloc[:n], y.iloc[:n], task=task, time_budget=time_budget,
+                   metric='log_loss' if task == 'classification' else 'mse',
+                   estimator_list=['lgbm'], custom_hp=FLAML_CUSTOM_HP,
+                   X_val=X.iloc[n:], y_val=y.iloc[n:], verbose=0)
+        return automl.best_config.copy()
+
+    def backtest_walk_forward(self, start_season='2019-20', use_tuned_params=False,
                             use_odds=False, save_suffix='_no_odds', calibrate=True,
-                            calib_holdout_frac=0.2):
+                            calib_holdout_frac=0.2, tune_per_fold=False, tune_time_budget=60):
         """
         Walk-forward validation with optional isotonic calibration.
         
         If calibrate=True, each fold's training data is split:
         - (1 - calib_holdout_frac) for model training
         - calib_holdout_frac for fitting calibrators
+
+        Hyperparameters (none of these may see a test season):
+        - default: the fixed NEUTRAL_PARAMS;
+        - tune_per_fold=True: FLAML runs inside every fold on that fold's training rows only
+          (tune_time_budget seconds per target);
+        - use_tuned_params=True: loads models/saved/best_config_{ml,spread,total}.json. Those files
+          were tuned on ALL seasons, so the test folds were seen during tuning - the backtest is then
+          optimistic. Kept only to reproduce old numbers.
         """
-        
-        # Load params (same as before)
-        if use_tuned_params and (self.model_dir / 'best_config_ml.json').exists():
-            with open(self.model_dir / 'best_config_ml.json') as f:
-                ml_params = json.load(f)
-        else:
-            ml_params = dict(n_estimators=1000, learning_rate=0.01, max_depth=6,
-                            num_leaves=31, min_child_samples=30, reg_alpha=0.5, reg_lambda=0.5)
+        if use_tuned_params:
+            logging.warning("use_tuned_params=True loads configs tuned on ALL seasons: the walk-forward "
+                            "results are NOT out-of-sample")
 
-        if use_tuned_params and (self.model_dir / 'best_config_spread.json').exists():
-            with open(self.model_dir / 'best_config_spread.json') as f:
-                spread_params = json.load(f)
-        else:
-            spread_params = dict(n_estimators=1000, learning_rate=0.01, max_depth=6,
-                                num_leaves=31, min_child_samples=30, reg_alpha=0.5, reg_lambda=0.5)
+        def load_params(name):
+            path = self.model_dir / f'best_config_{name}.json'
+            if use_tuned_params and path.exists():
+                return json.loads(path.read_text())
+            return dict(NEUTRAL_PARAMS)
 
-        if use_tuned_params and (self.model_dir / 'best_config_total.json').exists():
-            with open(self.model_dir / 'best_config_total.json') as f:
-                total_params = json.load(f)
-        else:
-            total_params = dict(n_estimators=1000, learning_rate=0.01, max_depth=6,
-                                num_leaves=31, min_child_samples=30, reg_alpha=0.5, reg_lambda=0.5)
+        ml_params, spread_params, total_params = load_params('ml'), load_params('spread'), load_params('total')
 
         self.load_data(use_odds=use_odds)
         
@@ -604,6 +627,15 @@ class BaselineModel:
             features_total = self._select_features_from_subset(model_train_df, 'target_total_pts')
             
             logging.info(f"Fold {test_season} features - ML: {len(features_ml)}, Spread: {len(features_spread)}, Total: {len(features_total)}")
+
+            if tune_per_fold:
+                ml_params = self._tune_fold_params(model_train_df[features_ml], model_train_df['target_home_win'],
+                                                   'classification', tune_time_budget)
+                spread_params = self._tune_fold_params(model_train_df[features_spread], model_train_df['target_point_diff'],
+                                                       'regression', tune_time_budget)
+                total_params = self._tune_fold_params(model_train_df[features_total], model_train_df['target_total_pts'],
+                                                      'regression', tune_time_budget)
+                logging.info(f"Fold {test_season}: tuned on {len(model_train_df)} training rows only")
 
             # =====================================================================
             # DIAGNOSTIC 2: Feature Stability (Jaccard similarity vs previous fold)
@@ -1239,15 +1271,7 @@ class BaselineModel:
 
         calibration_meta = {}
 
-        custom_hp = {
-            "lgbm": {
-                "reg_alpha": {"domain": tune.loguniform(lower=0.01, upper=50.0)},
-                "reg_lambda": {"domain": tune.loguniform(lower=0.01, upper=50.0)},
-                "colsample_bytree": {"domain": tune.uniform(lower=0.4, upper=0.9)},
-                "min_child_samples": {"domain": tune.randint(lower=20, upper=100)},
-                "n_estimators": {"domain": 1000},
-            }
-        }
+        custom_hp = FLAML_CUSTOM_HP
 
         # ===== MONEYLINE =====
         X_model_train_ml = model_train_df[self.features_ml]
