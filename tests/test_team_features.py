@@ -116,3 +116,40 @@ def test_real_table_has_exact_opponent_columns_and_they_differ_from_the_position
         d = pd.read_sql("SELECT OPP_FGA, OPP_FGA_C + OPP_FGA_F + OPP_FGA_G AS s FROM team_game_full "
                         "WHERE seasonYear >= '2023-24'", conn).dropna()
     assert 1.15 < d['s'].sum() / d['OPP_FGA'].sum() < 1.30
+
+
+# ---- item 20: offseason regression experiment (default behaviour unchanged) -------------------
+
+def test_carryover_one_reproduces_the_plain_ewma_exactly():
+    rng = np.random.default_rng(3)
+    x = rng.normal(100, 10, 200)
+    x[[5, 6, 90]] = np.nan
+    seasons = np.repeat(['a', 'b', 'c', 'd'], 50)
+    for span in (5, 20):
+        ref = pd.Series(x).ewm(span=span).mean().shift(1).to_numpy()
+        got = tf.ewma_pre_game(x, seasons, span, carryover=1.0)
+        np.testing.assert_allclose(got, ref, rtol=1e-12, equal_nan=True)
+
+
+def test_carryover_shrinks_the_state_toward_the_league_mean_at_a_boundary():
+    x = np.array([110.0] * 10 + [90.0] * 3)
+    seasons = np.array(['a'] * 10 + ['b'] * 3)
+    plain = tf.ewma_pre_game(x, seasons, 20, 1.0)
+    half = tf.ewma_pre_game(x, seasons, 20, 0.5, season_means={'a': 100.0})
+    zero = tf.ewma_pre_game(x, seasons, 20, 0.0, season_means={'a': 100.0})
+    assert plain[10] == pytest.approx(110.0)
+    assert half[10] == pytest.approx(105.0)          # halfway between 110 and the league mean 100
+    assert zero[10] == pytest.approx(100.0)          # full reset to the league mean
+    np.testing.assert_allclose(half[:10], plain[:10], equal_nan=True)   # nothing changes inside a season
+
+
+def test_default_builder_is_unchanged_by_the_experiment_flag(team_db):
+    a = TeamFeatureBuilder(team_db).build_entire_history()
+    b = TeamFeatureBuilder(team_db, season_carryover=1.0).build_entire_history()
+    pd.testing.assert_frame_equal(a, b)
+    c = TeamFeatureBuilder(team_db, season_carryover=0.5).build_entire_history()
+    col = 'off_points_20g'
+    first_new_season = c[c['seasonYear'] == '2025-26'].groupby('teamId').head(1).index
+    assert not np.allclose(a.loc[first_new_season, col], c.loc[first_new_season, col])
+    in_first_season = c[c['seasonYear'] == '2024-25'].index
+    np.testing.assert_allclose(a.loc[in_first_season, col], c.loc[in_first_season, col], equal_nan=True)

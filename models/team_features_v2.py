@@ -56,9 +56,44 @@ def normalize_result_columns(df: pd.DataFrame) -> pd.DataFrame:
     return df.rename(columns={c: c.lower() for c in ('WL', 'MATCHUP') if c in df.columns and c.lower() not in df.columns})
 
 
+
+def ewma_pre_game(values, seasons, span, carryover=1.0, season_means=None):
+    """
+    Exponentially weighted mean of a team's PAST games for every game (what `ewm(span).mean().shift(1)`
+    gives), optionally regressing it toward the league mean when a new season starts.
+
+    carryover = 1.0 reproduces the plain EWMA that runs straight across seasons. With carryover k < 1,
+    the first game of a new season sees  k * EWMA_end_of_last_season + (1 - k) * league_mean_of_last_season
+    (the weight of the history is unchanged; only its mean is shrunk, once per season boundary).
+    `season_means` maps season -> league mean of this stat in that season (known once it is over).
+    """
+    alpha = 2.0 / (span + 1.0)
+    decay = 1.0 - alpha
+    out = np.full(len(values), np.nan)
+    num = den = 0.0
+    prev_season = None
+    for i, (x, season) in enumerate(zip(values, seasons)):
+        if prev_season is not None and season != prev_season and carryover < 1.0 and den > 0:
+            mu = season_means.get(prev_season, np.nan) if season_means else np.nan
+            if not np.isnan(mu):
+                num = carryover * num + (1.0 - carryover) * mu * den
+        out[i] = num / den if den > 0 else np.nan
+        num *= decay
+        den *= decay
+        if not np.isnan(x):
+            num += x
+            den += 1.0
+        prev_season = season
+    return out
+
+
 class TeamFeatureBuilder:
-    def __init__(self, db_path):
+    def __init__(self, db_path, season_carryover=1.0):
+        """season_carryover < 1 is an EXPERIMENT (batch build only): shrink each team's EWMA features
+        toward the league mean when a new season starts. 1.0 (default) = the production behaviour,
+        EWMAs that run unchanged across the offseason."""
         self.db_path = db_path
+        self.season_carryover = season_carryover
         self.feature_categories = {
              'team_offense': [
                 # Efficiency (don't include made + attempted + pct — just pct and volume)
@@ -242,6 +277,19 @@ class TeamFeatureBuilder:
         feats['is_playoff'] = int(str(game_id)[:3] == '004') if game_id is not None else 0
         return feats
 
+    def _ewma_feature(self, df, grp, col, span):
+        """Past-games EWMA of `col` per team (the production definition unless season_carryover < 1)."""
+        if self.season_carryover >= 1.0:
+            return grp.transform(lambda x: x.ewm(span=span).mean().shift(1))
+        # Experiment: regress to the league mean at season boundaries. season_means[s] = league mean of
+        # `col` over season s (a finished season only enters the next one, so nothing from the future).
+        season_means = df.groupby('seasonYear')[col].mean().to_dict()
+        out = pd.Series(np.nan, index=df.index)
+        for _, g in df.groupby('teamId'):
+            out.loc[g.index] = ewma_pre_game(g[col].to_numpy(dtype=float), g['seasonYear'].to_numpy(), span,
+                                             self.season_carryover, season_means)
+        return out
+
     def build_entire_history(self) -> pd.DataFrame:
         """
          Efficiently builds features for the entire history using vectorized operations.
@@ -269,18 +317,14 @@ class TeamFeatureBuilder:
             grp = df.groupby('teamId')[col] 
             for span in self.spans:
                 # shift(1) ensures we strictly use PAST data
-                new_features[f"off_{col}_{span}g"] = grp.transform(
-                    lambda x: x.ewm(span=span).mean().shift(1)
-                )
+                new_features[f"off_{col}_{span}g"] = self._ewma_feature(df, grp, col, span)
                 
         # Defense
         for col in self.feature_categories['team_defense']:
             if col not in df.columns: continue
             grp = df.groupby('teamId')[col]
             for span in self.spans:
-                 new_features[f"def_{col}_{span}g"] = grp.transform(
-                    lambda x: x.ewm(span=span).mean().shift(1)
-                )
+                 new_features[f"def_{col}_{span}g"] = self._ewma_feature(df, grp, col, span)
 
         # Trend features
         logging.info("Calculating trend features...")

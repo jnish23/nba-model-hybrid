@@ -20,8 +20,9 @@ class GameFeatureBuilder:
     INJURY_SNAPSHOT = 'game_day_noon'
     INJURY_FIRST_SEASON = '2019-20'  # official report archive coverage
 
-    def __init__(self, db_path, team_features_df=None, injury_snapshot=None):
+    def __init__(self, db_path, team_features_df=None, injury_snapshot=None, season_carryover=1.0):
         self.db_path = db_path
+        self.season_carryover = season_carryover   # <1: offseason regression experiment (team_features_v2)
         self.team_features_df = team_features_df
         self.injury_snapshot = injury_snapshot or self.INJURY_SNAPSHOT
         
@@ -31,7 +32,7 @@ class GameFeatureBuilder:
             return self.team_features_df
             
         logging.info("Building team features from scratch...")
-        builder = TeamFeatureBuilder(self.db_path)
+        builder = TeamFeatureBuilder(self.db_path, season_carryover=self.season_carryover)
         return builder.build_entire_history()
 
     def _get_player_features(self, seasons=None):
