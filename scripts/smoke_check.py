@@ -14,14 +14,14 @@ sys.path[:0] = [ROOT, os.path.join(ROOT, 'scripts')]
 
 def main():
     # Imports used on the production path
-    import models.odds_clean  # noqa: F401
-    import models.injury_report_parser  # noqa: F401
-    import models.availability_features  # noqa: F401
-    import models.game_features_v2  # noqa: F401
+    import core.odds_clean  # noqa: F401
+    import core.injury_report_parser  # noqa: F401
+    import core.availability_features  # noqa: F401
+    import team.game_features_v2  # noqa: F401
     import run_inference_v2  # noqa: F401
-    from models import injury_report_features as irf
-    from models.season_utils import season_for_date
-    from scripts import snapshot_odds, scrape_injury_reports
+    from core import injury_report_features as irf
+    from core.season_utils import season_for_date
+    from core import snapshot_odds, scrape_injury_reports
 
     # Season boundaries
     assert season_for_date('2026-10-20') == '2026-27'

@@ -39,9 +39,9 @@ import numpy as np
 import pandas as pd
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from models.train_baseline import BaselineModel
-from models.data_paths import latest_training_set
-from models.prediction_logger import replace_rows_in_date_range
+from team.train_baseline import BaselineModel
+from team.data_paths import latest_training_set
+from core.prediction_logger import replace_rows_in_date_range
 
 DB_PATH = Path('data/nba_stats.db')
 MODEL_DIR = Path('models/saved')
