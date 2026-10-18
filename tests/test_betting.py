@@ -135,3 +135,19 @@ def test_pushes_are_not_losses_in_the_backtest():
                        'total_pred': [200.0], 'odds_total': [200.0], 'seasonYear': ['2024-25']})
     bets = bt.get_spread_bets(df, 0.0)
     assert bool(bets.loc[0, 'push']) and bets.loc[0, 'profit'] == 0.0
+
+
+def test_betting_module_does_not_need_scipy():
+    # The hosted dashboard installs only dashboard/requirements.txt (no scipy); models.betting must import without it.
+    import subprocess, sys
+    code = ("import sys\n"
+            "class Block:\n"
+            "    def find_spec(self, name, path=None, target=None):\n"
+            "        if name == 'scipy' or name.startswith('scipy.'):\n"
+            "            raise ImportError('scipy blocked')\n"
+            "sys.meta_path.insert(0, Block())\n"
+            "from models import betting as b\n"
+            "assert abs(b.cover_probability(0.0, 13.4) - 0.5) < 1e-12\n"
+            "assert 'scipy' not in sys.modules\n")
+    r = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True, cwd=str(__import__('pathlib').Path(__file__).resolve().parent.parent))
+    assert r.returncode == 0, r.stderr

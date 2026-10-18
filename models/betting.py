@@ -13,7 +13,11 @@ Conventions
 """
 import numpy as np
 import pandas as pd
-from scipy.stats import norm
+from statistics import NormalDist
+
+# Standard normal from the standard library: the hosted dashboard imports this module with only its own light
+# requirements (dashboard/requirements.txt), so this module must not depend on scipy.
+_NORM = NormalDist()
 
 STANDARD_PRICE = -110            # spread / total price when the real one is unknown
 DEFAULT_PROB_EDGE = 0.05
@@ -97,12 +101,12 @@ def get_ml_bet(row, threshold=DEFAULT_PROB_EDGE):
 
 def cover_probability(point_edge, std):
     """P(a bet with `point_edge` points of model edge wins), Normal residual with std `std`."""
-    return norm.cdf(point_edge / std)
+    return _NORM.cdf(float(point_edge) / float(std))
 
 
 def points_threshold(std, prob_edge=DEFAULT_PROB_EDGE, price=STANDARD_PRICE):
     """Point edge at which P(win) - break_even(price) == prob_edge."""
-    return std * norm.ppf(calculate_implied_prob(price) + prob_edge)
+    return std * _NORM.inv_cdf(calculate_implied_prob(price) + prob_edge)
 
 
 def implied_prob_edge(point_edge, std, price=STANDARD_PRICE):
