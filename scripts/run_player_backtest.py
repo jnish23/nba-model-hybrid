@@ -7,8 +7,8 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import lightgbm as lgb
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from models.game_features_v2 import GameFeatureBuilder
-from models.backtest import Backtester
+from team.game_features_v2 import GameFeatureBuilder
+from team.backtest import Backtester
 
 # Config
 logging.basicConfig(level=logging.INFO)

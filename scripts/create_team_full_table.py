@@ -16,7 +16,7 @@ import sys
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from update_database import NBADatabaseSync
+from core.update_database import NBADatabaseSync
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 

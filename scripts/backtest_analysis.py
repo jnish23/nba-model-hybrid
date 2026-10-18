@@ -6,7 +6,7 @@ import sys
 
 # Ensure we can import our betting logic
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from models.betting import (calculate_implied_prob, calculate_payout, get_spread_bet, get_total_bet,
+from team.betting import (calculate_implied_prob, calculate_payout, get_spread_bet, get_total_bet,
                             DEFAULT_SPREAD_STD, DEFAULT_TOTAL_STD, STANDARD_PRICE)
 
 def load_data(csv_path="./models/saved/backtest_predictions_calibrated.csv"):
@@ -217,7 +217,7 @@ def main():
         analyze_strategy(get_ml_bets(df, t), f"Moneyline (Edge > {t*100}%)")
 
     for t in [0.0, 0.05, 0.10]:
-        from models.betting import points_threshold
+        from team.betting import points_threshold
         print(f"--- Spread Edge > {t*100:.1f}% (= {points_threshold(DEFAULT_SPREAD_STD, t):.1f} pts at std {DEFAULT_SPREAD_STD}) ---")
         analyze_strategy(get_spread_bets(df, t), f"Spread (Edge > {t*100}%)")
 

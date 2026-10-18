@@ -9,20 +9,20 @@ from pathlib import Path
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from models.prediction_logger import PredictionLogger
-from models.live_odds import split_open_and_current
-from models.live_features import align_features, build_live_game_frame
-from models.betting import (get_ml_bet, get_spread_bet, get_total_bet, DEFAULT_SPREAD_STD,
+from core.prediction_logger import PredictionLogger
+from team.live_odds import split_open_and_current
+from team.live_features import align_features, build_live_game_frame
+from team.betting import (get_ml_bet, get_spread_bet, get_total_bet, DEFAULT_SPREAD_STD,
                             DEFAULT_TOTAL_STD)
-from models.model_registry import DEPLOYED_SUFFIX, MODEL_DIR, load_bundle
-from models import injury_report_features as irf
-from models.game_features_v2 import GameFeatureBuilder
-from update_database import NBADatabaseSync
+from team.model_registry import DEPLOYED_SUFFIX, MODEL_DIR, load_bundle
+from core import injury_report_features as irf
+from team.game_features_v2 import GameFeatureBuilder
+from core.update_database import NBADatabaseSync
 from nba_api.stats.endpoints import scoreboardv3
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-from models.season_utils import season_for_date
+from core.season_utils import season_for_date
 
 current_season = season_for_date(datetime.date.today())
 
@@ -53,7 +53,7 @@ class InferenceEngine:
         self.db_path = db_path
         self.target_date = target_date  # Optional: override datetime.now() for backfilling
 
-        # One explicit, validated model set (models/model_registry.py): all pickles, calibrator and
+        # One explicit, validated model set (team/model_registry.py): all pickles, calibrator and
         # the feature config share `suffix`, and the config is checked against each pickle.
         bundle = load_bundle(suffix, model_dir)
         self.bundle = bundle
@@ -71,7 +71,7 @@ class InferenceEngine:
     def get_todays_games(self):
         logging.info("Fetching Today's Odds & Schedule...")
         # Use target_date if provided (for backfilling), otherwise use today
-        from scripts.scrape_injury_reports import now_et
+        from core.scrape_injury_reports import now_et
         today = self.target_date if self.target_date else now_et().strftime('%Y-%m-%d')
         
         # 1. Try DB (for archive/completeness, but for LIVE we prefer SBR usually if DB is stale)
@@ -84,7 +84,7 @@ class InferenceEngine:
         # 2. Direct SBR Fetch
         logging.info(f"Fetching from SBR for {today}...")
         try:
-            from models.sbr import Scoreboard
+            from core.sbr import Scoreboard
             
             # Fetch Current
             sb_curr = Scoreboard(sport='NBA', date=today, current_line=True)
@@ -96,7 +96,7 @@ class InferenceEngine:
             sb_open = Scoreboard(sport='NBA', date=today, current_line=False)
             
             # Opening lines are the model inputs (odds_*), current lines are kept for bets
-            # (curr_odds_*): see models/live_odds.py
+            # (curr_odds_*): see team/live_odds.py
             open_map = {}
             if sb_open.games:
                 for g in sb_open.games:
@@ -190,10 +190,10 @@ class InferenceEngine:
     def get_injury_features(self, games_df):
         """
         inj_* features for today's games from the official NBA injury report, built with the same
-        function and snapshot as the training set (models/injury_report_features.py). The cutoff
+        function and snapshot as the training set (core/injury_report_features.py). The cutoff
         is min(training snapshot, now), so a run before the snapshot time uses the latest report.
         """
-        from scripts.scrape_injury_reports import live as fetch_report, now_et
+        from core.scrape_injury_reports import live as fetch_report, now_et
         games_df = games_df.dropna(subset=['teamId_home', 'teamId_away'])  # games SBR did not list
         game_date = pd.Timestamp(games_df['gameDate'].iloc[0]).normalize()
         season = season_for_date(game_date)
@@ -247,7 +247,7 @@ class InferenceEngine:
             logging.info("No games with resolvable teams today.")
             return
 
-        # 2. Build the model inputs with the same code as the training set (models/live_features.py):
+        # 2. Build the model inputs with the same code as the training set (team/live_features.py):
         #    team form, travel, roster BPM, injury report, differences and matchups
         logging.info("Building Live Features...")
         try:
@@ -300,7 +300,7 @@ class InferenceEngine:
             except Exception as e:
                 logging.error(f"Failed to log prediction: {e}")
 
-            # Recommendations: ONE rule for all markets (models/betting.py, shared with the backtests and
+            # Recommendations: ONE rule for all markets (team/betting.py, shared with the backtests and
             # the dashboard): bet when the model's win probability beats the price's break-even
             # probability by more than DEFAULT_PROB_EDGE. Spread/total win probability is
             # Phi(point edge / residual std) with the std saved with the model set.

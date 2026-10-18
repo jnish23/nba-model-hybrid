@@ -9,7 +9,7 @@ from datetime import date
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from pathlib import Path
-from models.game_features_v2 import GameFeatureBuilder
+from team.game_features_v2 import GameFeatureBuilder
 
 # Setup logging
 logging.basicConfig(

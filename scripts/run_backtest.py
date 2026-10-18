@@ -2,8 +2,8 @@
 import pandas as pd
 import logging
 from pathlib import Path
-from models.train_baseline import BaselineModel
-from models.backtest import Backtester
+from team.train_baseline import BaselineModel
+from team.backtest import Backtester
 import matplotlib.pyplot as plt
 
 # Config

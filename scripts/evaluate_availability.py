@@ -1,7 +1,7 @@
 """
 Is player-availability information priced by the market, and when?
 
-Using realized availability (models/availability_features.py) and clean odds (models/odds_clean.py),
+Using realized availability (core/availability_features.py) and clean odds (core/odds_clean.py),
 regress three quantities on home-minus-away availability features:
   move        = close_mkt_margin - open_mkt_margin   (does availability news move the line after the open?)
   open_error  = margin - open_mkt_margin             (does the OPENING line underprice it?)
@@ -25,8 +25,8 @@ import numpy as np
 import pandas as pd
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from models.odds_clean import load_clean_odds
-from models.availability_features import build_availability_features, to_game_level
+from core.odds_clean import load_clean_odds
+from core.availability_features import build_availability_features, to_game_level
 
 SEASONS = ['2018-19', '2019-20', '2020-21', '2021-22', '2022-23', '2023-24', '2024-25', '2025-26']
 FEATURES = ['diff_avail_lost_new', 'diff_avail_lost_old', 'diff_avail_returning']

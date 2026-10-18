@@ -7,8 +7,8 @@ import logging
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from models.train_baseline import BaselineModel
-from models.prediction_logger import PredictionLogger
+from team.train_baseline import BaselineModel
+from core.prediction_logger import PredictionLogger
 
 logging.basicConfig(level=logging.INFO)
 
@@ -19,7 +19,7 @@ def backfill_logs():
         # Fallback
         data_dir = Path(r'c:\Users\jorda\nba-model-hybrid\data\processed')
     # Latest dated training set written by scripts/generate_training_set.py (ISO dates sort lexically)
-    from models.data_paths import latest_training_set
+    from team.data_paths import latest_training_set
     data_path = latest_training_set(data_dir)
         
     logging.info("Initializing Baseline Model for Backfill...")
