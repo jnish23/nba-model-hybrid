@@ -187,3 +187,11 @@ def test_missing_key_is_a_clear_error(tmp_path, monkeypatch):
     monkeypatch.setattr('core.odds_vendor.theoddsapi.load_env', lambda: [])      # never read the real .env in tests
     with pytest.raises(RuntimeError, match='ODDS_API_KEY'):
         TheOddsApi(CreditBudget(tmp_path / 'p.db'))
+
+
+def test_cadence_is_configurable_and_fast_window_can_be_disabled():
+    ev = [{'id': 'b', 'commence_time': '2026-10-21T22:30:00Z'}]            # 90 min to tip
+    last = {'b': '2026-10-21T20:52:00Z'}                                   # 8 min ago
+    now = '2026-10-21T21:00:00Z'
+    assert [t.event_id for t in collect.plan_live(ev, now, last)] == ['b']                     # default: fast, due
+    assert collect.plan_live(ev, now, last, fast_window_min=0) == []                           # slow only: not due

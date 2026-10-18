@@ -65,6 +65,10 @@ def main():
     ap.add_argument('--regions', default='us')
     ap.add_argument('--bookmakers', default=None)
     ap.add_argument('--window-hours', type=float, default=collect.WINDOW_HOURS)
+    ap.add_argument('--fast-window-min', type=float, default=collect.FAST_WINDOW_MIN,
+                    help='minutes before tip where the fast cadence applies (0 = never)')
+    ap.add_argument('--slow-cadence-min', type=float, default=collect.SLOW_CADENCE_MIN)
+    ap.add_argument('--fast-cadence-min', type=float, default=collect.FAST_CADENCE_MIN)
     ap.add_argument('--dry-run', action='store_true')
     ap.add_argument('--max-credits-per-run', type=float, default=600)
     ap.add_argument('--daily-cap', type=float, default=2000)
@@ -84,7 +88,8 @@ def main():
                            markets, args.regions, args.bookmakers)
         else:
             res = collect.run_live(vendor, conn, now_utc_iso(), markets, args.regions, args.bookmakers,
-                                   args.window_hours, args.dry_run)
+                                   args.window_hours, args.dry_run, args.fast_window_min, args.slow_cadence_min,
+                                   args.fast_cadence_min)
             for r in res:
                 logging.info(r)
     except BudgetExceeded as e:

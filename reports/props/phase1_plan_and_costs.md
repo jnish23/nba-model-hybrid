@@ -120,3 +120,30 @@ Prototype budget (20K credits; caps default to 600 per run, 2,000 per day, 18,00
   Four game days = about 7K.
 - Historical pilot: 3 game dates x 2 games x 3 snapshots (T-180, T-90, T-5) x 11 markets x 10 = about 2K.
 - That leaves about 10K for retries and a second look. Do not leave the live task running past about 8 game days on this plan.
+
+## 8. Pilot result (2026-10-18): Memphis @ Philadelphia, 2026-03-10, snapshots T-180 / T-90 / T-5
+
+Cost: 331 credits (1 for the events listing + 110 per snapshot), 19,669 left. 110 = 10 x 11 markets x 1 region, so the
+upper-bound formula in section 3 is exact when all 11 markets are requested and returned.
+
+What came back (1,709 prop rows, 33 team-line rows): 8 books with props (BetMGM, BetOnline, BetRivers, Bovada, DraftKings,
+Fanatics, FanDuel, Caesars) and 11 with team lines (adds BetUS, LowVig, MyBookie). All 1,709 rows matched to a player id
+(100%), the event resolved to NBA game 0022500936, no one-sided or crossed quotes. Each book's own last-update time was within
+~1 minute of the snapshot (Bovada up to 4 min). The requested "T-5" snapshot came back 9.2 minutes before tip: history is on a
+5-minute grid and returns the latest snapshot at or before the requested instant, so "close" means about 5 to 10 minutes pre-tip.
+
+Findings that change the design:
+1. **Ladders under the main market key.** Bovada posts a ladder of lines for the same player and market (92% of its player-markets
+   have 2 to 8 lines, e.g. points 13.5 to 20.5 with prices from -290 to +190); BetRivers does it for 38%. They are not marked
+   alternate by the vendor. The store keeps every row, but main-line analysis needs a rule. Proposed: per snapshot, book, player
+   and market, the main line is the one whose de-vigged over probability is closest to 50%, flagged `is_main_line`, with ladders
+   kept for H3 (calibration at specific lines).
+2. **Props exist for only about 15 players per game, and the set grows toward tip** (11, then 14, then 15 players priced across the
+   three snapshots). Four players who played 22 to 27 minutes had no line at all. Lines appearing, moving and being absent are
+   the H1 data; the snapshot log and the raw files keep that, nothing is imputed.
+3. **This game was unusually thin:** neither team's stars played (the box score has only the depleted rotations), so the 15
+   priced players are those rotations, not a typical slate. Read the coverage numbers as a floor.
+4. **Book coverage is uneven:** Fanatics prices one player, BetOnline and Caesars have no PRA-style combos for most players,
+   BetMGM had no rebounds at T-5. A consensus must require a minimum number of books per player-market.
+5. Team lines moved from -3.0 to about -4.5 (home spread) between T-180 and T-5 with a flat total, and the featured player's points
+   line moved 16.5 to 17.5 at most books: the aligned data H2 needs is present.

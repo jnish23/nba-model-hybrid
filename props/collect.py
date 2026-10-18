@@ -77,13 +77,15 @@ def store_event_odds(conn, resp, mode, markets_requested=None):
 
 
 def run_live(vendor, conn, now_utc, markets=None, regions='us', bookmakers=None, window_hours=WINDOW_HOURS,
-             dry_run=False):
+             dry_run=False, fast_window_min=FAST_WINDOW_MIN, slow_cadence_min=SLOW_CADENCE_MIN,
+             fast_cadence_min=FAST_CADENCE_MIN):
     """One scheduler tick. Returns a list of per-event result dicts."""
     markets = markets or ALL_MARKET_KEYS
     horizon = to_utc_iso(parse_utc(now_utc) + timedelta(hours=window_hours + 1))
     events = vendor.events(commence_from=to_utc_iso(now_utc), commence_to=horizon).payload
     last = {e['id']: odds_store.last_snapshot_ts(conn, e['id']) for e in events}
-    targets = plan_live(events, now_utc, last, window_hours=window_hours)
+    targets = plan_live(events, now_utc, last, window_hours=window_hours, fast_window_min=fast_window_min,
+                        slow_cadence_min=slow_cadence_min, fast_cadence_min=fast_cadence_min)
     logging.info(f"{len(events)} upcoming events, {len(targets)} due for a snapshot")
     results = []
     for t in targets:
