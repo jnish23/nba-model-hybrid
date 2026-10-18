@@ -94,9 +94,12 @@ def _season(d):
     return season_for_date(d)
 
 
-def run(vendor, conn, p: Plan, team_ids, markets=None, regions='us', bookmakers=None, sleep_s=0.1, progress_every=1):
-    """Fetch the plan. Safe to rerun. Returns a dict of counters; BudgetExceeded propagates after committing what was stored."""
+def run(vendor, conn, p: Plan, team_ids, markets=None, regions='us', bookmakers=None, sleep_s=0.1, progress_every=1,
+        max_consecutive_errors=10):
+    """Fetch the plan. Safe to rerun. Returns a dict of counters; BudgetExceeded propagates after committing what was stored.
+    Stops with RuntimeError after max_consecutive_errors API errors in a row (bad key, exhausted quota, vendor outage)."""
     markets = markets or collect.ALL_MARKET_KEYS
+    consecutive = 0
     stats = {'snapshots': 0, 'empty': 0, 'errors': 0, 'unmatched_events': 0, 'credits': 0.0}
     by_date = p.games[p.games['game_id'].isin(p.todo)].groupby('et_game_date')
     for n, (date, day) in enumerate(by_date, 1):
@@ -132,7 +135,12 @@ def run(vendor, conn, p: Plan, team_ids, markets=None, regions='us', bookmakers=
                 except OddsApiError as e:
                     logging.error(f'{r.game_id} T-{off}: {e}')
                     stats['errors'] += 1
+                    consecutive += 1
+                    if consecutive >= max_consecutive_errors:
+                        raise RuntimeError(f'{consecutive} API errors in a row (last: {e}); stopping. Stored snapshots are kept; '
+                                           f'rerun to resume.') from e
                     continue
+                consecutive = 0
                 if not resp.payload:
                     stats['empty'] += 1
                     continue

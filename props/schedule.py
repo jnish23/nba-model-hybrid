@@ -137,7 +137,10 @@ def annotate(conn, schedules, team_ids):
              r.nba_tip_utc if isinstance(r.nba_tip_utc, str) else None,
              r.tip_ref_utc if isinstance(r.tip_ref_utc, str) else None, r.first_tip, r.last_tip,
              int(r.n - 1) if pd.notna(r.n) else 0) for r in m.itertuples(index=False)]
-    conn.executemany('INSERT OR REPLACE INTO event_ref VALUES (?,?,?,?,?,?,?)', rows)
+    # Matched events replace their old row; an event this call cannot match (its season's schedule was not passed in) keeps
+    # whatever annotation it already has instead of being wiped.
+    conn.executemany('INSERT OR REPLACE INTO event_ref VALUES (?,?,?,?,?,?,?)', [r for r in rows if r[1] is not None])
+    conn.executemany('INSERT OR IGNORE INTO event_ref VALUES (?,?,?,?,?,?,?)', [r for r in rows if r[1] is None])
     log = pd.read_sql('SELECT l.snapshot_ts_utc, l.event_id_vendor, r.tip_ref_utc FROM snapshot_log l '
                       'JOIN event_ref r USING (event_id_vendor) WHERE r.tip_ref_utc IS NOT NULL', conn)
     if len(log):

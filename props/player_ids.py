@@ -24,6 +24,7 @@ import pandas as pd
 OVERRIDES_PATH = Path(__file__).resolve().parent / 'player_overrides.csv'
 SUFFIXES = {'jr', 'sr', 'ii', 'iii', 'iv', 'v'}
 FUZZY_MIN = 0.93
+NEXT_GAME_DAYS = 21
 
 
 def normalize(name):
@@ -84,6 +85,19 @@ class PlayerMatcher:
         i = dates.searchsorted(str(date), side='left')       # games before date
         return int(tids[i - 1]) if i > 0 else None
 
+    def team_next(self, player_id, date, within_days=NEXT_GAME_DAYS):
+        """The team of the player's first game on/after `date`, if that game is within `within_days` days (debuts, new signings).
+        Used only to link a vendor name to a player; it never feeds a model feature."""
+        hist = self._hist.get(int(player_id))
+        if hist is None:
+            return None
+        dates, tids = hist
+        i = dates.searchsorted(str(date), side='left')
+        if i >= len(dates):
+            return None
+        gap = (pd.Timestamp(dates[i]) - pd.Timestamp(str(date))).days
+        return int(tids[i]) if gap <= within_days else None
+
     def _on_teams(self, ids, date, team_ids):
         return sorted(p for p in ids if self.team_on(p, date) in team_ids)
 
@@ -106,14 +120,44 @@ class PlayerMatcher:
             return next(iter(league)), 'unique_name'
         if len(league) > 1:
             return None, 'ambiguous_league'
-        cands = [p for p, nm in self._pid_names.items() if self.team_on(p, date) in team_ids]
-        scored = sorted(((difflib.SequenceMatcher(None, strip_suffix(n), strip_suffix(self._pid_names[p])).ratio(), p)
-                         for p in cands), reverse=True)
+        cands = [p for p in self._pid_names if self.team_on(p, date) in team_ids or self.team_next(p, date) in team_ids]
+        return self._roster_rules(n, cands, name_raw)
+
+    def _roster_rules(self, n, cands, name_raw):
+        """Looser rules, applied only to the two teams' players as of the game date; each needs exactly one candidate."""
+        vt = strip_suffix(n).split()
+        toks = {p: strip_suffix(self._pid_names[p]).split() for p in cands}
+
+        def last(p):
+            return toks[p][-1] if toks[p] else ''
+
+        def first(p):
+            return toks[p][0] if toks[p] else ''
+
+        def related(a, b):          # a is a prefix of b or the reverse, at least 2 letters ('cam' / 'cameron')
+            return min(len(a), len(b)) >= 2 and (a.startswith(b) or b.startswith(a))
+
+        rules = [
+            ('team_token_set', lambda p: set(toks[p]) == set(vt)),                       # reversed order, 'Last, First'
+            ('team_prefix_last', lambda p: last(p) in vt and any(t != last(p) and related(t, first(p)) for t in vt)),
+            ('team_initial_last', lambda p: last(p) in vt and bool(first(p)) and vt[0][:1] == first(p)[:1]),
+        ]
+        ambiguous = False
+        for method, test in rules:
+            hit = [p for p in cands if test(p)]
+            if len(hit) == 1:
+                return hit[0], method
+            ambiguous |= len(hit) > 1
+        scored = sorted(((difflib.SequenceMatcher(None, ' '.join(vt), ' '.join(toks[p])).ratio(), p) for p in cands),
+                        reverse=True)
         close = [p for r, p in scored if r >= FUZZY_MIN]
         if len(close) == 1:
             logging.warning(f"fuzzy player match: '{name_raw}' -> {self._pid_names[close[0]]} ({close[0]})")
             return close[0], 'fuzzy_team'
-        return None, 'no_candidate' if not close else 'ambiguous_fuzzy'
+        hit = [p for p in cands if last(p) in vt]                                        # nickname for a first name
+        if len(hit) == 1:
+            return hit[0], 'team_last_name_only'
+        return None, 'ambiguous' if (ambiguous or len(close) > 1 or len(hit) > 1) else 'no_candidate'
 
 
 def resolve_game_id(nba_db_path, et_game_date, home_team_id):
@@ -131,6 +175,9 @@ def resolve_store(store_conn, matcher, nba_db_path, now_iso=None, resolve_games=
     """
     from core.timeutil import et_game_date, now_utc_iso
     now_iso = now_iso or now_utc_iso()
+    store_conn.execute("""CREATE TABLE IF NOT EXISTS player_match_audit (
+        player_name_raw TEXT NOT NULL, player_id INTEGER NOT NULL, method TEXT, team_context TEXT, matched_utc TEXT,
+        PRIMARY KEY (player_name_raw, player_id, team_context))""")
     ev = pd.read_sql("SELECT * FROM events", store_conn)
     for r in ev.itertuples(index=False):
         h, a = matcher.team_id(r.home_team), matcher.team_id(r.away_team)
@@ -156,6 +203,9 @@ def resolve_store(store_conn, matcher, nba_db_path, now_iso=None, resolve_games=
             store_conn.execute("UPDATE prop_snapshots SET player_id=? WHERE player_name_raw=? AND event_id_vendor=? "
                                "AND player_id IS NULL", (int(pid), name, eid))
             matched[how] = matched.get(how, 0) + n
+            if how not in ('team_exact', 'team_variant', 'override'):        # looser rules: keep them reviewable
+                store_conn.execute("INSERT OR REPLACE INTO player_match_audit VALUES (?,?,?,?,?)",
+                                   (name, int(pid), how, f"{e['away_team']} @ {e['home_team']}", now_iso))
         else:
             ctx = f"{e['away_team']} @ {e['home_team']}"
             unmatched[(name, ctx)] = (how, n)

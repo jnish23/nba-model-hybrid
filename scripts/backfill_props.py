@@ -11,7 +11,7 @@ Historical props backfill. Two steps, on purpose:
    Safe to interrupt and rerun; each rerun skips what is stored. --limit-games N does a staged run.
 
 Credit caps are enforced before every request. --total-cap counts every credit ever recorded in the ledger
-(data/props_odds.db), so set it to the plan's allowance minus a reserve (this month's ledger already holds the pilots).
+(data/props_backfill_ledger.db by default, separate from the live collector).
 """
 import argparse
 import logging
@@ -43,7 +43,10 @@ def main():
     ap.add_argument('--limit-games', type=int, default=None)
     ap.add_argument('--run', action='store_true')
     ap.add_argument('--confirm-credits', type=float, default=None, help='must equal the planned credits printed by the plan step')
-    ap.add_argument('--total-cap', type=float, default=None)
+    ap.add_argument('--ledger', default='data/props_backfill_ledger.db',
+                    help='credit ledger for backfill spending; separate from the live collector so its daily and total caps '
+                         'are not eaten by the backfill')
+    ap.add_argument('--total-cap', type=float, default=None, help='caps credits recorded in --ledger across all backfill runs')
     ap.add_argument('--daily-cap', type=float, default=None)
     ap.add_argument('--sleep', type=float, default=0.1, help='seconds between calls')
     args = ap.parse_args()
@@ -68,17 +71,19 @@ def main():
     print(f"TO FETCH: {p.snapshot_count:,} snapshots over {len(p.dates_todo)} game dates")
     print(f"PLANNED CREDITS (upper bound): {p.credits:,.0f}  = 10 x {len(markets)} x {n_regions} x {p.snapshot_count:,}"
           f" + {len(p.dates_todo)} event listings")
-    led = conn.execute("SELECT remaining FROM api_ledger WHERE remaining IS NOT NULL ORDER BY ts_utc DESC LIMIT 1").fetchone() \
-        if conn.execute("SELECT 1 FROM sqlite_master WHERE name='api_ledger'").fetchone() else None
-    if led:
-        print(f"credits remaining per the last response: {led[0]:,.0f}" + ("  <-- NOT ENOUGH on this plan" if led[0] < p.credits else ""))
+    try:                                    # a free call (the events listing costs nothing) reports the live balance
+        remaining = TheOddsApi(CreditBudget(args.ledger, per_run=0)).events().remaining
+        print(f"credits remaining right now (vendor header): {remaining:,.0f}"
+              + ("  <-- NOT ENOUGH for this plan" if remaining is not None and remaining < p.credits else ""))
+    except Exception as e:
+        print(f"could not read the credit balance ({type(e).__name__}: {e})")
     if not args.run:
         print(f"\nNothing spent. To run it: add  --run --confirm-credits {p.credits:.0f} --total-cap <cap>")
         return 0
     if args.confirm_credits != p.credits:
         print(f"\nREFUSED: --confirm-credits must equal the planned {p.credits:.0f} (got {args.confirm_credits}).")
         return 2
-    budget = CreditBudget(STORE, per_run=p.credits + 5, per_day=args.daily_cap, total=args.total_cap)
+    budget = CreditBudget(args.ledger, per_run=p.credits + 5, per_day=args.daily_cap, total=args.total_cap)
     vendor = TheOddsApi(budget)
     matcher = PlayerMatcher(NBA_DB)
     try:

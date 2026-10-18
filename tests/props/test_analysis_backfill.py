@@ -223,3 +223,31 @@ def test_annotate_uses_the_earliest_vendor_tip_not_the_last(tmp_path):
         collect.store_event_odds(conn, VendorResponse('/x', ev, ts, ts, cost=11), 'hist_T-60')
     schedule.annotate(conn, sched(), team_ids)
     assert conn.execute('select tip_ref_utc from event_ref').fetchone()[0] == TIP
+
+
+def test_run_aborts_after_repeated_api_errors(tmp_path):
+    from core.odds_vendor.theoddsapi import OddsApiError
+    conn = odds_store.connect(tmp_path / 'p.db')
+    conn.executescript(schedule.REF_SCHEMA)
+
+    class Failing(HistVendor):
+        def historical_event_odds(self, *a, **k):
+            raise OddsApiError(401, 'OUT_OF_USAGE_CREDITS')
+
+    p = backfill.plan(sched(), '2026-03-17', '2026-03-18', (240, 120, 60, 30, 5), 11)
+    with pytest.raises(RuntimeError, match='API errors in a row'):
+        backfill.run(Failing(), conn, p, team_ids, sleep_s=0, max_consecutive_errors=3)
+
+
+def test_annotate_keeps_existing_annotation_for_events_it_cannot_match(tmp_path):
+    conn = odds_store.connect(tmp_path / 'p.db')
+    ev = {'id': 'e1', 'commence_time': '2026-03-18T02:10:00Z', 'home_team': 'Sacramento Kings',
+          'away_team': 'San Antonio Spurs', 'bookmakers': [{'key': 'dk', 'markets': [{'key': 'player_points', 'outcomes': [
+              {'name': 'Over', 'description': 'P', 'price': -110, 'point': 20.5},
+              {'name': 'Under', 'description': 'P', 'price': -110, 'point': 20.5}]}]}]}
+    collect.store_event_odds(conn, VendorResponse('/x', ev, '2026-03-18T01:00:00Z', '2026-03-18T01:00:00Z', cost=11), 'hist_T-60')
+    schedule.annotate(conn, sched(), team_ids)
+    assert conn.execute('select game_id from event_ref').fetchone()[0] == '0022500998'
+    other_season = sched([('0022400001', '2025-03-18T02:00:00Z', '2025-03-17', 2, 1, 'Sacramento Kings', 'San Antonio Spurs', '')])
+    schedule.annotate(conn, other_season, team_ids)                                          # this call knows a different season
+    assert conn.execute('select game_id, tip_ref_utc from event_ref').fetchone() == ('0022500998', '2026-03-18T02:10:00Z')
