@@ -24,8 +24,11 @@ MIN_BOOKS = 2
 
 def load(db, min_snapshots):
     c = sqlite3.connect(db)
-    log = pd.read_sql("SELECT snapshot_ts_utc, event_id_vendor, mode, minutes_to_tip FROM snapshot_log "
-                      "WHERE mode LIKE 'hist_T-%'", c)
+    # minutes to tip use the reference clock (NBA scheduled tip + 0 to 10 min, see props/schedule.py); snapshots at or after it are
+    # in-game and dropped. Run scripts/annotate_props.py first.
+    log = pd.read_sql("SELECT l.snapshot_ts_utc, l.event_id_vendor, l.mode, r.minutes_to_ref AS minutes_to_tip "
+                      "FROM snapshot_log l JOIN snapshot_ref r USING (snapshot_ts_utc, event_id_vendor) "
+                      "WHERE l.mode LIKE 'hist_T-%' AND r.in_game = 0", c)
     log['off'] = log['mode'].str.replace('hist_T-', '', regex=False).astype(int)
     full = log.groupby('event_id_vendor').size()
     events = full[full >= min_snapshots].index

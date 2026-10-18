@@ -159,28 +159,51 @@ ladders); consensus = median of the books' main lines (at least 2 books; about 6
 were computed, so read the numbers as shape, not precision. Line changes undercount news that only moves the juice, so section 2b below
 also tracks price moves at an unchanged line.
 
-Results (points; rebounds show the same shape at roughly 40 to 50% of the size):
-- **Coverage:** 13.7 players have a points line at T-6h and 15.2 to 15.4 at T-30/T-15. New lines arrive mostly between T-120 and T-60
-  (0.65 and 0.70 new players per game, vs 0.05 to 0.25 in every earlier interval). Lines disappear at the very end: 0.6 players per game
-  lose their line between T-15 and T-5 (pulled just before tip).
-- **Movement intensity** (mean |change in consensus line| per hour): 0.13 to 0.15 points/hour from T-6h to T-2.5h, 0.42 at T-120 to T-90,
-  **0.76 at T-45 to T-30**, 0.59 at T-30 to T-15, 0.43 at T-15 to T-5. About 59% of the total line movement from T-6h to T-5 happens
-  in the last two hours and 35% in the last hour. Price moves at an unchanged line are noisier (about 0.3 to 0.5 percentage points even
-  early) but rise the same way, peaking at T-30 to T-5.
-- **Residual movement still to come before the close** (mean |close - line| in points, share of players whose consensus line still moves):
-  T-240: 0.42 (36%); T-120: 0.35 (30%); T-90: 0.22 (22%); T-60: 0.19 (19%); T-30: 0.15 (16%); T-15: 0.07 (9%). A T-60 snapshot is
-  therefore not close to the close, and a T-15 snapshot still misses 0.07 points and the last pulls.
-- **Direction:** the average consensus line change is slightly negative after T-120 (about -0.04 points per interval), so lines drift down
-  toward tip on average. 20 games is not evidence of a systematic shade; it is a thing to test with the full backfill.
-- **Books do not converge near tip:** the spread between the highest and lowest book line widens from 0.43 points at T-6h to 0.53 to 0.57 at
-  T-30 to T-5, consistent with books reacting to late news at different speeds (relevant to line shopping and H1).
+**CORRECTION (same day).** The first version of this section measured minutes to tip with the vendor's tip time. For one game (Spurs @ Kings) the
+vendor's historical listing gave a tip 70 minutes late, so its "T-45 to T-5" snapshots were really in-game (the last one had 6 quotes left).
+Everything below is recomputed on the reference clock (NBA scheduled tip + 0 to 10 minutes, `props/schedule.py`) with in-game snapshots dropped
+(4 of 243; 19 games remain with the full 12-snapshot grid). Three claims in the first version were wrong and are replaced: the movement peak at
+T-45 to T-30 (0.76 points/hour), the 0.6 lines per game pulled between T-15 and T-5, and the books' spread widening to 0.57.
 
-Implication for the backfill grid (not yet run): the information is concentrated in roughly T-120 to T-5, with the busiest window T-45
-to T-15, so T-60 alone is too early and T-15 alone too late. Credits do not constrain this choice: every grid I priced fits in one month of
-the 5M plan, at 433,510 credits per snapshot for 3,941 games and 11 markets (4 snapshots 1.73M, 5 snapshots 2.17M, 6 snapshots 2.60M).
+Results (points; rebounds show the same shape at roughly 40 to 50% of the size):
+- **Coverage:** 13.7 players have a points line at T-6h, rising to 15.5 by T-5. New lines arrive mostly between T-120 and T-45 (0.68, 0.63 and 0.37
+  new players per game in the three intervals, vs 0.05 to 0.26 in every earlier one). Once in-game snapshots are removed, no lines disappear
+  between T-15 and T-5.
+- **Movement intensity** (mean |change in consensus line| per hour): 0.13 to 0.15 points/hour from T-6h to T-2.5h, 0.42 at T-120 to T-90,
+  then 0.25, 0.33, 0.40, 0.49 and 0.44 over the five intervals from T-90 to T-5. It rises toward tip and plateaus at roughly 0.4 to 0.5 per hour from
+  T-45 to T-5; there is no sharp peak. About 56% of the total line movement from T-6h to T-5 happens in the last two hours and 30% in the
+  last hour. Price moves at an unchanged line (about 0.3 to 0.5 percentage points even early) rise the same way and are largest from T-30 to T-5.
+- **Residual movement still to come before the close** (mean |close - line| in points, share of players whose consensus line still moves):
+  T-240: 0.42 (36%); T-120: 0.34 (29%); T-90: 0.22 (22%); T-60: 0.19 (19%); T-30: 0.15 (16%); T-15: 0.07 (9%). A T-60 snapshot is
+  therefore not close to the close, and a T-15 snapshot still misses 0.07 points.
+- **Direction:** the average consensus line change is slightly negative after T-120 (about -0.02 points per interval), so lines drift down
+  toward tip on average. 19 games is not evidence of a systematic shade; it is a thing to test with the full backfill.
+- **Books diverge slightly at the very end:** the spread between the highest and lowest book line is 0.42 to 0.47 points from T-6h to T-30, and
+  0.50 at T-15 and 0.53 at T-5, consistent with books updating at different speeds on late news.
+
+Implication for the backfill grid (not yet run): the information is concentrated in roughly T-120 to T-5 with a steady, high rate over the last
+45 minutes, so T-60 alone is too early and T-15 alone too late. Credits do not constrain this choice: every grid I priced fits in one month of the 5M plan, at 433,510 credits per snapshot for 3,941 games and 11 markets (4 snapshots 1.73M, 5 snapshots 2.17M, 6 snapshots 2.60M).
 Suggested: **T-240, T-120, T-60, T-30, T-5** (5 snapshots, 2.17M credits, 43% of the 5M plan).
 Suggested live setting while on the 20K plan: hourly from T-5h to T-2h, then every 10 minutes (about 16 snapshots and 176 credits per
 game, about 1,400 per 8-game day, roughly 10 game days).
 
 Also in this step: four vendor nicknames (Nicolas Claxton, Herb Jones, Moe Wagner, Ron Holland) were missing; they are now in
 `props/player_overrides.csv` with ids looked up in the NBA database. Match rate before the overrides was 99.2% of 69,052 rows, 100% after.
+
+## 10. Built after the density pilot (2026-10-18)
+
+- `props/analysis.py`: de-vig (multiplicative, power, Shin), quality flags (one-sided, crossed, wide, stale), **main-line selection** per
+  snapshot, book, player and market (ladders kept, flagged), and a same-line consensus probability that needs at least N books.
+- `props/tiers.py`: star / starter / rotation from the 20 games before each game date (thresholds fixed in the file).
+- `props/schedule.py` and `scripts/annotate_props.py`: **reference clock** = NBA scheduled tip + 0 to 10 minutes, the offset taken from the vendor's earliest tip estimate when it is within 15 minutes of the NBA time, else 10 (cached schedule per season),
+  `event_ref` and `snapshot_ref` tables, in-game snapshots flagged and excluded, vendor tip revisions counted. This came out of the
+  Spurs @ Kings finding (vendor listing 70 minutes late): the pilot report, the density analysis and the backfill all use it now.
+- `props/quality.py` and `scripts/report_props_quality.py`: the data-quality report (coverage by season, book, market and tier, timing,
+  clock integrity, missing closes, quote quality, line movement, ID matching), chunked so it scales to the full backfill. First run on
+  the pilot data: `reports/props/data_quality_pilot_2026-10-18.md`.
+- `props/backfill.py` and `scripts/backfill_props.py`: plan first (spends nothing), run only with `--confirm-credits <exact planned figure>`,
+  resumable, never requests an instant at or after the reference tip. Plan for 2023-24 through 2025-26 at T-240/120/60/30/5, 11 markets,
+  1 region: **19,779 snapshots, 2,176,327 credits** (3,976 games incl. play-in and Cup; 101 snapshots already stored are skipped).
+
+Live collector: unchanged and still running from the same files; the vendor's live tip time matched the NBA schedule to within 10 minutes for all 46
+upcoming games on 2026-10-18 (35 at exactly +10 minutes after the NBA time, 11 at +0, none outside that range), so the live clock is sound.
