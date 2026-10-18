@@ -105,3 +105,18 @@ The collector needs a key for its first live run, and the backfill needs your de
 Vendor and plan; live cadence, markets and regions; backfill scope and snapshot density; separate scheduled task vs extending the
 existing job; who creates the account and sets `ODDS_API_KEY`. Suggested first paid step is a **pilot of about 50 calls** on the
 chosen plan (a few thousand credits at most) to measure real per-call cost and book/market coverage before the full backfill.
+
+## 7. Update 2026-10-18: prototype on the $30 / 20,000-credit plan
+
+Decision (yours): start on the 20K plan to prove the collector and see what the data contains, then upgrade for the historical backfill.
+Built so far on this branch (all tested offline, 121 tests pass): `core/odds_vendor` (Odds API adapter, persisted credit ledger with
+per-run / per-day / total caps checked before every request, raw responses saved gzip without the key), `core/devig.py`
+(multiplicative, power, Shin, quality flags, consensus), `core/timeutil.py`, `props/parse.py`, `props/odds_store.py`
+(`data/props_odds.db`), `props/player_ids.py` (matcher, override CSV, unmatched log, game-id resolver), `props/collect.py`
+(cadence planner) and `scripts/snapshot_props.py`. Nothing is scheduled and no request has been made.
+
+Prototype budget (20K credits; caps default to 600 per run, 2,000 per day, 18,000 total, leaving a 2,000 reserve):
+- Live, full spec (11 markets, 1 region, 30 min over 6 h, 10 min in the last 2 h): about 1,760 credits per 8-game day.
+  Four game days = about 7K.
+- Historical pilot: 3 game dates x 2 games x 3 snapshots (T-180, T-90, T-5) x 11 markets x 10 = about 2K.
+- That leaves about 10K for retries and a second look. Do not leave the live task running past about 8 game days on this plan.
