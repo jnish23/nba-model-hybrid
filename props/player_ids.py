@@ -168,6 +168,24 @@ def resolve_game_id(nba_db_path, et_game_date, home_team_id):
     return str(row[0]).zfill(10) if row else None
 
 
+def ensure_indexes(conn):
+    """Partial indexes over the unresolved rows only, so resolution scales with what is pending, not with the table size."""
+    conn.execute("CREATE INDEX IF NOT EXISTS ix_props_pid_null ON prop_snapshots (event_id_vendor, player_name_raw) "
+                 "WHERE player_id IS NULL")
+    conn.execute("CREATE INDEX IF NOT EXISTS ix_props_gid_null ON prop_snapshots (event_id_vendor) WHERE game_id IS NULL")
+    conn.execute("CREATE INDEX IF NOT EXISTS ix_team_gid_null ON team_lines (event_id_vendor) WHERE game_id IS NULL")
+
+
+def has_pending(conn):
+    """True if any quote still lacks a player id or any event/quote lacks a game id (cheap: uses the partial indexes)."""
+    ensure_indexes(conn)
+    q = ("SELECT 1 FROM prop_snapshots WHERE player_id IS NULL LIMIT 1",
+         "SELECT 1 FROM prop_snapshots WHERE game_id IS NULL LIMIT 1",
+         "SELECT 1 FROM team_lines WHERE game_id IS NULL LIMIT 1",
+         "SELECT 1 FROM events WHERE game_id IS NULL LIMIT 1")
+    return any(conn.execute(s).fetchone() for s in q)
+
+
 def resolve_store(store_conn, matcher, nba_db_path, now_iso=None, resolve_games=True):
     """
     Fill events.game_id / team ids and prop_snapshots.player_id (and team_lines.game_id) for rows still NULL.
@@ -175,6 +193,7 @@ def resolve_store(store_conn, matcher, nba_db_path, now_iso=None, resolve_games=
     """
     from core.timeutil import et_game_date, now_utc_iso
     now_iso = now_iso or now_utc_iso()
+    ensure_indexes(store_conn)
     store_conn.execute("""CREATE TABLE IF NOT EXISTS player_match_audit (
         player_name_raw TEXT NOT NULL, player_id INTEGER NOT NULL, method TEXT, team_context TEXT, matched_utc TEXT,
         PRIMARY KEY (player_name_raw, player_id, team_context))""")

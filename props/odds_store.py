@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS unmatched_names (
 
 def connect(path=DEFAULT_PATH):
     Path(path).parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(path))
+    conn = sqlite3.connect(str(path), timeout=120)         # the live collector and a backfill may write at the same time
     conn.executescript(SCHEMA)
     return conn
 

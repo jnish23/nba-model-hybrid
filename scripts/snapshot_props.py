@@ -23,7 +23,7 @@ from core.odds_vendor.base import BudgetExceeded, CreditBudget  # noqa: E402
 from core.odds_vendor.theoddsapi import OddsApiError, TheOddsApi  # noqa: E402
 from core.timeutil import et_game_date, now_utc_iso, parse_utc, to_utc_iso  # noqa: E402
 from props import collect, odds_store  # noqa: E402
-from props.player_ids import PlayerMatcher, resolve_store  # noqa: E402
+from props.player_ids import PlayerMatcher, has_pending, resolve_store  # noqa: E402
 
 STORE_PATH = Path('data/props_odds.db')
 NBA_DB = Path('data/nba_stats.db')
@@ -32,6 +32,8 @@ NBA_DB = Path('data/nba_stats.db')
 def resolve_ids(conn):
     if not NBA_DB.exists():
         logging.warning('nba_stats.db not found; player ids left unresolved')
+        return
+    if not has_pending(conn):                      # nothing new to resolve: do not even load the NBA tables
         return
     summary = resolve_store(conn, PlayerMatcher(NBA_DB), NBA_DB)
     logging.info(f"id resolution: {summary}")

@@ -86,8 +86,15 @@ def main():
     budget = CreditBudget(args.ledger, per_run=p.credits + 5, per_day=args.daily_cap, total=args.total_cap)
     vendor = TheOddsApi(budget)
     matcher = PlayerMatcher(NBA_DB)
+    def resolve_as_you_go(date, n_done):
+        """Resolve ids every 10 dates so the live collector's own resolver finds little pending and the write lock stays short."""
+        if n_done % 10 == 0:
+            conn.commit()
+            resolve_store(conn, matcher, NBA_DB)
+
     try:
-        stats = backfill.run(vendor, conn, p, matcher.team_id, markets, args.regions, args.bookmakers, args.sleep)
+        stats = backfill.run(vendor, conn, p, matcher.team_id, markets, args.regions, args.bookmakers, args.sleep,
+                             on_date_done=resolve_as_you_go)
         print('finished:', stats)
         rc = 0
     except BudgetExceeded as e:

@@ -251,3 +251,32 @@ def test_annotate_keeps_existing_annotation_for_events_it_cannot_match(tmp_path)
     other_season = sched([('0022400001', '2025-03-18T02:00:00Z', '2025-03-17', 2, 1, 'Sacramento Kings', 'San Antonio Spurs', '')])
     schedule.annotate(conn, other_season, team_ids)                                          # this call knows a different season
     assert conn.execute('select game_id, tip_ref_utc from event_ref').fetchone() == ('0022500998', '2026-03-18T02:10:00Z')
+
+
+def test_store_retries_a_locked_database_and_never_loses_the_response(tmp_path, monkeypatch):
+    conn = odds_store.connect(tmp_path / 'p.db')
+    real = collect.store_event_odds
+    calls = {'n': 0}
+
+    def flaky(c, resp, mode, markets_requested=None):
+        calls['n'] += 1
+        if calls['n'] < 3:
+            raise sqlite3.OperationalError('database is locked')
+        return real(c, resp, mode)
+
+    monkeypatch.setattr(collect, 'store_event_odds', flaky)
+    monkeypatch.setattr(backfill.time, 'sleep', lambda s: None)
+    out = backfill._store_with_retry(conn, HistVendor().historical_event_odds('e1', '2026-03-18T01:10:00Z', ['player_points']), 'hist_T-60')
+    assert calls['n'] == 3 and out['prop_rows'] == 1       # one player, over and under on one row
+
+
+def test_on_date_done_hook_and_pending_check(tmp_path):
+    from props.player_ids import has_pending
+    conn = odds_store.connect(tmp_path / 'p.db')
+    conn.executescript(schedule.REF_SCHEMA)
+    assert not has_pending(conn)                                    # empty store: nothing to resolve
+    seen = []
+    p = backfill.plan(sched(), '2026-03-17', '2026-03-18', (60,), 11)
+    backfill.run(HistVendor(), conn, p, team_ids, sleep_s=0, on_date_done=lambda d, n: seen.append((d, n)))
+    assert seen == [('2026-03-17', 1)]
+    assert has_pending(conn)                                        # stored quotes have no player id yet

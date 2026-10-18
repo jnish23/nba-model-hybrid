@@ -12,6 +12,7 @@ plan() is pure: it prints what would be fetched and the upper-bound cost, subtra
 run() refuses to start unless the caller passes back the exact planned credit figure.
 """
 import logging
+import sqlite3
 import time
 from dataclasses import dataclass, field
 
@@ -94,10 +95,24 @@ def _season(d):
     return season_for_date(d)
 
 
+def _store_with_retry(conn, resp, mode, attempts=6, wait_s=10.0):
+    """A paid response must not be lost to a transient 'database is locked' (the live collector writes to the same file)."""
+    for i in range(attempts):
+        try:
+            return collect.store_event_odds(conn, resp, mode=mode)
+        except sqlite3.OperationalError as e:
+            conn.rollback()
+            if i == attempts - 1:
+                raise
+            logging.warning(f'store failed ({e}); retrying in {wait_s:g}s ({i + 1}/{attempts - 1})')
+            time.sleep(wait_s)
+
+
 def run(vendor, conn, p: Plan, team_ids, markets=None, regions='us', bookmakers=None, sleep_s=0.1, progress_every=1,
-        max_consecutive_errors=10):
+        max_consecutive_errors=10, on_date_done=None):
     """Fetch the plan. Safe to rerun. Returns a dict of counters; BudgetExceeded propagates after committing what was stored.
-    Stops with RuntimeError after max_consecutive_errors API errors in a row (bad key, exhausted quota, vendor outage)."""
+    Stops with RuntimeError after max_consecutive_errors API errors in a row (bad key, exhausted quota, vendor outage).
+    on_date_done(date, n_done): optional hook after each ET date (the CLI uses it to resolve player ids as it goes)."""
     markets = markets or collect.ALL_MARKET_KEYS
     consecutive = 0
     stats = {'snapshots': 0, 'empty': 0, 'errors': 0, 'unmatched_events': 0, 'credits': 0.0}
@@ -144,10 +159,12 @@ def run(vendor, conn, p: Plan, team_ids, markets=None, regions='us', bookmakers=
                 if not resp.payload:
                     stats['empty'] += 1
                     continue
-                collect.store_event_odds(conn, resp, mode=f'hist_T-{off}')
+                _store_with_retry(conn, resp, f'hist_T-{off}')
                 stats['snapshots'] += 1
                 stats['credits'] += resp.cost or 0
                 time.sleep(sleep_s)
+        if on_date_done is not None:
+            on_date_done(date, n)
         if n % progress_every == 0:
             logging.info(f"{date}: done ({n}/{by_date.ngroups} dates; {stats['snapshots']} snapshots, "
                          f"{stats['credits']:g} credits, {stats['errors']} errors)")
