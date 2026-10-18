@@ -37,12 +37,22 @@ def resolve_ids(conn):
     logging.info(f"id resolution: {summary}")
 
 
+def spread_sample(games, n):
+    """n games spread evenly across the slate (first and last tip included), not just the earliest tips."""
+    if n >= len(games):
+        return games
+    if n == 1:
+        return games[:1]
+    idx = sorted({round(i * (len(games) - 1) / (n - 1)) for i in range(n)})
+    return [games[i] for i in idx]
+
+
 def run_historical(vendor, conn, date, offsets, max_events, markets, regions, bookmakers):
     """Fetch snapshots at tip - offset for each game on an ET game date. Event ids come from a historical events
     listing taken at 16:00 UTC of that date (1 credit), which lists that day's games."""
     listing = vendor.historical_events(f'{date}T16:00:00Z')
     games = [e for e in listing.payload if et_game_date(e['commence_time']) == date]
-    games = sorted(games, key=lambda e: e['commence_time'])[:max_events]
+    games = spread_sample(sorted(games, key=lambda e: e['commence_time']), max_events)
     logging.info(f"{len(games)} games on {date} (max_events={max_events})")
     for e in games:
         for off, ts in collect.plan_historical(e['commence_time'], offsets):
@@ -60,7 +70,7 @@ def main():
     ap.add_argument('--historical', action='store_true')
     ap.add_argument('--date', help='ET game date for --historical')
     ap.add_argument('--offsets', default='180,90,5', help='minutes before tip for --historical')
-    ap.add_argument('--max-events', type=int, default=2, help='games per date for --historical (pilot guard)')
+    ap.add_argument('--max-events', type=int, default=2, help='games per date for --historical, spread evenly across the slate (pilot guard)')
     ap.add_argument('--markets', default=','.join(collect.ALL_MARKET_KEYS))
     ap.add_argument('--regions', default='us')
     ap.add_argument('--bookmakers', default=None)

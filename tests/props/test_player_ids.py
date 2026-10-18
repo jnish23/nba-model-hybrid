@@ -99,3 +99,18 @@ def test_resolve_store_fills_ids_and_logs_unmatched_without_dropping_rows(nba_db
     assert conn.execute('select player_name_raw, reason from unmatched_names').fetchall() == [('Mystery Man', 'no_candidate')]
     resolve_store(conn, PlayerMatcher(nba_db, overrides_path=tmp_path / 'none.csv'), nba_db)   # idempotent
     assert conn.execute('select count(*) from unmatched_names').fetchone()[0] == 1
+
+
+def test_unmatched_table_drops_names_once_resolved(nba_db, tmp_path):
+    conn = odds_store.connect(tmp_path / 'p.db')
+    odds_store.upsert_event(conn, 'ev1', '2026-10-21T00:00:00Z', 'Boston Celtics', 'New York Knicks')
+    odds_store.insert_props(conn, pd.DataFrame({
+        'snapshot_ts_utc': ['2026-10-20T20:00:00Z'], 'event_id_vendor': ['ev1'], 'book': ['dk'],
+        'player_name_raw': ['Jay Tatum'], 'market': ['points'], 'line': [27.5], 'over_price': [-110],
+        'under_price': [-110], 'is_alt_line': [0], 'source': ['t']}))
+    resolve_store(conn, PlayerMatcher(nba_db, overrides_path=tmp_path / 'none.csv'), nba_db)
+    assert conn.execute('select count(*) from unmatched_names').fetchone()[0] == 1
+    (tmp_path / 'o.csv').write_text('name_raw,player_id,note\nJay Tatum,1,alias\n')
+    resolve_store(conn, PlayerMatcher(nba_db, overrides_path=tmp_path / 'o.csv'), nba_db)
+    assert conn.execute('select count(*) from unmatched_names').fetchone()[0] == 0
+    assert conn.execute('select player_id from prop_snapshots').fetchone()[0] == 1

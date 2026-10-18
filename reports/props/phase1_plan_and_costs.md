@@ -147,3 +147,40 @@ Findings that change the design:
    BetMGM had no rebounds at T-5. A consensus must require a minimum number of books per player-market.
 5. Team lines moved from -3.0 to about -4.5 (home spread) between T-180 and T-5 with a flat total, and the featured player's points
    line moved 16.5 to 17.5 at most books: the aligned data H2 needs is present.
+
+## 9. Density pilot (2026-10-18): where do lines and coverage change relative to tip?
+
+Design: 20 games (5 spread evenly across the slate on each of 2026-03-01, 03-17, 03-21, 03-25), points and rebounds only,
+12 snapshots per game at T-360, 300, 240, 180, 150, 120, 90, 60, 45, 30, 15, 5 minutes (denser near tip). Cost 4,804 credits
+(240 calls x 20, plus 4 events listings); with the first pilot, 5,135 of 20,000 credits used, 14,865 left. Reproduce with
+`scripts/analyze_snapshot_density.py`. Main line = the line whose de-vigged over probability is closest to 50% (needed because of the
+ladders); consensus = median of the books' main lines (at least 2 books; about 6.4 books per player-market on average).
+**Caveats:** 20 games, two markets, about 250 to 290 player-markets per interval, correlated within games; no confidence intervals
+were computed, so read the numbers as shape, not precision. Line changes undercount news that only moves the juice, so section 2b below
+also tracks price moves at an unchanged line.
+
+Results (points; rebounds show the same shape at roughly 40 to 50% of the size):
+- **Coverage:** 13.7 players have a points line at T-6h and 15.2 to 15.4 at T-30/T-15. New lines arrive mostly between T-120 and T-60
+  (0.65 and 0.70 new players per game, vs 0.05 to 0.25 in every earlier interval). Lines disappear at the very end: 0.6 players per game
+  lose their line between T-15 and T-5 (pulled just before tip).
+- **Movement intensity** (mean |change in consensus line| per hour): 0.13 to 0.15 points/hour from T-6h to T-2.5h, 0.42 at T-120 to T-90,
+  **0.76 at T-45 to T-30**, 0.59 at T-30 to T-15, 0.43 at T-15 to T-5. About 59% of the total line movement from T-6h to T-5 happens
+  in the last two hours and 35% in the last hour. Price moves at an unchanged line are noisier (about 0.3 to 0.5 percentage points even
+  early) but rise the same way, peaking at T-30 to T-5.
+- **Residual movement still to come before the close** (mean |close - line| in points, share of players whose consensus line still moves):
+  T-240: 0.42 (36%); T-120: 0.35 (30%); T-90: 0.22 (22%); T-60: 0.19 (19%); T-30: 0.15 (16%); T-15: 0.07 (9%). A T-60 snapshot is
+  therefore not close to the close, and a T-15 snapshot still misses 0.07 points and the last pulls.
+- **Direction:** the average consensus line change is slightly negative after T-120 (about -0.04 points per interval), so lines drift down
+  toward tip on average. 20 games is not evidence of a systematic shade; it is a thing to test with the full backfill.
+- **Books do not converge near tip:** the spread between the highest and lowest book line widens from 0.43 points at T-6h to 0.53 to 0.57 at
+  T-30 to T-5, consistent with books reacting to late news at different speeds (relevant to line shopping and H1).
+
+Implication for the backfill grid (not yet run): the information is concentrated in roughly T-120 to T-5, with the busiest window T-45
+to T-15, so T-60 alone is too early and T-15 alone too late. Credits do not constrain this choice: every grid I priced fits in one month of
+the 5M plan, at 433,510 credits per snapshot for 3,941 games and 11 markets (4 snapshots 1.73M, 5 snapshots 2.17M, 6 snapshots 2.60M).
+Suggested: **T-240, T-120, T-60, T-30, T-5** (5 snapshots, 2.17M credits, 43% of the 5M plan).
+Suggested live setting while on the 20K plan: hourly from T-5h to T-2h, then every 10 minutes (about 16 snapshots and 176 credits per
+game, about 1,400 per 8-game day, roughly 10 game days).
+
+Also in this step: four vendor nicknames (Nicolas Claxton, Herb Jones, Moe Wagner, Ron Holland) were missing; they are now in
+`props/player_overrides.csv` with ids looked up in the NBA database. Match rate before the overrides was 99.2% of 69,052 rows, 100% after.

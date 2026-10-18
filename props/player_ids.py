@@ -159,6 +159,11 @@ def resolve_store(store_conn, matcher, nba_db_path, now_iso=None, resolve_games=
         else:
             ctx = f"{e['away_team']} @ {e['home_team']}"
             unmatched[(name, ctx)] = (how, n)
+    # the table mirrors what is unmatched NOW: drop names that have since been resolved (override added, roster data caught up)
+    keep = set(unmatched)
+    for name, ctx in store_conn.execute('SELECT player_name_raw, team_context FROM unmatched_names').fetchall():
+        if (name, ctx) not in keep:
+            store_conn.execute('DELETE FROM unmatched_names WHERE player_name_raw=? AND team_context=?', (name, ctx))
     for (name, ctx), (how, n) in unmatched.items():
         store_conn.execute("""INSERT INTO unmatched_names VALUES (?,?,?,?,?,?)
                               ON CONFLICT(player_name_raw, team_context) DO UPDATE SET reason=excluded.reason,
