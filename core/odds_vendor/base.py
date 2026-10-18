@@ -61,6 +61,8 @@ class CreditBudget:
         return self._used(datetime.now(timezone.utc).strftime('%Y-%m-%dT00:00:00Z'))
 
     def check(self, estimate):
+        if estimate <= 0:
+            return                      # free calls (events listings) are never blocked by a credit cap
         with self._lock:
             if self.per_run is not None and self.run_used + estimate > self.per_run:
                 raise BudgetExceeded(f'per-run cap {self.per_run}: used {self.run_used:g} + estimate {estimate:g}')

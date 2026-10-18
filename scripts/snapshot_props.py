@@ -79,6 +79,8 @@ def main():
                     help='minutes before tip where the fast cadence applies (0 = never)')
     ap.add_argument('--slow-cadence-min', type=float, default=collect.SLOW_CADENCE_MIN)
     ap.add_argument('--fast-cadence-min', type=float, default=collect.FAST_CADENCE_MIN)
+    ap.add_argument('--close-snapshot-min', type=float, default=0.0,
+                    help='take one extra snapshot when tip is within this many minutes (0 = off); needs a scheduler tick at least this often')
     ap.add_argument('--dry-run', action='store_true')
     ap.add_argument('--max-credits-per-run', type=float, default=600)
     ap.add_argument('--daily-cap', type=float, default=2000)
@@ -99,7 +101,7 @@ def main():
         else:
             res = collect.run_live(vendor, conn, now_utc_iso(), markets, args.regions, args.bookmakers,
                                    args.window_hours, args.dry_run, args.fast_window_min, args.slow_cadence_min,
-                                   args.fast_cadence_min)
+                                   args.fast_cadence_min, args.close_snapshot_min)
             for r in res:
                 logging.info(r)
     except BudgetExceeded as e:

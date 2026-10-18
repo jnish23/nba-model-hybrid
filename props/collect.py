@@ -25,6 +25,7 @@ WINDOW_HOURS = 6.0
 FAST_WINDOW_MIN = 120.0
 SLOW_CADENCE_MIN = 30.0
 FAST_CADENCE_MIN = 10.0
+CLOSE_MIN_GAP = 8.0         # minutes since the previous snapshot before a closing snapshot is taken
 JITTER_MIN = 3.0            # a scheduler tick may arrive a little early; do not skip a due snapshot for that
 
 
@@ -37,7 +38,7 @@ class LiveTarget:
 
 
 def plan_live(events, now_utc, last_snapshot_by_event, window_hours=WINDOW_HOURS, fast_window_min=FAST_WINDOW_MIN,
-              slow_cadence_min=SLOW_CADENCE_MIN, fast_cadence_min=FAST_CADENCE_MIN):
+              slow_cadence_min=SLOW_CADENCE_MIN, fast_cadence_min=FAST_CADENCE_MIN, close_snapshot_min=0.0):
     """events: vendor event dicts (id, commence_time). Returns the LiveTargets to snapshot now, soonest tip first."""
     out = []
     for e in events:
@@ -46,6 +47,13 @@ def plan_live(events, now_utc, last_snapshot_by_event, window_hours=WINDOW_HOURS
             continue
         mode, cadence = ('fast', fast_cadence_min) if m <= fast_window_min else ('slow', slow_cadence_min)
         last = last_snapshot_by_event.get(e['id'])
+        if close_snapshot_min and m <= close_snapshot_min:
+            # one closing snapshot just before tip (needs a scheduler tick at least every close_snapshot_min minutes);
+            # skipped only if a snapshot was taken in the last CLOSE_MIN_GAP minutes
+            gap = None if last is None else (parse_utc(now_utc) - parse_utc(last)).total_seconds() / 60.0
+            if gap is None or gap >= CLOSE_MIN_GAP:
+                out.append(LiveTarget(e['id'], to_utc_iso(e['commence_time']), m, 'close'))
+            continue
         if last is not None:
             gap = (parse_utc(now_utc) - parse_utc(last)).total_seconds() / 60.0
             if gap < cadence - JITTER_MIN:
@@ -78,14 +86,15 @@ def store_event_odds(conn, resp, mode, markets_requested=None):
 
 def run_live(vendor, conn, now_utc, markets=None, regions='us', bookmakers=None, window_hours=WINDOW_HOURS,
              dry_run=False, fast_window_min=FAST_WINDOW_MIN, slow_cadence_min=SLOW_CADENCE_MIN,
-             fast_cadence_min=FAST_CADENCE_MIN):
+             fast_cadence_min=FAST_CADENCE_MIN, close_snapshot_min=0.0):
     """One scheduler tick. Returns a list of per-event result dicts."""
     markets = markets or ALL_MARKET_KEYS
     horizon = to_utc_iso(parse_utc(now_utc) + timedelta(hours=window_hours + 1))
     events = vendor.events(commence_from=to_utc_iso(now_utc), commence_to=horizon).payload
     last = {e['id']: odds_store.last_snapshot_ts(conn, e['id']) for e in events}
     targets = plan_live(events, now_utc, last, window_hours=window_hours, fast_window_min=fast_window_min,
-                        slow_cadence_min=slow_cadence_min, fast_cadence_min=fast_cadence_min)
+                        slow_cadence_min=slow_cadence_min, fast_cadence_min=fast_cadence_min,
+                        close_snapshot_min=close_snapshot_min)
     logging.info(f"{len(events)} upcoming events, {len(targets)} due for a snapshot")
     results = []
     for t in targets:

@@ -195,3 +195,30 @@ def test_cadence_is_configurable_and_fast_window_can_be_disabled():
     now = '2026-10-21T21:00:00Z'
     assert [t.event_id for t in collect.plan_live(ev, now, last)] == ['b']                     # default: fast, due
     assert collect.plan_live(ev, now, last, fast_window_min=0) == []                           # slow only: not due
+
+
+def test_lean_cadence_with_a_closing_snapshot():
+    """30-minute snapshots, no fast window, plus one snapshot in the last 10 minutes (scheduler ticks every 10)."""
+    ev = [{'id': 'g', 'commence_time': '2026-10-21T23:00:00Z'}]
+    kw = dict(window_hours=4, fast_window_min=0, slow_cadence_min=30, close_snapshot_min=10)
+    last = {}
+    taken = []
+    for minute in range(0, 4 * 60 + 40, 10):                  # ticks from T-4h20 to after tip, every 10 minutes
+        now = f'2026-10-21T{(18 + (40 + minute) // 60) % 24:02d}:{(40 + minute) % 60:02d}:00Z'
+        for t in collect.plan_live(ev, now, last, **kw):
+            last['g'] = now
+            taken.append((round(t.minutes_to_tip), t.mode))
+    assert taken[0] == (240, 'slow') and taken[-1][1] == 'close' and taken[-1][0] <= 10
+    assert [m for m, mode in taken].count(taken[-1][0]) == 1
+    assert sum(mode == 'close' for _, mode in taken) == 1
+    assert len(taken) == 9                                    # 8 regular (T-240 ... T-30) + 1 close
+    assert not any(mode == 'fast' for _, mode in taken)
+
+
+def test_free_calls_are_not_blocked_by_exhausted_caps(tmp_path):
+    p = tmp_path / 'p.db'
+    CreditBudget(p).record('v', '/x', {}, 50, 50, 10, 200)
+    b = CreditBudget(p, per_run=0, per_day=10, total=10)          # every cap already exceeded
+    b.check(0.0)                                                   # a free call passes
+    with pytest.raises(BudgetExceeded):
+        b.check(1.0)
