@@ -22,6 +22,7 @@ from pathlib import Path
 
 import requests
 
+from core.env import load_env
 from core.odds_vendor.base import BudgetExceeded, CreditBudget, VendorResponse, utc_now_iso  # noqa: F401
 
 BASE_URL = 'https://api.the-odds-api.com/v4'
@@ -50,9 +51,9 @@ class TheOddsApi:
 
     def __init__(self, budget: CreditBudget, api_key=None, raw_dir='data/raw/props_api', session=None,
                  sport=SPORT, timeout=30, max_retries=2):
-        self._key = api_key or os.environ.get('ODDS_API_KEY')
+        self._key = (api_key or os.environ.get('ODDS_API_KEY') or (load_env() and os.environ.get('ODDS_API_KEY')) or '').strip()
         if not self._key:
-            raise RuntimeError('ODDS_API_KEY is not set (set it as a user environment variable; never commit it)')
+            raise RuntimeError('ODDS_API_KEY is not set (put it in the gitignored .env file or the user environment; never commit it)')
         self.budget, self.raw_dir, self.sport = budget, Path(raw_dir), sport
         self.session = session or requests.Session()
         self.timeout, self.max_retries = timeout, max_retries

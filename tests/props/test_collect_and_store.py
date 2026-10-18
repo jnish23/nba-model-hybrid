@@ -184,5 +184,6 @@ def test_adapter_errors_do_not_leak_the_key(tmp_path):
 
 def test_missing_key_is_a_clear_error(tmp_path, monkeypatch):
     monkeypatch.delenv('ODDS_API_KEY', raising=False)
+    monkeypatch.setattr('core.odds_vendor.theoddsapi.load_env', lambda: [])      # never read the real .env in tests
     with pytest.raises(RuntimeError, match='ODDS_API_KEY'):
         TheOddsApi(CreditBudget(tmp_path / 'p.db'))
