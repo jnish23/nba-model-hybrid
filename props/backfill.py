@@ -23,7 +23,9 @@ from core.odds_vendor.theoddsapi import OddsApiError
 from core.timeutil import to_utc_iso
 from props import collect, schedule
 
-GAME_ID_PREFIXES = ('002', '003', '004', '005')       # regular season, play-in, playoffs, NBA Cup knockout rounds
+# NBA game-id prefixes: 001 preseason, 002 regular season, 003 All-Star events (no player props: 17 of them returned no vendor
+# event in the first backfill), 004 playoffs, 005 play-in. Only the real-game prefixes are planned.
+GAME_ID_PREFIXES = ('002', '004', '005')
 DEFAULT_OFFSETS = (240, 120, 60, 30, 5)
 LISTING_LEAD_MIN = 60                                  # events listing taken this long before the day's first tip
 

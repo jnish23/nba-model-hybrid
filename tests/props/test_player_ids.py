@@ -21,9 +21,11 @@ def nba_db(tmp_path):
         (5, 'Mike Smith', LAL, '2026-10-12T00:00:00'),
         (6, 'Moved Guy', LAL, '2026-10-01T00:00:00'), (6, 'Moved Guy', NYK, '2026-10-14T00:00:00'),
         (8, 'Debut Rookie', BOS, '2026-10-22T00:00:00'),      # first NBA game two days after the test date
+        (9, 'Trayce Jackson-Davis', NYK, '2026-10-10T00:00:00'),
     ], columns=['personId', 'playerName', 'teamId', 'gameDate'])
-    info = pd.DataFrame({'PERSON_ID': [1, 2, 3, 4, 5, 6, 7, 8], 'DISPLAY_FIRST_LAST': [
-        'Jayson Tatum', 'Jaren Jackson Jr.', 'P.J. Washington', 'Mike Smith', 'Mike Smith', 'Moved Guy', 'Rookie Newman', 'Debut Rookie']})
+    info = pd.DataFrame({'PERSON_ID': [1, 2, 3, 4, 5, 6, 7, 8, 9], 'DISPLAY_FIRST_LAST': [
+        'Jayson Tatum', 'Jaren Jackson Jr.', 'P.J. Washington', 'Mike Smith', 'Mike Smith', 'Moved Guy', 'Rookie Newman',
+        'Debut Rookie', 'Trayce Jackson-Davis']})
     teams = pd.DataFrame({'teamId': [BOS, NYK, LAL, LAL], 'teamName': ['Boston Celtics', 'New York Knicks',
                           'Los Angeles Lakers', 'Los Angeles Clippers'], 'teamTricode': ['BOS', 'NYK', 'LAL', 'LAC']})
     tbs = pd.DataFrame({'teamId': [BOS, NYK], 'gameId': ['0022600001', '0022600001'],
@@ -125,7 +127,12 @@ def test_roster_rules_for_other_name_formats(nba_db, tmp_path):
     assert m.match('Jay Tatum', '2026-10-20', t) == (1, 'team_prefix_last')               # nickname prefix
     assert m.match('Jaren Michael Jackson Jr.', '2026-10-20', t) == (2, 'team_prefix_last')   # middle name added
     assert m.match('J. Tatum', '2026-10-20', t) == (1, 'team_initial_last')
-    assert m.match('Washy Washington', '2026-10-20', t) == (3, 'team_last_name_only')     # a different first name entirely
+    assert m.match('Trayce Jackson', '2026-10-20', t) == (9, 'team_token_subset')          # a hyphenated surname, shortened
+    assert m.match('Jaren Jackson', '2026-10-20', t) == (2, 'team_variant')               # ... without stealing the other Jackson
+    # a last name alone is NOT enough: this once turned 'Trayce Jackson' into three other Jacksons
+    assert m.match('Washy Washington', '2026-10-20', t)[0] is None
+    # fuzzy matching is for long typos only; an initial plus a short surname must never be 'corrected' to someone else
+    assert m.match('J. Tatom', '2026-10-20', t)[0] is None
     assert m.match('Rookie Debut', '2026-10-20', t) == (8, 'team_token_set')              # debut within 21 days, name reversed
     assert m.match('Rookie Debut', '2026-10-20', (NYK, LAL))[0] is None                     # but only for his own team
     assert m.match('Totally Unknown', '2026-10-20', t) == (None, 'no_candidate')
@@ -142,3 +149,29 @@ def test_loose_matches_are_audited(nba_db, tmp_path):
     resolve_store(conn, PlayerMatcher(nba_db, overrides_path=tmp_path / 'none.csv'), nba_db)
     assert conn.execute('select player_name_raw, player_id, method from player_match_audit').fetchall() == \
         [('J. Tatum', 1, 'team_initial_last')]                                            # exact matches are not listed
+
+
+def test_team_specific_override_beats_a_general_one(nba_db, tmp_path):
+    ov = tmp_path / 'o.csv'
+    ov.write_text('name_raw,player_id,team,note\nM. Smith,4,Boston Celtics,bos\nM. Smith,5,Los Angeles Lakers,lal\nCaptain X,3,,any\n')
+    m = PlayerMatcher(nba_db, overrides_path=ov)
+    assert m.match('M. Smith', '2026-10-20', (BOS, NYK)) == (4, 'override')
+    assert m.match('M. Smith', '2026-10-20', (LAL, NYK)) == (5, 'override')
+    assert m.match('Captain X', '2026-10-20', (BOS, NYK)) == (3, 'override')               # no team: applies everywhere
+    assert m.match('M. Smith', '2026-10-20', (NYK,))[0] is None or m.match('M. Smith', '2026-10-20', (NYK,))[1] != 'override'
+
+
+def test_non_player_quotes_are_tagged_not_matched(nba_db, tmp_path):
+    from props.player_ids import is_non_player
+    assert is_non_player('Bkn Nets Alternate Total') and is_non_player('Hawks Team Total') and not is_non_player('Jayson Tatum')
+    conn = odds_store.connect(tmp_path / 'p.db')
+    odds_store.upsert_event(conn, 'ev1', '2026-10-21T00:00:00Z', 'Boston Celtics', 'New York Knicks')
+    odds_store.insert_props(conn, pd.DataFrame({
+        'snapshot_ts_utc': ['2026-10-20T20:00:00Z'] * 2, 'event_id_vendor': ['ev1'] * 2, 'book': ['bovada'] * 2,
+        'player_name_raw': ['Bkn Nets Alternate Total', 'Jayson Tatum'], 'market': ['points'] * 2, 'line': [110.5, 27.5],
+        'over_price': [-110] * 2, 'under_price': [-110] * 2, 'is_alt_line': [0, 0], 'source': ['t'] * 2}))
+    out = resolve_store(conn, PlayerMatcher(nba_db, overrides_path=tmp_path / 'none.csv'), nba_db)
+    assert out['non_player_rows'] == 1 and out['unmatched_rows'] == 0
+    assert dict(conn.execute('select player_name_raw, player_id from prop_snapshots').fetchall()) == \
+        {'Bkn Nets Alternate Total': -1, 'Jayson Tatum': 1}
+    assert conn.execute('select count(*) from unmatched_names').fetchone()[0] == 0

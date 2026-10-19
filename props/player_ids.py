@@ -40,11 +40,22 @@ def strip_suffix(norm):
 
 
 def load_overrides(path=OVERRIDES_PATH):
+    """CSV columns: name_raw, player_id, team (optional full team name: the override applies only in games of that team), note.
+    Returns a list of (normalised name, normalised team or '', player_id)."""
     path = Path(path)
     if not path.exists():
-        return {}
+        return []
     with open(path, newline='', encoding='utf-8') as f:
-        return {normalize(r['name_raw']): int(r['player_id']) for r in csv.DictReader(f) if r.get('player_id')}
+        return [(normalize(r['name_raw']), normalize(r.get('team') or ''), int(r['player_id']))
+                for r in csv.DictReader(f) if r.get('player_id')]
+
+
+# Vendor rows that are not players at all (team-total ladders posted under a player market).
+NON_PLAYER_RE = re.compile(r'\b(alternate|total|spread|moneyline|team)\b', re.I)
+
+
+def is_non_player(name):
+    return bool(NON_PLAYER_RE.search(str(name)))
 
 
 class PlayerMatcher:
@@ -71,7 +82,9 @@ class PlayerMatcher:
             self.teams[normalize(name)] = int(tid)
             self.teams[normalize(tri)] = int(tid)
         self.teams.setdefault('los angeles clippers', self.teams.get('la clippers'))
-        self.overrides = load_overrides(overrides_path)
+        self.overrides = {}
+        for n, team, pid in load_overrides(overrides_path):
+            self.overrides[(n, self.teams.get(team) if team else None)] = pid
 
     def team_id(self, team_name):
         return self.teams.get(normalize(team_name))
@@ -104,9 +117,10 @@ class PlayerMatcher:
     def match(self, name_raw, date, team_ids):
         """Returns (player_id or None, method_or_reason). team_ids: the two NBA team ids of the event."""
         n = normalize(name_raw)
-        if n in self.overrides:
-            return self.overrides[n], 'override'
         team_ids = {t for t in team_ids if t is not None}
+        for key in [(n, t) for t in sorted(team_ids)] + [(n, None)]:      # a team-specific override beats a general one
+            if key in self.overrides:
+                return self.overrides[key], 'override'
         hit = self._on_teams(self._by_norm.get(n, ()), date, team_ids)
         if len(hit) == 1:
             return hit[0], 'team_exact'
@@ -139,6 +153,7 @@ class PlayerMatcher:
 
         rules = [
             ('team_token_set', lambda p: set(toks[p]) == set(vt)),                       # reversed order, 'Last, First'
+            ('team_token_subset', lambda p: len(vt) >= 2 and set(vt) < set(toks[p])),    # 'Trayce Jackson' / 'Trayce Jackson-Davis'
             ('team_prefix_last', lambda p: last(p) in vt and any(t != last(p) and related(t, first(p)) for t in vt)),
             ('team_initial_last', lambda p: last(p) in vt and bool(first(p)) and vt[0][:1] == first(p)[:1]),
         ]
@@ -150,14 +165,14 @@ class PlayerMatcher:
             ambiguous |= len(hit) > 1
         scored = sorted(((difflib.SequenceMatcher(None, ' '.join(vt), ' '.join(toks[p])).ratio(), p) for p in cands),
                         reverse=True)
-        close = [p for r, p in scored if r >= FUZZY_MIN]
+        # typos only ('Galinari'): long names, never initials ('J. Green' must not become 'AJ Green')
+        close = [p for r, p in scored if r >= FUZZY_MIN and len(' '.join(vt)) >= 10]
         if len(close) == 1:
             logging.warning(f"fuzzy player match: '{name_raw}' -> {self._pid_names[close[0]]} ({close[0]})")
             return close[0], 'fuzzy_team'
-        hit = [p for p in cands if last(p) in vt]                                        # nickname for a first name
-        if len(hit) == 1:
-            return hit[0], 'team_last_name_only'
-        return None, 'ambiguous' if (ambiguous or len(close) > 1 or len(hit) > 1) else 'no_candidate'
+        # A last-name-only match was tried and removed: it turned 'Trayce Jackson' into three other Jacksons. Nickname cases
+        # ('Nah'Shon Hyland' = Bones Hyland) belong in props/player_overrides.csv, reviewed by hand.
+        return None, 'ambiguous' if (ambiguous or len(close) > 1) else 'no_candidate'
 
 
 def resolve_game_id(nba_db_path, et_game_date, home_team_id):
@@ -213,7 +228,13 @@ def resolve_store(store_conn, matcher, nba_db_path, now_iso=None, resolve_games=
     evi = ev.set_index('event_id_vendor')
     matched = {}
     unmatched = {}
+    non_player = 0
     for name, eid, n in todo.itertuples(index=False):
+        if is_non_player(name):                      # a team-total ladder under a player market: tag it, keep the row
+            store_conn.execute("UPDATE prop_snapshots SET player_id = -1 WHERE player_name_raw = ? AND event_id_vendor = ? "
+                               "AND player_id IS NULL", (name, eid))
+            non_player += n
+            continue
         e = evi.loc[eid]
         h, a = matcher.team_id(e['home_team']), matcher.team_id(e['away_team'])
         d = e['et_game_date'] or et_game_date(e['commence_time_utc'])
@@ -243,5 +264,5 @@ def resolve_store(store_conn, matcher, nba_db_path, now_iso=None, resolve_games=
     if unmatched:
         logging.warning(f"{len(unmatched)} unmatched player-event names ({total_u} rows), e.g. "
                         f"{[k[0] for k in list(unmatched)[:5]]}")
-    return {'matched_rows': total_m, 'unmatched_rows': total_u, 'by_method': matched,
+    return {'matched_rows': total_m, 'unmatched_rows': total_u, 'non_player_rows': non_player, 'by_method': matched,
             'match_rate': total_m / max(total_m + total_u, 1)}

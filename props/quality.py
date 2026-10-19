@@ -54,7 +54,8 @@ def _sum_tables(parts):
 
 def chunk_tables(conn, event_ids, events, log, form, nba_conn, method='multiplicative'):
     ph = ','.join('?' * len(event_ids))
-    p = pd.read_sql(f"SELECT * FROM prop_snapshots WHERE event_id_vendor IN ({ph})", conn, params=list(event_ids))
+    p = pd.read_sql(f"SELECT * FROM prop_snapshots WHERE event_id_vendor IN ({ph}) AND (player_id IS NULL OR player_id <> -1)",
+                    conn, params=list(event_ids))
     valid = log.loc[log['in_game'] == 0, ['snapshot_ts_utc', 'event_id_vendor']]      # drop in-game snapshots
     p = p.merge(valid, on=['snapshot_ts_utc', 'event_id_vendor'], how='inner')
     if p.empty:
@@ -142,10 +143,12 @@ def build_report(props_db, nba_db=None, chunk_events=150, method='multiplicative
 
     md = ['# Props odds data quality\n']
     # 1. overview
-    n_rows = conn.execute("SELECT COUNT(*), COUNT(player_id) FROM prop_snapshots").fetchone()
+    n_all, n_ided, n_nonplayer = conn.execute(
+        "SELECT COUNT(*), COUNT(player_id), COALESCE(SUM(player_id = -1), 0) FROM prop_snapshots").fetchone()
+    n_rows = (n_all - n_nonplayer, n_ided - n_nonplayer)       # player quotes only: team-total ladders (id -1) are excluded
     ov = pd.DataFrame({
         'events': [len(events)], 'with_game_id': [int(events['game_id'].notna().sum())],
-        'snapshots': [len(log)], 'prop_rows': [n_rows[0]],
+        'snapshots': [len(log)], 'player_prop_rows': [n_rows[0]], 'non_player_rows_excluded': [n_nonplayer],
         'player_id_matched': [n_rows[1] / max(n_rows[0], 1)],
         'first_game_date': [events['et_game_date'].min()], 'last_game_date': [events['et_game_date'].max()]})
     md += ['## 1. Overview\n', md_table(ov)]
@@ -180,6 +183,20 @@ def build_report(props_db, nba_db=None, chunk_events=150, method='multiplicative
         md += ['## 3. Snapshot timing\n', '### Historical: requested minutes before tip vs the snapshot actually returned '
                '(history is on a 5-minute grid and returns the latest snapshot at or before the requested instant)\n',
                md_table(tm)]
+        if len(evref):
+            hh = h.merge(evref[['event_id_vendor', 'tip_ref_utc']], on='event_id_vendor')
+            hh = hh.dropna(subset=['tip_ref_utc'])
+            lag = ((pd.to_datetime(hh['tip_ref_utc'], utc=True) - pd.to_timedelta(hh['requested'], unit='m')
+                    - pd.to_datetime(hh['snapshot_ts_utc'], utc=True)).dt.total_seconds() / 60.0)
+            edges = [-1e9, 5.01, 10, 60, 1e9]
+            names = ['within 5 min (the grid)', '5 to 10 min', '10 to 60 min', 'over 60 min']
+            cnt = pd.cut(lag, edges, labels=names).value_counts().reindex(names)
+            lagged = hh[lag > 10]
+            md += ['### How far before the requested instant the returned snapshot is (vendor data gaps show up as large values)\n',
+                   md_table(pd.DataFrame({'bucket': names, 'snapshots': cnt.values,
+                                          'share': (cnt / max(len(hh), 1)).values})),
+                   f"- lagged by more than 10 minutes: **{len(lagged)}** snapshots in **{lagged['event_id_vendor'].nunique()}** games, "
+                   f"of which **{int((lagged['n_prop_rows'] == 0).sum())}** are empty (no props posted yet at that time)\n"]
     lv = log[(log.kind == 'live') & (log.in_game == 0)].sort_values(['event_id_vendor', 'minutes_to_tip'], ascending=[True, False])
     if len(lv):
         gaps = lv.groupby('event_id_vendor')['minutes_to_tip'].apply(lambda s: s.diff().abs().max())

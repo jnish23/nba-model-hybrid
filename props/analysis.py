@@ -42,8 +42,10 @@ def flag_main_lines(df):
 
 
 def load_flagged(conn, where='1=1', params=(), method='multiplicative'):
-    """Stored quotes with de-vig, quality flags and main-line flags."""
-    df = pd.read_sql(f"SELECT * FROM prop_snapshots WHERE {where}", conn, params=params)
+    """Stored quotes with de-vig, quality flags and main-line flags. Rows tagged player_id = -1 (team-total ladders posted under a
+    player market) are never returned; unresolved player_id NULL rows are returned (they are real players we could not identify)."""
+    df = pd.read_sql(f"SELECT * FROM prop_snapshots WHERE ({where}) AND (player_id IS NULL OR player_id <> -1)", conn,
+                     params=params)
     if df.empty:
         return df
     return flag_main_lines(add_devig(df, method))
