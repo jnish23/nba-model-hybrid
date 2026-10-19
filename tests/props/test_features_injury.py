@@ -90,3 +90,31 @@ def test_teammate_availability_by_hand():
     # the opponent of player 4 is team A: whole-roster missing share (0.1*30 + 1*20 + 0.5*10) / 60
     assert out.loc[4, 'opp_av_miss_minutes'] == pytest.approx((0.1 * 30 + 20 + 5) / 60)
     assert out.loc[1, 'opp_av_n_out'] == 1                                             # player 4 is Out
+
+
+# ---- on the real database: the play-probability table must not see the labels it is applied to -----------------------
+from conftest import DB_PATH, ROOT  # noqa: E402
+
+PROPS_DB = ROOT / 'data' / 'props_odds.db'
+
+
+@pytest.mark.db
+@pytest.mark.skipif(not PROPS_DB.exists(), reason='props store not available')
+def test_play_probabilities_use_only_labels_from_earlier_seasons():
+    from props.features import build
+    base, labels = build.build_base(str(DB_PATH))
+    reports = build.load_linked_reports(str(DB_PATH))
+    sub = base[base['season'] >= '2022-23'].reset_index(drop=True)
+    lab = labels.merge(sub[['game_id', 'player_id']], on=['game_id', 'player_id'])
+    a = build.build_at_t(sub, lab, str(DB_PATH), str(PROPS_DB), reports=reports)
+    rng = np.random.default_rng(0)
+    shuf = lab.merge(sub[['game_id', 'player_id', 'season']], on=['game_id', 'player_id'])
+    sel = (shuf['season'] >= '2024-25').to_numpy()
+    shuf.loc[sel, 'lbl_played'] = rng.permutation(shuf.loc[sel, 'lbl_played'].to_numpy())
+    b = build.build_at_t(sub, shuf.drop(columns='season'), str(DB_PATH), str(PROPS_DB), reports=reports)
+    key = ['game_id', 'player_id', 'minutes_before']
+    m = a.merge(b, on=key, suffixes=('_a', '_b')).merge(sub[['game_id', 'player_id', 'season']], on=['game_id', 'player_id'])
+    same = m[m['season'] <= '2024-25']
+    assert np.allclose(same['inj_p_play_a'], same['inj_p_play_b'])                 # shuffling 2024-25 labels cannot move 2024-25 probabilities
+    later = m[m['season'] == '2025-26']
+    assert not np.allclose(later['inj_p_play_a'], later['inj_p_play_b'])           # ... but it does move 2025-26's, which learn from 2024-25

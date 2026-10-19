@@ -73,3 +73,17 @@ def test_team_view_signs_and_implied_totals():
     pk = me.team_view(pd.DataFrame({'game_id': ['g'], 'player_id': [3], 'is_home': [1]}),
                       env.assign(home_spread=0.0), 240)
     assert pk.loc[0, 'env_blowout_prob'] == pytest.approx(2 * (1 - 0.8944), abs=0.002)           # P(|N(0,12)| >= 15) = 0.211
+
+
+@pytest.mark.db
+@pytest.mark.skipif(not (DB_PATH.parent / 'props_odds.db').exists(), reason='props store not available')
+def test_no_snapshot_used_for_a_decision_time_is_later_than_that_time():
+    """Every snapshot behind env features at T-X must have minutes-to-reference-tip >= X (it was taken at or before T)."""
+    with sqlite3.connect(f"file:{DB_PATH.parent / 'props_odds.db'}?mode=ro", uri=True, timeout=120) as conn:
+        d = pd.read_sql("""SELECT l.mode, s.minutes_to_ref FROM snapshot_log l JOIN snapshot_ref s
+                           ON s.snapshot_ts_utc = l.snapshot_ts_utc AND s.event_id_vendor = l.event_id_vendor
+                           WHERE l.mode IN ('hist_T-240', 'hist_T-60', 'hist_T-5') AND s.in_game = 0""", conn)
+    d['x'] = d['mode'].str.replace('hist_T-', '', regex=False).astype(int)
+    late = d[d['minutes_to_ref'] < d['x'] - 1.0]                       # one minute of tolerance for the 5-minute grid and reference-tip rounding
+    assert len(d) > 10000
+    assert len(late) / len(d) < 0.001, late.groupby('x').size().to_dict()          # only vendor tip-time revisions may breach, and rarely
