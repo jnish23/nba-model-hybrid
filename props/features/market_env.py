@@ -24,7 +24,7 @@ GRID = (240, 60, 5)
 
 
 def snapshot_env(props_db, grid=GRID):
-    """Consensus game lines at each grid point from our snapshots. One row per (game_id, minutes_before): home_spread, total, home_win_prob, n_books, dispersion."""
+    """Consensus game lines at each grid point from our snapshots (a snapshot later than T, e.g. after a revised tip time, is never used). One row per (game_id, minutes_before): home_spread, total, home_win_prob, n_books, dispersion."""
     modes = [f'hist_T-{x}' for x in grid]
     with sqlite3.connect(f'file:{props_db}?mode=ro', uri=True, timeout=120) as conn:
         q = f"""SELECT r.game_id, l.mode, t.book, t.home_spread, t.total, t.home_ml, t.away_ml
@@ -32,7 +32,8 @@ def snapshot_env(props_db, grid=GRID):
                 JOIN snapshot_log l ON l.snapshot_ts_utc = t.snapshot_ts_utc AND l.event_id_vendor = t.event_id_vendor
                 JOIN event_ref r ON r.event_id_vendor = t.event_id_vendor
                 LEFT JOIN snapshot_ref s ON s.snapshot_ts_utc = t.snapshot_ts_utc AND s.event_id_vendor = t.event_id_vendor
-                WHERE l.mode IN ({','.join('?' * len(modes))}) AND r.game_id IS NOT NULL AND COALESCE(s.in_game, 0) = 0"""
+                WHERE l.mode IN ({','.join('?' * len(modes))}) AND r.game_id IS NOT NULL AND COALESCE(s.in_game, 0) = 0
+                  AND s.minutes_to_ref >= CAST(substr(l.mode, 8) AS REAL) - 1.0"""
         d = pd.read_sql(q, conn, params=modes)
     d['minutes_before'] = d['mode'].str.replace('hist_T-', '', regex=False).astype(int)
     fair_home, _, _ = devig.devig_prices(d['home_ml'], d['away_ml'], 'multiplicative')

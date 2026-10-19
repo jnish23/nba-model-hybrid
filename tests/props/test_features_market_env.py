@@ -19,7 +19,7 @@ def build_store(path):
             conn.execute("INSERT INTO team_lines (snapshot_ts_utc, event_id_vendor, book, home_ml, away_ml, home_spread, total) VALUES (?,?,?,?,?,?,?)",
                          (ts, eid, book, hml, aml, hs + (0.5 if mode == 'hist_T-5' else 0.0), tot))
         conn.execute("INSERT INTO snapshot_log (snapshot_ts_utc, event_id_vendor, mode, minutes_to_tip, n_prop_rows) VALUES (?,?,?,?,?)", (ts, eid, mode, 0, 1))
-        conn.execute("INSERT OR REPLACE INTO snapshot_ref VALUES (?,?,?,?)", (ts, eid, 100.0, 0))
+        conn.execute("INSERT OR REPLACE INTO snapshot_ref VALUES (?,?,?,?)", (ts, eid, 244.0 if mode == 'hist_T-240' else 9.0, 0))
     conn.execute("INSERT INTO event_ref VALUES ('e1','0022500998','x','y',NULL,NULL,0)")
     conn.commit()
     conn.close()
@@ -87,3 +87,13 @@ def test_no_snapshot_used_for_a_decision_time_is_later_than_that_time():
     late = d[d['minutes_to_ref'] < d['x'] - 1.0]                       # one minute of tolerance for the 5-minute grid and reference-tip rounding
     assert len(d) > 10000
     assert len(late) / len(d) < 0.001, late.groupby('x').size().to_dict()          # only vendor tip-time revisions may breach, and rarely
+
+
+def test_a_snapshot_taken_after_T_is_never_used(tmp_path):
+    build_store(tmp_path / 'p.db')
+    c = sqlite3.connect(tmp_path / 'p.db')
+    c.execute("UPDATE snapshot_ref SET minutes_to_ref = 3.0 WHERE snapshot_ts_utc = '2026-03-17T22:10:00Z'")     # the T-240 snapshot is really T-3
+    c.commit()
+    c.close()
+    env = me.snapshot_env(str(tmp_path / 'p.db'))
+    assert 240 not in set(env['minutes_before']) and 5 in set(env['minutes_before'])

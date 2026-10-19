@@ -19,6 +19,7 @@ from props import schedule as sched_mod
 from props.features import context, history, injury_at_t, market_env, rows as rows_mod
 
 GRID = (240, 60, 5)
+MARKET_ERA_FIRST_SEASON = '2023-24'              # first season with our own market snapshots
 OUT_DB = Path('data/props_features.db')
 LINKED_CACHE = Path('data/processed/props_injury_linked.pkl')
 MAIN_REPORT_DIR = irf.REPORT_DIR
@@ -75,7 +76,11 @@ def build_at_t(base, labels, db_path, props_db, grid=GRID, reports=None):
     reports = load_linked_reports(db_path) if reports is None else reports
     lab = labels[['game_id', 'player_id', 'lbl_played']]
     snap = market_env.snapshot_env(props_db)
-    env = market_env.combine(snap, market_env.sbr_proxy(load_clean_odds(Path(db_path))))
+    # The SBR proxy only stands in for seasons without snapshots; in the market era a game with no snapshot gets NaN, never a substitute,
+    # so every market-era env value comes from the same source.
+    proxy = market_env.sbr_proxy(load_clean_odds(Path(db_path)))
+    pre_market = set(base.loc[base['season'] < MARKET_ERA_FIRST_SEASON, 'game_id'])
+    env = market_env.combine(snap, proxy[proxy['game_id'].isin(pre_market)])
     feat_cols = ['game_id', 'player_id', 'm_min_h15', 'r_usage_pct_h15', 'r_reb_chances_h15', 'r_assists_h15', 'r_secondary_ast_h15', 'r_points_h15']
     out = []
     for x in grid:
