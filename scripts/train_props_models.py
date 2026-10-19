@@ -15,7 +15,7 @@ import time
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
-from props.models import data, folds as folds_mod, pipeline, registry, report  # noqa: E402
+from props.models import common, data, folds as folds_mod, pipeline, registry, report  # noqa: E402
 
 
 def main():
@@ -46,8 +46,9 @@ def main():
     smoke, calib = {}, {}
     for s in args.folds:
         t = time.time()
-        idx, pmfs, calibrator, played = pipeline.predict_fold(df, fold_objs[s], bundles[s], chosen, args.sims, args.seed)
-        bundles[s]['calibrator'], bundles[s]['families'] = calibrator, chosen
+        idx, pmfs, calibrator, played, scaler = pipeline.predict_fold(df, fold_objs[s], bundles[s], chosen, args.sims, args.seed)
+        bundles[s]['calibrator'], bundles[s]['dispersion'], bundles[s]['families'] = calibrator, scaler, chosen
+        common.log_config('dispersion_scaler', season=s, c={f'{k[0]}:{k[1]}': round(v, 4) for k, v in scaler.c.items()})
         registry.save_bundle(args.version, s, bundles[s])
         registry.save_predictions(args.version, s, idx, pmfs)
         smoke[s] = report.smoke_table(played, pmfs)
@@ -55,7 +56,7 @@ def main():
         logging.info(f'{s}: predicted and calibrated in {time.time() - t:.0f}s\n' + smoke[s].round(3).to_string(index=False))
     out = args.report or f'reports/props/phase3_training_report_{args.version}.md'
     notes = (f'Version `{args.version}`, feature set `{args.spec}`, excluded groups {args.exclude_groups}, folds {args.folds}, {args.sims} simulations per player-game. '
-             'Smoke check only: no confidence intervals, no ablations, no market comparison. Phase 4 is the formal evaluation.\n')
+             'The stored pmfs are dispersion-calibrated (Stage F0); the isotonic layer is reported (calibrated columns) but not applied. Smoke check only: no confidence intervals, no ablations, no market comparison. Phase 4 is the formal evaluation.\n')
     Path(out).parent.mkdir(parents=True, exist_ok=True)
     Path(out).write_text(report.markdown(f'Phase 3 training report ({args.version})', smoke, calib, table, {}, notes), encoding='utf-8')
     logging.info(f'wrote {out}')

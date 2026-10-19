@@ -7,7 +7,7 @@ The test season's labels are used only to SCORE (rate-family selection on develo
 import numpy as np
 import pandas as pd
 
-from props.models import calibrate, common, outcome as oc
+from props.models import calibrate, common, dispersion, outcome as oc
 from props.models.availability import Availability
 from props.models.data import FeatureSpec
 from props.models.minutes import MinutesModel
@@ -56,17 +56,21 @@ def distributions(bundle, rows, families, n_sims, seed):
 
 
 def predict_fold(df, fold, bundle, families, n_sims=4000, seed=0):
-    """Fits the calibration maps on the calibration window and returns (index frame, pmfs by stat, calibrator) for the played test rows."""
+    """Fits the dispersion scaler and the isotonic maps on the calibration window; returns (index frame, widened pmfs by stat, isotonic calibrator, played test
+    rows, dispersion scaler). The isotonic maps are fitted on the widened calibration pmfs and reported but NOT applied: on the development folds they
+    worsened log loss in 21 of 24 stat-fold cells."""
     rm = bundle['rates']
     cal = df.iloc[fold.calib_idx]
     cal = cal[(cal['lbl_played'] == 1) & (cal['lbl_minutes'] > 0)]
     rm.fit_dispersion(cal, families)
     cres = distributions(bundle, cal, families, n_sims, seed + 1)
+    scaler = dispersion.DispersionScaler()
     calibrator = calibrate.ThresholdCalibrator()
     for stat in oc.CAPS:
         y = observed(cal, stat)
         ok = ~np.isnan(y)
-        calibrator.fit(stat, cres[stat][ok], y[ok])
+        scaler.fit(stat, cres[stat][ok], y[ok], cres['minutes_mean'][ok])
+        calibrator.fit(stat, scaler.transform(stat, cres[stat][ok], cres['minutes_mean'][ok]), y[ok])
     test = df.iloc[fold.test_idx]
     played = test[(test['lbl_played'] == 1) & (test['lbl_minutes'] > 0)]
     res = distributions(bundle, played, families, n_sims, seed)
@@ -76,4 +80,6 @@ def predict_fold(df, fold, bundle, families, n_sims=4000, seed=0):
     idx['p_play_model'] = bundle['availability'].predict(played)
     idx['p_play_table'] = played['inj_p_play'].to_numpy()
     res.pop('sim_means', None)
-    return idx, res, calibrator, played
+    for stat in oc.CAPS:
+        res[stat] = scaler.transform(stat, res[stat], idx['minutes_mean'].to_numpy())
+    return idx, res, calibrator, played, scaler

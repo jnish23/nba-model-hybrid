@@ -79,7 +79,7 @@ def test_predictions_do_not_depend_on_the_test_seasons_labels(frame, fold):
             for c in cols:
                 f.loc[test_rows, c] = rng.permutation(f.loc[test_rows, c].to_numpy())
         bundle = pipeline.train_fold(f, fold, SPEC, score_on_test=False)
-        idx, pmfs, calibrator, played = pipeline.predict_fold(f, fold, bundle, fams, n_sims=300, seed=1)
+        idx, pmfs, calibrator, played, scaler = pipeline.predict_fold(f, fold, bundle, fams, n_sims=300, seed=1)
         out.append((idx, pmfs))
     assert out[0][0]['minutes_mean'].to_numpy() == pytest.approx(out[1][0]['minutes_mean'].to_numpy())
     for s in oc.CAPS:
