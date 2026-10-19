@@ -58,7 +58,7 @@ def distributions(bundle, rows, families, n_sims, seed):
 def predict_fold(df, fold, bundle, families, n_sims=4000, seed=0):
     """Fits the dispersion scaler and the isotonic maps on the calibration window; returns (index frame, widened pmfs by stat, isotonic calibrator, played test
     rows, dispersion scaler). The isotonic maps are fitted on the widened calibration pmfs and reported but NOT applied: on the development folds they
-    worsened log loss in 21 of 24 stat-fold cells."""
+    worsened log loss in 19 of 24 stat-fold cells."""
     rm = bundle['rates']
     cal = df.iloc[fold.calib_idx]
     cal = cal[(cal['lbl_played'] == 1) & (cal['lbl_minutes'] > 0)]
