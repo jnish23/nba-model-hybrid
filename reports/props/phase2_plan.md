@@ -46,18 +46,16 @@ tests (including "shuffling future rows changes no past feature"), parity tests,
 
 Point-in-time rule for every group: only games with a date strictly before the game date, injury reports published at or before T, market snapshots at or before T. Anything from the game itself (minutes, starters, box score) is a label, never a feature.
 
-## 5. Decisions I need from you
+## 5. Decisions (made 2026-10-18)
 
-**D1. Decision-time grid.** The spec says open, T-90 and close; our grid is T-240, 120, 60, 30, 5 and the true open is not observable.
- (a) **T-240 ("early"), T-60 ("mid"), T-5 ("close")** (recommended): T-60 is the nearest grid point to the spec's T-90 that still sees most injury and lineup news; the code takes T as a parameter, so other points can be added cheaply.
- (b) T-240, T-120, T-5: closer to the spec's T-90 but before most news.
- (c) all five.
-
-**D2. Starting lineups.** The only lineup data is the post-game starter flag. (a) **Never use actual starters; model the role from past starts and injuries** (recommended: knowable at every T and the same in production). (b) Allow the actual starters at T-5 only: lineups are public about 30 minutes before tip, but we have no live lineup feed, so production could not reproduce the feature, and it would mostly restate what the close already prices.
-
-**D3. Teammate on/off.** (a) **Weighted-missing-share features** (recommended first): teammates' play probability times their trailing usage, minutes, rebound and assist shares, no pairwise modelling. (b) Add explicit with/without shifts per player pair, estimated with shrinkage (the spec asks for this). It is heavier and noisier, so my suggestion is to build (a) now, run the Phase 4 ablation, and build (b) only if (a) shows the group matters. Say if you want (b) built now.
-
-**D4. Market game environment before 2023-24.** We have spread and total at T only from 2023-24. (a) **Base features for all seasons; market-environment features from 2023-24, with a flagged proxy for 2019-22** (recommended): SBR opening line for T-240 and SBR closing line for T-5, a column `env_source` saying which, and nothing for T-60. More training years for the ablation, clearly labelled. (b) Market features 2023-24 on only: cleaner, but the market-aware variant then has two training seasons.
+- **D1 decision times: T-240, T-60, T-5** (early, mid, close), aligned to the price grid. T is a parameter. Your point that injury reports are frequent was right: the NBA
+  publishes hourly all day in every season from 2021-22 and every 15 minutes in at least part of 2025-26, while our archive holds 7 per day. Every row carries
+  `report_age_minutes` (age of the latest report at or before T), because training seasons see older reports than production will.
+- **D1b injury archive: hourly slots downloaded** into `data/raw/injury_reports_hourly` (separate from the team pipeline's folder, manifest-driven, 2021-22 to 2025-26,
+  8,448 slots, ~700 MB). 15-minute reports are not downloaded; revisit if report age turns out to matter. 2019-20 and 2020-21 keep the sparse archive.
+- **D2 starters: never use actual starters.** The role comes from past starts, minutes and injuries. The post-game starter flag (`position` in the v3 tables) is a label only.
+- **D3 teammates: weighted-missing-share features first.** Pairwise with/without shifts only if the Phase 4 ablation shows the group matters.
+- **D4 market environment before 2023-24: flagged SBR proxy** (opening line for T-240, closing line for T-5, nothing for T-60), with an `env_source` column.
 
 Defaults I will apply unless you object: rows from 2019-20 including DNPs; status-to-play-probability estimated per T from earlier seasons only, shrunk toward the spec's rates (0, 2%, 57%, 93%); half-lives 5, 15, 40 games; position from `player_info` plus a minutes bucket for the priors; tiers as defined in `props/tiers.py`; no prop lines as features.
 
