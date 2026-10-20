@@ -53,7 +53,7 @@ def test_gate_compares_candidate_and_incumbent_on_the_same_recent_window(retrain
     d, saved, report = retrained
     gate = report['gate']
     assert gate['candidate']['games'] == gate['incumbent']['games'] > 150
-    assert gate['incumbent_saw_window'] is False
+    assert gate['incumbent_calibrated_on_window'] is False
     assert set(gate['verdict']) == {'ok', 'worse'}
     assert (d / 'reports' / 'retrain_t1.json').exists()
     assert json.loads((d / 'reports' / 'retrain_t1.json').read_text())['candidate_suffix'] == '_with_odds_cand_t1'
@@ -64,3 +64,17 @@ def test_rerunning_with_the_same_tag_is_refused(retrained):
     with pytest.raises(FileExistsError):
         retrain.run_retrain(d / 'training_set.csv', model_dir=saved, out_dir=d / 'reports', tuner='grid', holdout_days=90,
                             gate_days=150, tag='t1', incumbent_suffix='_inc')
+
+
+def test_gate_uses_the_raw_log_loss_when_the_incumbents_calibrator_saw_the_window():
+    inc = {'ml_logloss': 0.52, 'ml_logloss_raw': 0.535, 'spread_mae': 11.3, 'total_mae': 14.3}
+    cand = {'ml_logloss': 0.536, 'ml_logloss_raw': 0.526, 'spread_mae': 11.28, 'total_mae': 14.34}
+    assert not retrain.verdict(cand, inc)['ok']                                   # calibrated: looks worse (in-sample for the incumbent)
+    assert retrain.verdict(cand, inc, retrain.TOLERANCE_RAW)['ok']                # calibration-free: better
+
+
+def test_window_metrics_reports_the_calibration_free_log_loss():
+    frame = pd.DataFrame({'target_home_win': [1, 0], 'target_point_diff': [5.0, -3.0], 'target_total_pts': [220.0, 230.0]})
+    preds = pd.DataFrame({'ml_prob': [0.8, 0.3], 'ml_prob_raw': [0.6, 0.4], 'spread_pred': [3.0, 1.0], 'total_pred': [222.0, 226.0]})
+    m = retrain.window_metrics(preds, frame)
+    assert m['ml_logloss_raw'] > m['ml_logloss'] > 0

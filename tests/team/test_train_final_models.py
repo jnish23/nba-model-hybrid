@@ -104,17 +104,17 @@ def test_time_holdout_is_the_last_n_days_and_never_splits_a_game_night():
     assert len(mt) + len(cal) == len(df) and len(cal) == 600
 
 
-def test_default_holdout_is_half_a_season_not_a_fifth_of_the_history():
-    # 13 seasons of ~1,300 games: the old 20% rule would hold out ~3,400 rows (2.6 seasons); the new one ~half a season
+def test_default_holdout_is_one_year_not_a_fifth_of_the_history():
+    # 13 seasons of ~1,300 games: the old 20% rule would hold out ~3,400 rows (2.6 seasons); the new one a year
     days = pd.date_range('2013-10-25', '2026-06-13', freq='D')
     dates = np.repeat(days.to_numpy(), 1)
     n_per_day = 5
     df = pd.DataFrame({'gameDate': np.repeat(dates, n_per_day)})
     mt, cal = split_model_train_calibration(df)
-    assert CALIB_HOLDOUT_DAYS == 183
+    assert CALIB_HOLDOUT_DAYS == 365
     assert (df['gameDate'].max() - mt['gameDate'].max()).days <= CALIB_HOLDOUT_DAYS + 1
     old_mt, _ = split_model_train_calibration(df, calib_holdout_days=None)
-    assert (df['gameDate'].max() - old_mt['gameDate'].max()).days > 3 * CALIB_HOLDOUT_DAYS
+    assert (df['gameDate'].max() - old_mt['gameDate'].max()).days > 2 * CALIB_HOLDOUT_DAYS
 
 
 def test_holdout_too_small_for_calibration_is_refused():

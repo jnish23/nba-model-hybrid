@@ -22,7 +22,7 @@ that trains). Test suite: see the last section.
 | Item | Change | Tests |
 |---|---|---|
 | **B1** | `core.odds_clean.load_entry_odds`: consensus of the first pre-game snapshot per game and book at/after game-day noon ET (capped 30 min before tip); no fallback to the opener. `experiments.metrics.make_bets(entry=...)` prices and settles there and skips games without one; default results are labelled `entry_basis='open'`, and `experiments/report.py` and `scripts/evaluate_oos_seasons.py` print the caveat. README caveat added. `generate_season_predictions.py` documents the open-price basis. | `tests/core/test_entry_odds.py`, `tests/team/test_entry_bets.py` |
-| **B2** | `train_and_save_all`: calibrators / sigma fit on the **last 183 days** (never splitting a game night), then the base models are **refit on all games** with the same hyperparameters (`refit_on_all=True`). `calib_holdout_days=None` restores the old row split. New `tuner='grid'` (`team/tuning.py`, the grid the backtests validated). `team/retrain.py`, `scripts/retrain_candidate.py`, `scripts/run_weekly_retrain.bat`: weekly candidate set under a dated suffix, gated against the deployed set on the last 120 days (both out-of-sample); never deploys. The `.bat` is **not registered** with Task Scheduler. | `tests/team/test_train_final_models.py`, `test_tuning.py`, `test_retrain.py` |
+| **B2** | `train_and_save_all`: calibrators / sigma fit on the **last 365 days** (never splitting a game night), then the base models are **refit on all games** with the same hyperparameters (`refit_on_all=True`). `calib_holdout_days=None` restores the old row split. New `tuner='grid'` (`team/tuning.py`, the grid the backtests validated). `team/retrain.py`, `scripts/retrain_candidate.py`, `scripts/run_weekly_retrain.bat`: weekly candidate set under a dated suffix, gated against the deployed set on the last 120 days (both out-of-sample); never deploys. The `.bat` is **not registered** with Task Scheduler. | `tests/team/test_train_final_models.py`, `test_tuning.py`, `test_retrain.py` |
 | **B3** | `ResidualTotalModel` (gap from the opening total) implemented but **opt-in** (`total_target='residual'`); default stays the level model. Reason in section 3. Lean is addressed by B2. | `test_market_models.py`, `test_train_final_models.py` |
 | **B4** | `model_manifest<suffix>.json` (hash of the set's files and of the training CSV); `load_bundle` refuses a set changed after its manifest; `train_and_save_all` refuses an existing suffix (`overwrite=True` / `--overwrite`). `predictions_log_v2` gains `model_set_hash`, `training_set_hash` (ALTER TABLE on existing tables, CSV mirror aligned); `run_inference_v2.py` and `generate_season_predictions.py` write them (`--tag`, `--overwrite-models`). `scripts/audit_prediction_log.py` / `team/log_audit.py` check provenance and re-score a log. | `tests/team/test_model_provenance.py` |
 | W validated pipeline | `tuner='grid'` is the validated pipeline; the weekly retrain uses it. The deployed set stays FLAML until retrained. | `test_tuning.py` |
@@ -56,6 +56,24 @@ that trains). Test suite: see the last section.
   model with offset, but the offsets are noisy (up to +2.5 in 2020-21) and the bets become one-sided the other way (2,149 bets: 827 under /
   1,322 over). I did **not** wire a bias correction into `predict_markets`.
 
+## 3b. Why the calibration block is one year, not half a season (B2)
+
+The audit suggested "the last half season". Held-out check with the real data (grid tuner, base models refit on all data before the
+cut, calibration = last N days before the cut; ML log loss on the games after the cut):
+
+| window after the cut | calibration block | raw classifier | calibrated (margin stack) |
+|---|---|---|---|
+| last 120 days (502 games) | 183 days (819 games) | 0.5257 | **0.5361** (worse than raw) |
+| | 365 days (1,330) | 0.5285 | 0.5269 |
+| | 548 days (2,139) | 0.5258 | 0.5238 |
+| | 730 days (2,653) | 0.5279 | 0.5274 |
+| last 250 days | 183 days (903) | 0.5927 | 0.5909 |
+| | 365 days (1,320) | 0.5900 | **0.5894** |
+| | 548 days (2,221) | 0.5907 | 0.5898 |
+
+A half-season block gave the one result where calibration hurt; 365 days was never worse than 183. Because the base models are refit on all
+games afterwards, a longer block costs no staleness. Two windows are thin evidence; `CALIB_HOLDOUT_DAYS` is one constant if you prefer another.
+
 ## 4. Not changed, and why
 
 * **Sigma (W3).** The 2025-26 spread error std (14.32) is simply above the calibration block's (13.80). The time-based holdout makes the
@@ -69,7 +87,7 @@ that trains). Test suite: see the last section.
 
 1. **Retrain / redeploy.** Proposed (writes only new files under a new suffix; does not change `DEPLOYED_SUFFIX`):
    `.venv\Scripts\python.exe scripts\retrain_candidate.py --tag 20261020` after `scripts\generate_training_set.py`.
-   Cost: see the dry run in section 6. Promotion = a reviewed commit setting `DEPLOYED_SUFFIX` in `team/model_registry.py`.
+   Cost: **about 3.5 minutes** (grid tuner; dry run in section 6). Promotion = a reviewed commit setting `DEPLOYED_SUFFIX` in `team/model_registry.py`.
    Promoting changes what the daily inference publishes (new probabilities / lines, and the two new log columns).
 2. **Weekly schedule.** `scripts\run_weekly_retrain.bat` is ready; registering it is a Task Scheduler change I did not make.
 3. **Regenerate the 2025-26 out-of-sample log** (B4): `python scripts\generate_season_predictions.py --season 2025-26 --tag v2`
@@ -83,3 +101,19 @@ that trains). Test suite: see the last section.
 5. **Decide the entry-price policy** for ROI / CLV once `odds_snapshots` has a season of history (about the 2026-27 season's end): until
    then report closing-line comparisons only.
 6. **Era markers / sigma policy** (section 4).
+
+## 6. Dry run of the retrain on the real training set (scratch directory, nothing in `models/saved` touched)
+
+`run_retrain(latest_training_set(), tuner='grid')` on `training_set_v1_reduced_2026-10-16.csv` (16,795 games to 2026-06-13), incumbent
+`_with_odds_v6` read from the main checkout: **208 s** for the gate model plus the candidate. Gate window 2026-02-19..2026-06-13 (502 games),
+the base models of both sets did not see it:
+
+| | ML log loss (calibrated) | ML log loss (raw) | spread MAE | total MAE | total bias (actual - pred) |
+|---|---|---|---|---|---|
+| deployed v6 | 0.5201 | 0.5353 | 11.300 | 14.298 | +1.12 |
+| candidate (gate model) | 0.5269 | 0.5285 | 11.283 | 14.309 | +1.40 |
+
+v6's calibrator and sigma were fitted on a block that includes this window, so its calibrated log loss is in-sample; the gate then
+compares the calibration-free log loss (0.5285 vs 0.5353, candidate better) and passes. Total bias is positive for both (the model
+predicts low); that is the 2025-26 under-lean again, not removed by retraining (see section 3).
+With the first (half-season) default the same run failed the calibrated comparison by 0.016, which is what led to section 3b.

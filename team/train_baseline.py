@@ -42,9 +42,13 @@ FLAML_TRAIN_FRAC = 0.8
 SPREAD_GAP_COL = 'target_spread_gap'
 TOTAL_GAP_COL = 'target_total_gap'
 
-# Final models: the calibrators / sigma are fitted on the LAST `CALIB_HOLDOUT_DAYS` days of history (about half a season), not
-# on the last 20% of rows. A row-count split of a 13-season history put the base-model cut 2.7 seasons before the end of the data.
-CALIB_HOLDOUT_DAYS = 183
+# Final models: the calibrators / sigma are fitted on the LAST `CALIB_HOLDOUT_DAYS` days of history, not on the last 20% of rows. A
+# row-count split of a 13-season history put the base-model cut 2.7 seasons before the end of the data. Because the base models are
+# refit on all games afterwards, the length of this block does not make them stale; it only sets how much (and how recent) data the
+# calibrators see. One year, not half a season: on two held-out windows (last 120 and last 250 days of the data) a 183-day block
+# gave the worst calibrated ML log loss (0.5361 vs raw 0.5257 on the last 120 days: the stack hurt), 365 and 548 days both fixed it
+# (0.5269 / 0.5238) and 365 was never worse than 183 (reports/audit_fixes/TEAM_AUDIT_2.md section 3b).
+CALIB_HOLDOUT_DAYS = 365
 MIN_HOLDOUT_ROWS = 300
 
 
@@ -1312,7 +1316,7 @@ class BaselineModel:
         """
         Train final models on ALL available data and save them, including calibrators.
 
-        Split: [model_train] [calibration = the last `calib_holdout_days` days (default ~half a season)]
+        Split: [model_train] [calibration = the last `calib_holdout_days` days (default one year)]
         (calib_holdout_days=None: the last `calib_holdout_frac` of the rows, the pre-audit behaviour)
         - Hyperparameters / feature selection / calibrators come from the split above
         - refit_on_all: after the calibrators are fitted, the base models are refit on model_train + calibration

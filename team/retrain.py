@@ -34,6 +34,9 @@ GATE_DAYS = 120
 GATE_MIN_GAMES = 150
 # The candidate must not be worse than the deployed set by more than this on any gate metric (noise allowance on ~600 games)
 TOLERANCE = {'ml_logloss': 0.004, 'spread_mae': 0.15, 'total_mae': 0.15}
+# When the deployed set's calibrator was fitted on blocks that reach into the gate window, its calibrated log loss is in-sample on that
+# window; the comparison then uses the calibration-free log loss of the raw classifier.
+TOLERANCE_RAW = {'ml_logloss_raw': 0.004, 'spread_mae': 0.15, 'total_mae': 0.15}
 
 
 def window_metrics(preds, frame):
@@ -43,6 +46,9 @@ def window_metrics(preds, frame):
     out = {'games': int(len(frame)),
            'ml_logloss': float(-(y * np.log(p) + (1 - y) * np.log(1 - p)).mean()),
            'ml_brier': float(brier_score_loss(y, p))}
+    if 'ml_prob_raw' in preds:
+        pr = np.clip(preds['ml_prob_raw'].to_numpy(float), 1e-6, 1 - 1e-6)
+        out['ml_logloss_raw'] = float(-(y * np.log(pr) + (1 - y) * np.log(1 - pr)).mean())
     for tag, col, tgt in (('spread', 'spread_pred', 'target_point_diff'), ('total', 'total_pred', 'target_total_pts')):
         e = frame[tgt].to_numpy(float) - preds[col].to_numpy(float)
         ok = np.isfinite(e)
@@ -89,9 +95,11 @@ def run_retrain(data_path, model_dir=MODEL_DIR, out_dir='reports/retrain', tuner
             try:
                 inc = load_bundle(incumbent_suffix, incumbent_dir)
                 report['gate']['incumbent'] = window_metrics(predict_markets(inc, window), window)
-                calib_start = pd.Timestamp(inc.calib_meta.get('calib_date_range', {}).get('start', 'NaT'))
-                report['gate']['incumbent_saw_window'] = bool(pd.notna(calib_start) and calib_start > cut)
-                report['gate']['verdict'] = verdict(report['gate']['candidate'], report['gate']['incumbent'])
+                calib_end = pd.Timestamp(inc.calib_meta.get('calib_date_range', {}).get('end', 'NaT'))
+                saw = bool(pd.notna(calib_end) and calib_end > cut)       # its calibrator/sigma were fitted on part of the window
+                report['gate']['incumbent_calibrated_on_window'] = saw
+                report['gate']['verdict'] = verdict(report['gate']['candidate'], report['gate']['incumbent'],
+                                                    TOLERANCE_RAW if saw else TOLERANCE)
             except FileNotFoundError as e:
                 report['gate']['incumbent'] = None
                 report['gate']['note'] = f'no incumbent to compare with: {e}'
