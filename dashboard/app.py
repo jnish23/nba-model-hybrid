@@ -706,10 +706,12 @@ def main():
         points_edge = st.sidebar.slider(f"Minimum edge (points vs the {line_word})", 0.0, 10.0, default_pts, 0.1,
                                         key=f"pts_{bet_type}",
                                         help=f"Bet only when the model's {line_word} differs from the market line by at least this many points. "
-                                             f"{default_pts} points is the model's standard 5% edge rule.")
+                                             f"{default_pts} points is the model's standard 5% edge rule. The probability shown below the slider is the model's own estimate, "
+                                             f"not an observed win rate.")
         threshold = implied_prob_edge(points_edge, std)
-        st.sidebar.caption(f"{points_edge:.1f} pts ≈ the model wins {cover_probability(points_edge, std):.1%} of such bets vs 52.4% to break even at -110 "
-                           f"(a {threshold:+.1%} edge; residual std {std} pts).")
+        st.sidebar.caption(f"{points_edge:.1f} pts: the model ESTIMATES {cover_probability(points_edge, std):.1%} of such bets win, vs 52.4% to break even at -110 "
+                           f"(a {threshold:+.1%} claimed edge). That estimate assumes its error is a bell curve with std {std} pts around its prediction; "
+                           f"backtested bets that clear the threshold have won less often than estimated, so read the results tabs for what actually happened.")
     threshold_label = f"≥ {points_edge:.1f} pts ({threshold:+.1%} edge)" if points_edge is not None else f"{threshold:.3f}"
 
     # Filter Data for Display
