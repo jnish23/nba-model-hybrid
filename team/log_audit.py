@@ -15,7 +15,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from team.model_registry import MODEL_DIR, model_set_hash
+from team.model_registry import MODEL_DIR, model_set_hash, read_manifest
 
 
 def known_hashes(model_dir=MODEL_DIR):
@@ -40,7 +40,7 @@ def provenance_report(log, model_dir=MODEL_DIR):
         suffix = known.get(h)
         if suffix is None:
             unknown.append(h)
-        detail[h] = {'rows': int(n), 'suffix': suffix, 'files_unchanged': bool(suffix and model_set_hash(suffix, model_dir) == h)}
+        detail[h] = {'rows': int(n), 'suffix': suffix, 'files_unchanged': bool(suffix and model_set_hash(suffix, model_dir, read_manifest(suffix, model_dir).get('hash_version', 1)) == h)}
     return {'rows': int(len(log)), 'rows_without_hash': int(missing.sum()), 'hashes': detail, 'unknown_hashes': unknown}
 
 

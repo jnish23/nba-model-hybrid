@@ -70,21 +70,33 @@ def model_set_paths(suffix, model_dir=MODEL_DIR):
     return [Path(model_dir) / f'{stem}{suffix}.{ext}' for stem, ext in HASHED_STEMS]
 
 
-def file_sha256(path, chunk=1 << 20):
+HASH_VERSION = 2     # 1 = JSON hashed with CRLF line endings (written on Windows), 2 = JSON hashed with LF; pickles are always raw bytes
+
+
+def file_sha256(path, version=HASH_VERSION, chunk=1 << 20):
+    """
+    sha256 of a file. JSON files are hashed with normalised line endings, because git converts them between Windows (CRLF) and
+    Linux/CI (LF) checkouts and the model set must verify on both (version 2: LF; version 1, the first manifests: CRLF).
+    Pickles are binary and hashed as they are.
+    """
     h = hashlib.sha256()
-    with open(path, 'rb') as f:
-        while block := f.read(chunk):
-            h.update(block)
+    if Path(path).suffix == '.json':
+        data = Path(path).read_bytes().replace(b'\r\n', b'\n')
+        h.update(data.replace(b'\n', b'\r\n') if version == 1 else data)
+    else:
+        with open(path, 'rb') as f:
+            while block := f.read(chunk):
+                h.update(block)
     return h.hexdigest()
 
 
-def model_set_hash(suffix, model_dir=MODEL_DIR):
+def model_set_hash(suffix, model_dir=MODEL_DIR, version=HASH_VERSION):
     """sha256 over the (file name, content hash) pairs of the model set's files that exist. Changes if any file is rewritten."""
     h = hashlib.sha256()
     for p in model_set_paths(suffix, model_dir):
         if p.exists():
             h.update(p.name.encode())
-            h.update(file_sha256(p).encode())
+            h.update(file_sha256(p, version).encode())
     return h.hexdigest()
 
 
@@ -115,6 +127,7 @@ def write_manifest(suffix, model_dir=MODEL_DIR, training_set=None, extra=None):
     manifest = {
         'suffix': suffix,
         'created_at': dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'hash_version': HASH_VERSION,
         'model_set_hash': model_set_hash(suffix, model_dir),
         'files': {p.name: file_sha256(p) for p in model_set_paths(suffix, model_dir) if p.exists()},
         'training_set': Path(training_set).name if training_set else None,
@@ -203,8 +216,9 @@ def load_bundle(suffix=DEPLOYED_SUFFIX, model_dir=MODEL_DIR):
         raise FileNotFoundError(f"Model set '{suffix}' says it uses a per-game total sigma but {sigma_path.name} is missing")
     for target in TARGETS:
         assert_config_matches_model(target, getattr(bundle, target), features[target])
-    bundle.model_set_hash = model_set_hash(suffix, model_dir)
     manifest = read_manifest(suffix, model_dir)
+    # a manifest written before hash_version existed used version 1; hash with the version it recorded so the value stays the same
+    bundle.model_set_hash = model_set_hash(suffix, model_dir, manifest.get('hash_version', 1) if manifest else HASH_VERSION)
     if manifest is not None:
         if manifest['model_set_hash'] != bundle.model_set_hash:
             raise ModelSetHashMismatch(
