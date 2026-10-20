@@ -1,0 +1,48 @@
+{
+  "run_at": "2026-10-19 23:33:08",
+  "training_set": "training_set_v1_reduced_2026-10-19.csv",
+  "games": 16795,
+  "last_game": "2026-06-13",
+  "tuner": "grid",
+  "candidate_suffix": "_with_odds_cand_20261019",
+  "incumbent_suffix": "_with_odds_v6",
+  "gate": {
+    "window": "2026-02-19..2026-06-13",
+    "candidate": {
+      "games": 502,
+      "ml_logloss": 0.5263424943427301,
+      "ml_brier": 0.1753544791811008,
+      "ml_logloss_raw": 0.5272444297614113,
+      "spread_mae": 11.302597416397541,
+      "spread_bias": 0.017665349508537175,
+      "spread_n": 502,
+      "total_mae": 14.217792758763677,
+      "total_bias": 1.41138384963364,
+      "total_n": 502
+    },
+    "incumbent": {
+      "games": 502,
+      "ml_logloss": 0.5205112941490545,
+      "ml_brier": 0.1739910031689908,
+      "ml_logloss_raw": 0.5354805507149976,
+      "spread_mae": 11.307929184223106,
+      "spread_bias": 0.10309567313207973,
+      "spread_n": 502,
+      "total_mae": 14.297830589798846,
+      "total_bias": 1.1237209237001593,
+      "total_n": 502
+    },
+    "incumbent_calibrated_on_window": true,
+    "verdict": {
+      "ok": true,
+      "worse": {}
+    }
+  },
+  "candidate": {
+    "model_set_hash": "0165d3361e4228ad2551a787c66e1cd82ce11bd5b9a4a258b7e79467e7cd02e0",
+    "training_set_hash": "e5d54fd34c5fd9295b135f5f47572aec709fa655375ec696c5241612f0f1854a",
+    "trained_through": "2026-06-13 00:00:00",
+    "calib_holdout": "last 365 days",
+    "created_at": "2026-10-19 23:35:54"
+  }
+}

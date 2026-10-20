@@ -117,7 +117,7 @@ On the one out-of-sample check through the production training path (2025-26, tr
 | `props/` | Player props model (in development; see `reports/props/`) |
 | `scripts/` | Entry points (the scheduled jobs call these paths): DB sync (`update_database`), training set (`generate_training_set`), daily inference (`run_inference_v2`), evaluation (`evaluate_vs_market`, `evaluate_injury_reports`), collectors (`scrape_injury_reports`, `snapshot_odds`) |
 | `experiments/` | Walk-forward harness (`lib.py`), metrics and bootstrap (`metrics.py`, `report.py`, `decide.py`) and one module per experiment (`e01_residual.py` … `e13_combined.py`) |
-| `models/saved/` | Artifacts only, no code: deployed models (`model_registry.DEPLOYED_SUFFIX`, currently `*_with_odds_v6`) with calibrator, per-game total σ model, feature lists and metadata; loading checks that the feature list matches each pickle. Earlier sets (`_v5`) stay available through `--suffix` |
+| `models/saved/` | Artifacts only, no code: deployed models (`model_registry.DEPLOYED_SUFFIX`, currently `*_with_odds_cand_20261019`) with calibrator, per-game total σ model, feature lists and metadata; loading checks that the feature list matches each pickle. Earlier sets (`_v5`) stay available through `--suffix` |
 | `tests/` | pytest suite, with `core/`, `team/` and `props/` folders per package (feature builders, betting math, market-aware components, train/serve parity, leakage guards) |
 | `reports/` | Backtest and market-evaluation outputs; `reports/experiments/` holds each experiment's result, decision and the final report |
 

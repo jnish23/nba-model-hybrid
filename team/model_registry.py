@@ -46,7 +46,7 @@ MODEL_DIR = Path(__file__).resolve().parent.parent / 'models' / 'saved'
 
 # Production model set: trained WITH opening odds as inputs, on the parity-fixed training set, with the
 # market-aware components of team/market_models.py (residual spread, margin-stack ML, per-game total sigma).
-DEPLOYED_SUFFIX = '_with_odds_v6'
+DEPLOYED_SUFFIX = '_with_odds_cand_20261019'
 
 TARGETS = {'ml': 'model_ml', 'spread': 'model_spread', 'total': 'model_total'}
 
