@@ -307,6 +307,8 @@ class InferenceEngine:
                     'line_ml_home': ml_home, # Raw American Odds
                     'line_ml_away': ml_away,
                     'model_version': 'v1.0.0_hybrid',
+                    'model_set_hash': self.bundle.model_set_hash,       # ties the row to the exact files / training CSV
+                    'training_set_hash': self.bundle.training_set_hash,
                 }
                 self.logger.log_prediction(log_entry)
             except Exception as e:

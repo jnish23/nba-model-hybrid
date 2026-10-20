@@ -22,7 +22,7 @@ from pathlib import Path
 from flaml import AutoML, tune
 from datetime import date
 
-from team.model_registry import DEPLOYED_SUFFIX
+from team.model_registry import DEPLOYED_SUFFIX, assert_suffix_free, manifest_path, write_manifest
 from team.market_models import (MarginStackCalibrator, ResidualSpreadModel, ResidualTotalModel, SPREAD_LINE_COL, TOTAL_LINE_COL,
                                 fit_hetero_sigma)
 
@@ -1298,7 +1298,7 @@ class BaselineModel:
         return rows, self.features_total, 'target_total_pts'
 
     def train_and_save_all(self, use_odds=False, save_suffix='', calib_holdout_frac=0.2, time_budget=600,
-                           market_aware=None, calib_holdout_days=CALIB_HOLDOUT_DAYS, refit_on_all=True, total_target='level'):
+                           market_aware=None, calib_holdout_days=CALIB_HOLDOUT_DAYS, refit_on_all=True, total_target='level', overwrite=False):
         """
         Train final models on ALL available data and save them, including calibrators.
 
@@ -1309,6 +1309,9 @@ class BaselineModel:
           with the same hyperparameters and features, so the saved models have seen everything up to the last game.
           (Calibrators were fitted on the held-out predictions of the earlier fit; the refit model is slightly
           stronger, which makes them very slightly conservative, not leaky.)
+        - overwrite: a suffix that already holds a model set is refused (FileExistsError) unless overwrite=True, so a log written
+          by earlier files can always be tied to the files still on disk. Every set gets a model_manifest<suffix>.json with the
+          hash of its files and of the training CSV (team/model_registry.py).
         - total_target: 'level' (default) fits the total itself; 'residual' fits the gap from the opening total
           (ResidualTotalModel). 'residual' is OPT-IN: experiment E1 and the audit follow-up measured it 0.27-0.3 points WORSE
           in total MAE than 'level' (reports/audit_fixes/REPORT.md), so it is not the default.
@@ -1324,6 +1327,10 @@ class BaselineModel:
         if total_target not in ('level', 'residual'):
             raise ValueError(f"total_target must be 'level' or 'residual', got {total_target!r}")
         total_residual = market_aware and total_target == 'residual'
+        if overwrite:
+            manifest_path(save_suffix, self.model_dir).unlink(missing_ok=True)      # the old record would describe files about to be replaced
+        else:
+            assert_suffix_free(save_suffix, self.model_dir)
         self.load_data(use_odds=use_odds)
         
         # Sort by date for proper temporal split
@@ -1579,6 +1586,10 @@ class BaselineModel:
             json.dump(calibration_meta, f, indent=2)
         
         logging.info(f"Saved calibration metadata to calibration_meta{save_suffix}.json")
+        manifest = write_manifest(save_suffix, self.model_dir, training_set=self.data_path,
+                                  extra={'trained_through': calibration_meta['trained_through'], 'calib_holdout': calibration_meta['calib_holdout'],
+                                         'refit_on_all': bool(refit_on_all), 'total_target': calibration_meta['total_target'], 'rows': int(len(all_df))})
+        logging.info(f"Model set {save_suffix}: files {manifest['model_set_hash'][:12]}, training set {str(manifest['training_set_hash'])[:12]}")
         
         # Print summary
         print("\n" + "="*60)
@@ -1601,6 +1612,8 @@ def main():
                              f'"{DEPLOYED_SUFFIX}", the set scripts/run_inference_v2.py loads')
     parser.add_argument('--no-research-model', action='store_true', help='skip the dated no-odds research model')
     parser.add_argument('--time-budget', type=int, default=600, help='FLAML seconds per model when training final models')
+    parser.add_argument('--overwrite', action='store_true',
+                        help='replace an existing model set with the same suffix (refused by default, e.g. the deployed set)')
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO)
 
@@ -1624,14 +1637,15 @@ def main():
         print("\n" + "="*80)
         print("TRAINING FINAL MODELS (NO ODDS)")
         print("="*80)
-        model.train_and_save_all(use_odds=False, save_suffix=f'_no_odds_{today}', time_budget=args.time_budget)
+        model.train_and_save_all(use_odds=False, save_suffix=f'_no_odds_{today}', time_budget=args.time_budget,
+                                 overwrite=args.overwrite)
 
     if args.deploy:
         print("\n" + "="*80)
         print(f"TRAINING DEPLOYED MODEL SET ({DEPLOYED_SUFFIX}, WITH opening odds)")
         print("="*80)
         BaselineModel(data_path).train_and_save_all(use_odds=True, save_suffix=DEPLOYED_SUFFIX,
-                                                    time_budget=args.time_budget)
+                                                    time_budget=args.time_budget, overwrite=args.overwrite)
 
 
 if __name__ == "__main__":

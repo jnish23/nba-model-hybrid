@@ -17,6 +17,14 @@ data) produced them. This script regenerates the whole season cleanly:
        - the predictions_log_v2 table rows for that season (replaced; the previous table is
          first copied to predictions_log_v2_backup_<YYYYMMDD>)
      The previous CSV working copy is saved to data/backups/ (gitignored).
+  4. Every row carries model_set_hash / training_set_hash: the sha256 of the model files that produced it and of the
+     training CSV they were fit on (team/model_registry.py writes model_manifest<suffix>.json). Training into a suffix that
+     already holds a model set is refused (--tag NAME trains into a new `_oos_<season>_NAME` instead; --overwrite-models
+     replaces the set deliberately) so a saved log can always be tied to the files that made it.
+
+CAVEAT: odds_* in the log are the OPENING lines (the model inputs). They predate the game-day-noon injury report the model
+reads, so ROI / CLV computed from them include movement the model could not have bet at; only closing-line comparisons are
+valid (see experiments/metrics.py OPEN_BASIS_CAVEAT, core/odds_clean.load_entry_odds).
 
 Usage:
     python scripts/generate_season_predictions.py --season 2025-26 [--time-budget 600]
@@ -72,11 +80,15 @@ def main():
     parser.add_argument('--skip-train', action='store_true',
                         help='Reuse the saved *_oos_<season> models and only re-predict (e.g. after the training set '
                              'gained new games from the target season; pre-season data must be unchanged)')
+    parser.add_argument('--tag', default='', help='suffix tag: models are written to / read from _oos_<season>_<tag> (never reuse a suffix)')
+    parser.add_argument('--overwrite-models', action='store_true',
+                        help='retrain into an existing model-set suffix (refused by default)')
     parser.add_argument('--eval-only',action='store_true',
                         help='Write reports/oos_predictions_<season>.csv only; leave the predictions CSV and DB untouched')
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s: %(message)s')
-    season, suffix = args.season, f'_oos_{args.season}'
+    season = args.season
+    suffix = f'_oos_{args.season}' + (f'_{args.tag}' if args.tag else '')
 
     # 1. Train on earlier seasons only
     data_path = latest_training_set()
@@ -94,7 +106,8 @@ def main():
         full[full['seasonYear'] < season].to_csv(pre_path, index=False)
         logging.info(f"Training on {(full['seasonYear'] < season).sum()} games before {season} ({pre_path})")
         trainer = BaselineModel(pre_path)
-        trainer.train_and_save_all(use_odds=True, save_suffix=suffix, time_budget=args.time_budget)
+        trainer.train_and_save_all(use_odds=True, save_suffix=suffix, time_budget=args.time_budget,
+                                   overwrite=args.overwrite_models)
         train_max = trainer.df['gameDate'].max()
 
     # 2. Predict the target season with identical preprocessing
@@ -126,6 +139,7 @@ def main():
         'home_score': out['home_score'], 'away_score': out['away_score'],
         'status': np.where(out['home_score'].notna(), 'COMPLETED', 'PENDING'),
         'model_version': f'oos_backtest_{season}',
+        'model_set_hash': bundle.model_set_hash, 'training_set_hash': bundle.training_set_hash,
     })
     log.insert(5, 'matchup', log['away_team'] + ' @ ' + log['home_team'])
     log = log.sort_values(['game_date', 'game_id']).reset_index(drop=True)
