@@ -67,3 +67,11 @@ def test_real_frame_folds_and_feature_spec():
     data.FeatureSpec().check(cols)
     assert not [c for c in cols if c.startswith('env_')] and len(cols) > 150
     assert str(df['pos_group'].dtype) == 'category'
+
+
+def test_exclude_features_drops_only_the_named_columns():
+    cols = ['m_min_h15', 'ctx_team_game_number', 'rest_games_played_season', 'r_points_h15', 'minutes_before']
+    full = data.FeatureSpec('base').columns(cols)
+    r1 = data.FeatureSpec('base', exclude_features=frozenset({'ctx_team_game_number', 'rest_games_played_season'})).columns(cols)
+    assert set(full) - set(r1) == {'ctx_team_game_number', 'rest_games_played_season'} and set(r1) <= set(full)
+    assert 'minutes_before' in r1                                              # the decision time is not a "feature" that R1 touches

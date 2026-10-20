@@ -28,6 +28,7 @@ class FeatureSpec:
     name: str = 'base'
     exclude_groups: frozenset = field(default_factory=frozenset)
     include_decision_time: bool = True            # the pooled models see how many minutes before tip the information is from
+    exclude_features: frozenset = field(default_factory=frozenset)   # single columns dropped by name (R1: season-position features)
 
     def groups(self):
         g = set(BASE_GROUPS) | (ENV_GROUPS if self.name == 'with_env' else set())
@@ -37,6 +38,8 @@ class FeatureSpec:
         cols = []
         for c in frame_columns:
             if c in NOT_FEATURES or dictionary.is_key_or_label(c) and c != T_COLUMN:
+                continue
+            if c in self.exclude_features:
                 continue
             if c == T_COLUMN:
                 if self.include_decision_time:

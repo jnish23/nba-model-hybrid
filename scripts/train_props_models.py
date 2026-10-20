@@ -26,6 +26,7 @@ def main():
     ap.add_argument('--version', required=True)
     ap.add_argument('--spec', default='base', choices=['base', 'with_env'])
     ap.add_argument('--exclude-groups', nargs='*', default=[])
+    ap.add_argument('--exclude-features', nargs='*', default=[], help='single feature columns to drop (e.g. the R1 season-position features)')
     ap.add_argument('--folds', nargs='*', default=list(folds_mod.DEV_TEST_SEASONS))
     ap.add_argument('--sims', type=int, default=4000)
     ap.add_argument('--seed', type=int, default=0)
@@ -38,8 +39,8 @@ def main():
     if held_out and not args.families_from:
         raise SystemExit(f'{sorted(held_out)} are not development folds: pass --families-from <frozen version> so nothing is selected on them')
     df = data.load_frame()
-    spec = data.FeatureSpec(args.spec, frozenset(args.exclude_groups))
-    registry.write_manifest(args.version, {'spec': args.spec, 'exclude_groups': args.exclude_groups, 'folds': args.folds, 'sims': args.sims, 'seed': args.seed,
+    spec = data.FeatureSpec(args.spec, frozenset(args.exclude_groups), exclude_features=frozenset(args.exclude_features))
+    registry.write_manifest(args.version, {'spec': args.spec, 'exclude_groups': args.exclude_groups, 'exclude_features': args.exclude_features, 'folds': args.folds, 'sims': args.sims, 'seed': args.seed,
                                            'rows': int(len(df)), 'calib_frac': folds_mod.CALIB_FRAC, 'first_season': folds_mod.FIRST_SEASON})
     fold_objs, bundles = {}, {}
     for s in args.folds:
