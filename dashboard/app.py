@@ -18,7 +18,7 @@ from team.betting import (calculate_implied_prob, calculate_payout, calculate_be
                             settle_bet, STANDARD_PRICE, get_spread_bet, get_total_bet, points_threshold,
                             DEFAULT_SPREAD_STD, DEFAULT_TOTAL_STD, DEFAULT_PROB_EDGE, implied_prob_edge,
                             cover_probability)
-from core.season_utils import season_date_range, season_for_date, season_options
+from core.season_utils import date_bounds, season_date_range, season_for_date, season_options
 
 # Set page config
 st.set_page_config(
@@ -680,8 +680,9 @@ def main():
     game_dates = [d for d in df['game_date'] if pd.notna(d)] if 'game_date' in df.columns else []
     today = datetime.date.today()
     seasons = season_options(game_dates, today)
-    season = st.sidebar.selectbox("Season", seasons, index=0, help="Defaults to the current season. Picking a season sets the start and end dates below.")
-    start_default, end_default, min_date, max_date = season_date_range(game_dates, season, today)
+    season = st.sidebar.selectbox("Season", seasons, index=0, help="Defaults to the current season. Picking a season sets the start and end dates below; you can then move either date into another season.")
+    start_default, end_default, _, _ = season_date_range(game_dates, season, today)
+    min_date, max_date = date_bounds(game_dates, today)      # the pickers span ALL seasons, e.g. late 2025-26 into early 2026-27
     start_date = st.sidebar.date_input("Start Date", start_default, min_value=min_date, max_value=max_date, key=f"start_{season}")
     end_date = st.sidebar.date_input("End Date", end_default, min_value=min_date, max_value=max_date, key=f"end_{season}")
 

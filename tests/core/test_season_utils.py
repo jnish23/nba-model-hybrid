@@ -34,3 +34,11 @@ def test_season_without_any_data_still_gives_a_valid_range():
     assert season_date_range([], '2026-27', today=D(2026, 10, 19)) == (D(2026, 10, 20), D(2026, 10, 20), D(2026, 10, 20), D(2026, 10, 20))
     start, end, lo, hi = season_date_range([], '2024-25', today=D(2026, 10, 19))
     assert lo <= start <= end <= hi
+
+
+def test_date_bounds_span_every_season_so_a_range_can_cross_seasons():
+    from core.season_utils import date_bounds
+    dates = [D(2025, 10, 21), D(2026, 6, 13), D(2026, 10, 20)]
+    assert date_bounds(dates, today=D(2026, 10, 25)) == (D(2025, 10, 21), D(2026, 10, 25))
+    assert date_bounds(dates, today=D(2026, 10, 20)) == (D(2025, 10, 21), D(2026, 10, 20))
+    assert date_bounds([], today=D(2026, 10, 20)) == (D(2026, 10, 20), D(2026, 10, 20))

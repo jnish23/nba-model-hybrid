@@ -39,3 +39,10 @@ def season_date_range(game_dates, season, today=None):
     end = max(end, opener)
     start = min(SEASON_OPENERS.get(season, opener), end)
     return start, end, opener, max(end, last)
+
+
+def date_bounds(game_dates, today=None):
+    """(earliest, latest) a date filter may reach: the whole span of the data, up to today. Seasons only set the defaults."""
+    today = pd.Timestamp(today if today is not None else dt.date.today()).date()
+    dates = list(game_dates) or [today]
+    return min(dates), max(max(dates), today)
