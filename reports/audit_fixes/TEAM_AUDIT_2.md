@@ -80,6 +80,8 @@ games afterwards, a longer block costs no staleness. Two windows are thin eviden
   saved sigma more recent; whether to inflate it or use a trailing-season maximum is a policy call.
 * **Era markers.** Dropping seasons before 2019-20 cuts the history from ~16,800 to ~9,000 games; there is no cheap walk-forward that
   validates it. The diagnostic and `train_from_season` are in place.
+* **The walk-forward backtests (`experiments/lib.py`)** still split each fold 80/20 by rows, as the validated baseline did; changing it would
+  invalidate every number in `reports/experiments/`. They share the tuner grid with the new trainer.
 * **Live rows for the deployed set have no `training_set_hash`.** `_with_odds_v6` has no manifest and I did not write one into
   `models/saved` (deployed artifact). Its `model_set_hash` is computed on load.
 
