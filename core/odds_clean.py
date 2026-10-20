@@ -168,6 +168,30 @@ def _game_results(conn):
     return games
 
 
+SNAPSHOT_FIELDS = ['home_spread', 'home_spread_odds', 'away_spread', 'away_spread_odds', 'home_ml', 'away_ml',
+                   'total', 'over_odds', 'under_odds']
+# Entry price = the first pre-game line seen at/after the model's information cutoff. The deployed features include the
+# game-day-noon injury report (team/game_features_v2.GameFeatureBuilder.INJURY_SNAPSHOT, core/injury_report_features.SNAPSHOT_CLOCK),
+# so a bet the model could actually have placed is priced at noon ET on game day (or 30 min before tip, if earlier), never at the open.
+ENTRY_CUTOFF_HOURS = 12
+ENTRY_TIP_BUFFER = pd.Timedelta(minutes=30)
+
+
+def _pivot_snapshots(snap):
+    """Long odds_snapshots rows (one per game, book) -> the wide per-book layout of nba_odds."""
+    wide = snap.pivot_table(index=['game_date', 'home_team', 'away_team'], columns='book', values=SNAPSHOT_FIELDS, aggfunc='last')
+    wide.columns = [f'{f}_{b}' for f, b in wide.columns]
+    wide = wide.reset_index().rename(columns={'game_date': 'gameDate'})
+    for f in SNAPSHOT_FIELDS:
+        for b in BOOKS:
+            if f'{f}_{b}' not in wide.columns:
+                wide[f'{f}_{b}'] = np.nan
+    wide['status'] = ''
+    wide['teamId_home'] = np.nan
+    wide['teamId_away'] = np.nan
+    return wide
+
+
 def _closing_from_snapshots(conn):
     """
     Closing lines from the timestamped odds_snapshots table (scripts/snapshot_odds.py): for each
@@ -181,19 +205,37 @@ def _closing_from_snapshots(conn):
     if snap.empty:
         return snap
     snap = snap.sort_values('fetched_at_et').drop_duplicates(['game_date', 'home_team', 'away_team', 'book'], keep='last')
-    fields = ['home_spread', 'home_spread_odds', 'away_spread', 'away_spread_odds', 'home_ml', 'away_ml',
-              'total', 'over_odds', 'under_odds']
-    wide = snap.pivot_table(index=['game_date', 'home_team', 'away_team'], columns='book', values=fields, aggfunc='last')
-    wide.columns = [f'{f}_{b}' for f, b in wide.columns]
-    wide = wide.reset_index().rename(columns={'game_date': 'gameDate'})
-    for f in fields:
-        for b in BOOKS:
-            if f'{f}_{b}' not in wide.columns:
-                wide[f'{f}_{b}'] = np.nan
-    wide['status'] = ''
-    wide['teamId_home'] = np.nan
-    wide['teamId_away'] = np.nan
-    return wide
+    return _pivot_snapshots(snap)
+
+
+def entry_cutoff(snap, cutoff_hours=ENTRY_CUTOFF_HOURS):
+    """Per snapshot row: the moment the model's features are stamped (ET, naive) = game-day `cutoff_hours`, capped 30 min before tip."""
+    clock = pd.to_datetime(snap['game_date']) + pd.Timedelta(hours=cutoff_hours)
+    tip = pd.to_datetime(snap['game_start'], utc=True, errors='coerce').dt.tz_convert('America/New_York').dt.tz_localize(None)
+    pre_tip = tip - ENTRY_TIP_BUFFER
+    return clock.where(pre_tip.isna() | (clock <= pre_tip), pre_tip)
+
+
+def _entry_from_snapshots(conn, cutoff_hours=ENTRY_CUTOFF_HOURS):
+    """
+    Wide per-book lines for the ENTRY price: per game and book, the first pre-game 'current' snapshot fetched at/after
+    the feature cutoff and before the game started. Games that were only seen before the cutoff, or only after tip,
+    get no entry price (they are not bettable at a price the model could have known). Empty if there are no snapshots.
+    """
+    try:
+        snap = pd.read_sql("SELECT * FROM odds_snapshots WHERE line_type = 'current' AND in_game = 0", conn)
+    except Exception:
+        return pd.DataFrame()
+    if snap.empty:
+        return snap
+    fetched = pd.to_datetime(snap['fetched_at_et'])
+    snap = snap[fetched >= entry_cutoff(snap, cutoff_hours)]
+    if snap.empty:
+        return snap
+    snap = snap.sort_values('fetched_at_et').drop_duplicates(['game_date', 'home_team', 'away_team', 'book'], keep='first')
+    wide = _pivot_snapshots(snap)
+    stamp = snap.groupby(['game_date', 'home_team', 'away_team'])['fetched_at_et'].max().rename('entry_fetched_at').reset_index()
+    return wide.merge(stamp.rename(columns={'game_date': 'gameDate'}), on=['gameDate', 'home_team', 'away_team'], how='left')
 
 
 def check_closing_contamination(odds, window_days=14, ratio_alert=0.85, min_games=40):
@@ -269,6 +311,30 @@ def load_clean_odds(db_path, min_date='2019-10-01'):
                  f"({out['open_home_spread'].notna().sum()} with opening spread, "
                  f"{out['close_home_spread'].notna().sum()} with closing spread)")
     return out
+
+
+def load_entry_odds(db_path, cutoff_hours=ENTRY_CUTOFF_HOURS):
+    """
+    One row per game with the consensus price at the feature cutoff (see ENTRY_CUTOFF_HOURS): gameId, entry_home_spread,
+    entry_total, entry_home_prob, entry_home_ml, entry_away_ml, entry_n_books_*, entry_fetched_at.
+    This is the price to settle bets and measure closing line value against; the opening line (nba_odds_opening) predates the
+    game-day injury report the model reads. Only games the timestamped collector (scripts/snapshot_odds.py) saw after the
+    cutoff appear here: there is no history before it started, so older seasons have no entry price.
+    """
+    with sqlite3.connect(db_path) as conn:
+        wide = _entry_from_snapshots(conn, cutoff_hours)
+        opening = _load_table(conn, 'nba_odds_opening')
+        closing = _load_table(conn, 'nba_odds')
+        games = _game_results(conn)
+    cols = ['gameId', 'entry_home_spread', 'entry_total', 'entry_home_prob', 'entry_home_ml', 'entry_away_ml',
+            'entry_n_books_spread', 'entry_n_books_total', 'entry_n_books_ml', 'entry_fetched_at']
+    if wide is None or wide.empty:
+        return pd.DataFrame(columns=cols)
+    wide = wide.reset_index(drop=True)
+    _fill_team_ids([opening, closing, wide])          # snapshots carry team names only
+    ent = pd.concat([wide[['gameDate', 'teamId_home', 'teamId_away', 'entry_fetched_at']], _consensus(wide, 'entry_')], axis=1)
+    key = ['gameDate', 'teamId_home', 'teamId_away']
+    return games.merge(ent, on=key, how='inner')[cols]
 
 
 if __name__ == "__main__":

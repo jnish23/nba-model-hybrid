@@ -12,6 +12,11 @@ are also scored at the consensus closing line, with closing line value (CLV).
 The primary rule is the 5% probability edge above; flat point thresholds are shown for context only
 (a flat 1.0 pt is only a +0.6% edge on spreads and -0.2% on totals).
 
+CAVEAT: the opening lines are posted before the game-day-noon injury report the model reads, so the 'open'
+ROI and the CLV below include line movement the model could not have bet at. Only the closing-line
+comparisons are valid until bets are priced at the first line stamped at/after the feature cutoff
+(core.odds_clean.load_entry_odds, collected by scripts/snapshot_odds.py).
+
 Usage: python scripts/evaluate_oos_seasons.py
 """
 import glob
@@ -98,6 +103,8 @@ def main():
     out = pd.DataFrame(rows).round(2)
     print(f"PRIMARY RULE (5% probability edge: spread T = {PRIMARY_T['spread']} pts, total T = {PRIMARY_T['total']} pts), "
           f"by season. Break-even win% at -110 = {BREAK_EVEN:.2%}")
+    print("NOTE: 'open' results and CLV use the opening line, which predates the game-day injury report the model reads; "
+          "only closing-line comparisons are valid (see experiments.metrics.OPEN_BASIS_CAVEAT).")
     primary = out[[abs(t - PRIMARY_T[m]) < 1e-9 for m, t in zip(out['market'], out['T'])]]
     print(primary.to_string(index=False))
     print("\nAll thresholds, pooled over seasons (context only)")
