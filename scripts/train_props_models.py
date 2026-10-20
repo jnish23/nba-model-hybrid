@@ -9,10 +9,13 @@ The 2024-25 validation season and the 2025-26 holdout are NOT run by default; as
 frozen. Every model configuration tried is appended to data/props_models/config_log.jsonl (the count that multiple-testing corrections need).
 """
 import argparse
+import json
 import logging
 import sys
 import time
 from pathlib import Path
+
+import pandas as pd
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from props.models import common, data, folds as folds_mod, pipeline, registry, report  # noqa: E402
@@ -27,9 +30,13 @@ def main():
     ap.add_argument('--sims', type=int, default=4000)
     ap.add_argument('--seed', type=int, default=0)
     ap.add_argument('--report', default=None)
+    ap.add_argument('--families-from', default=None, help='registry version whose chosen rate families are reused (frozen configuration): required for 2024-25 and 2025-26')
     args = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
 
+    held_out = set(args.folds) & {folds_mod.VALIDATION_SEASON, folds_mod.FINAL_SEASON}
+    if held_out and not args.families_from:
+        raise SystemExit(f'{sorted(held_out)} are not development folds: pass --families-from <frozen version> so nothing is selected on them')
     df = data.load_frame()
     spec = data.FeatureSpec(args.spec, frozenset(args.exclude_groups))
     registry.write_manifest(args.version, {'spec': args.spec, 'exclude_groups': args.exclude_groups, 'folds': args.folds, 'sims': args.sims, 'seed': args.seed,
@@ -38,10 +45,15 @@ def main():
     for s in args.folds:
         t = time.time()
         fold_objs[s] = folds_mod.make_fold(df, s)
-        bundles[s] = pipeline.train_fold(df, fold_objs[s], spec)
+        bundles[s] = pipeline.train_fold(df, fold_objs[s], spec, score_on_test=not args.families_from)
         logging.info(f'{s}: trained in {time.time() - t:.0f}s {fold_objs[s].describe()}')
-    chosen, table = pipeline.select_families(list(bundles.values()))
-    registry.update_manifest(args.version, {'families': chosen, 'family_table': table.to_dict('records')})
+    if args.families_from:
+        frozen = json.loads((registry.version_dir(args.families_from) / 'manifest.json').read_text(encoding='utf-8'))
+        chosen, table = frozen['families'], pd.DataFrame(frozen['family_table'])
+        registry.update_manifest(args.version, {'families': chosen, 'family_table': frozen['family_table'], 'families_from': args.families_from})
+    else:
+        chosen, table = pipeline.select_families(list(bundles.values()))
+        registry.update_manifest(args.version, {'families': chosen, 'family_table': table.to_dict('records')})
     logging.info('rate families chosen:\n' + table.to_string(index=False))
     smoke, calib = {}, {}
     for s in args.folds:
