@@ -1,0 +1,14 @@
+{
+ "implemented": true,
+ "disagreement": 0.404159409896527,
+ "espn_refs": {
+  "scripts/run_inference_v2.py": 0,
+  "models/live_features.py": 0,
+  "models/live_rotation_v2.py": 0,
+  "models/injury_report_features.py": 0,
+  "models/injury_downgrades.py": 0,
+  "models/game_features_v2.py": 0
+ },
+ "pre_tip_ok": true,
+ "order_ok": true
+}

@@ -1,0 +1,10 @@
+{
+ "decision": {
+  "spread": true,
+  "total": true,
+  "ml": true
+ },
+ "control_ml_roi": -1.3433123603269597,
+ "control_spread_roi": -1.6157870001430368,
+ "odds_snapshots_rows": 0
+}

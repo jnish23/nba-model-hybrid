@@ -6,7 +6,7 @@ generated weeks after the games, with no record of which model (and therefore wh
 data) produced them. This script regenerates the whole season cleanly:
 
   1. Train the deployed pipeline (opening odds as inputs, two-stage feature selection, FLAML
-     tuning, isotonic calibration) on seasons BEFORE the target season only. Hyperparameter
+     tuning, calibration) on seasons BEFORE the target season only. Hyperparameter
      tuning, feature selection and the calibration holdout all come from that earlier data.
   2. Predict every target-season game from its point-in-time training-set row (features built
      from earlier games, the opening line, the game-day-noon injury report), with the same
@@ -42,6 +42,8 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from models.train_baseline import BaselineModel
 from models.data_paths import latest_training_set
 from models.prediction_logger import replace_rows_in_date_range
+from models.model_registry import load_bundle
+from models.market_models import predict_markets
 
 DB_PATH = Path('data/nba_stats.db')
 MODEL_DIR = Path('models/saved')
@@ -100,14 +102,9 @@ def main():
     loader.load_data(use_odds=True)
     test = loader.df[loader.df['seasonYear'] == season].copy()
     assert train_max < test['gameDate'].min(), f"Leak: training data ({train_max}) overlaps {season}"
-    cfg = json.loads((MODEL_DIR / f'feature_config{suffix}.json').read_text())
-    ml = joblib.load(MODEL_DIR / f'model_ml{suffix}.pkl')
-    cal = joblib.load(MODEL_DIR / f'calibrator_ml{suffix}.pkl')
-    spread = joblib.load(MODEL_DIR / f'model_spread{suffix}.pkl')
-    total = joblib.load(MODEL_DIR / f'model_total{suffix}.pkl')
-    test['ml_prob'] = cal.predict(ml.predict_proba(test[cfg['ml']])[:, 1])
-    test['spread_pred'] = spread.predict(test[cfg['spread']])
-    test['total_pred'] = total.predict(test[cfg['total']])
+    bundle = load_bundle(suffix, MODEL_DIR)     # validated set: market-aware (residual spread, margin-stack ML, sigma) or legacy
+    preds = predict_markets(bundle, test)
+    test['ml_prob'], test['spread_pred'], test['total_pred'] = preds['ml_prob'], preds['spread_pred'], preds['total_pred']
 
     # 3. Prediction-log rows
     with sqlite3.connect(DB_PATH) as conn:

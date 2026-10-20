@@ -103,3 +103,8 @@ Thumbs.db
 # pytest modules live in tests/ (the debug/test patterns above are for ad-hoc scripts)
 !tests/
 !tests/**/test_*.py
+
+# experiment prediction dumps are reproducible; the baseline copy is tracked explicitly
+reports/experiments/*/predictions.csv
+reports/experiments/*/calibration_set_predictions.csv
+reports/experiments/*/features.json

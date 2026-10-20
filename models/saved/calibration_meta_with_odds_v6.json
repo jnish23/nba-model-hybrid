@@ -1,0 +1,19 @@
+{
+  "ml_brier_raw": 0.20508227953969727,
+  "spread_std": 14.101165216161847,
+  "spread_bias": -0.158904022346307,
+  "spread_mae": 11.001217041767646,
+  "spread_target": "market_residual",
+  "ml_brier_calibrated": 0.20389750790442998,
+  "ml_calibrator": "margin_stack",
+  "total_std": 18.391397016344904,
+  "total_bias": -0.19569980703876994,
+  "total_mae": 14.608165006371669,
+  "total_sigma_model": true,
+  "total_sigma_mean_calib": 18.97434897031449,
+  "calib_set_size": 3359,
+  "calib_date_range": {
+    "start": "2024-01-17 00:00:00",
+    "end": "2026-06-13 00:00:00"
+  }
+}

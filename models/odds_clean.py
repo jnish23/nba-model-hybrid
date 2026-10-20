@@ -188,7 +188,8 @@ def _closing_from_snapshots(conn):
     wide = wide.reset_index().rename(columns={'game_date': 'gameDate'})
     for f in fields:
         for b in BOOKS:
-            wide.setdefault(f'{f}_{b}', np.nan)
+            if f'{f}_{b}' not in wide.columns:
+                wide[f'{f}_{b}'] = np.nan
     wide['status'] = ''
     wide['teamId_home'] = np.nan
     wide['teamId_away'] = np.nan
