@@ -59,11 +59,13 @@ def verdict(candidate, incumbent, tolerance=TOLERANCE):
 
 
 def run_retrain(data_path, model_dir=MODEL_DIR, out_dir='reports/retrain', tuner='grid', time_budget=600,
-                holdout_days=CALIB_HOLDOUT_DAYS, gate_days=GATE_DAYS, tag=None, incumbent_suffix=DEPLOYED_SUFFIX, today=None):
+                holdout_days=CALIB_HOLDOUT_DAYS, gate_days=GATE_DAYS, tag=None, incumbent_suffix=DEPLOYED_SUFFIX, today=None,
+                incumbent_dir=None):
     today = today or dt.date.today()
     tag = tag or f'{today:%Y%m%d}'
     candidate_suffix = f'_with_odds_cand_{tag}'
     model_dir, out_dir = Path(model_dir), Path(out_dir)
+    incumbent_dir = Path(incumbent_dir) if incumbent_dir else model_dir
     full = BaselineModel(data_path)
     full.load_data(use_odds=True)
     games = full.df.sort_values('gameDate').reset_index(drop=True)
@@ -85,7 +87,7 @@ def run_retrain(data_path, model_dir=MODEL_DIR, out_dir='reports/retrain', tuner
             gate = load_bundle('_gate', scratch / 'saved')
             report['gate'] = {'window': f'{window["gameDate"].min():%Y-%m-%d}..{last:%Y-%m-%d}', 'candidate': window_metrics(predict_markets(gate, window), window)}
             try:
-                inc = load_bundle(incumbent_suffix, model_dir)
+                inc = load_bundle(incumbent_suffix, incumbent_dir)
                 report['gate']['incumbent'] = window_metrics(predict_markets(inc, window), window)
                 calib_start = pd.Timestamp(inc.calib_meta.get('calib_date_range', {}).get('start', 'NaT'))
                 report['gate']['incumbent_saw_window'] = bool(pd.notna(calib_start) and calib_start > cut)
