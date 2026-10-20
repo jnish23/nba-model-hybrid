@@ -1,0 +1,22 @@
+{
+  "suffix": "_with_odds_cand_20261019",
+  "created_at": "2026-10-19 23:35:54",
+  "model_set_hash": "0165d3361e4228ad2551a787c66e1cd82ce11bd5b9a4a258b7e79467e7cd02e0",
+  "files": {
+    "model_ml_with_odds_cand_20261019.pkl": "1d72c5b55d04e937761bda183d4c2e6036b0dd627253eb2e11585be6367e5c03",
+    "calibrator_ml_with_odds_cand_20261019.pkl": "6536b213bbd5dad7c78fc462eb7248c0223ad0433d6104964eff014fd85f414e",
+    "model_spread_with_odds_cand_20261019.pkl": "9070c3e729ec89cb7a6bbe2a09afde1e04b1ff477991b1f169ff4654b6a45924",
+    "model_total_with_odds_cand_20261019.pkl": "b1f44a070e9f56bbf7b0e6d1d7e265893a7b972361d64acfd16f08d5bf424752",
+    "sigma_total_with_odds_cand_20261019.pkl": "18c56663552eeec68417f2e8f4f968e79f4dad0e992500754a3455e892231bfd",
+    "feature_config_with_odds_cand_20261019.json": "d71f1d5d4037fe7c91813f399d2c8e668e7face4b95980fd7eee131103cc1af1",
+    "calibration_meta_with_odds_cand_20261019.json": "7f2ace903ec50a9110ebbf3fe50e9a9e2f75f5d0d8f16bc88e51eeed238fafe5"
+  },
+  "training_set": "training_set_v1_reduced_2026-10-19.csv",
+  "training_set_hash": "e5d54fd34c5fd9295b135f5f47572aec709fa655375ec696c5241612f0f1854a",
+  "git_commit": "99c42a47be4f09b22fff207293aeabffa58ae452",
+  "trained_through": "2026-06-13 00:00:00",
+  "calib_holdout": "last 365 days",
+  "refit_on_all": true,
+  "total_target": "total",
+  "rows": 16795
+}

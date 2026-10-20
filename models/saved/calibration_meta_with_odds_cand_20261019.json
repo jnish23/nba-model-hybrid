@@ -1,0 +1,32 @@
+{
+  "era_marking_features": [
+    "diff_inj_lost_new",
+    "diff_inj_missing",
+    "inj_lost_new_home",
+    "odds_home_ml"
+  ],
+  "ml_brier_raw": 0.20286013100539813,
+  "spread_std": 14.286969463981409,
+  "spread_bias": -0.20466563285171935,
+  "spread_mae": 11.192835618768783,
+  "spread_target": "market_residual",
+  "ml_brier_calibrated_in_sample": 0.20195565527542306,
+  "ml_brier_calibrated": 0.20555360607298157,
+  "ml_brier_raw_crossfit_rows": 0.20403609246808374,
+  "ml_calibrator": "margin_stack",
+  "total_std": 18.58954304144289,
+  "total_bias": 0.4616693575300395,
+  "total_mae": 14.733362789832436,
+  "total_target": "total",
+  "total_sigma_model": true,
+  "total_sigma_mean_calib": 18.648844382366615,
+  "refit_on_all": true,
+  "model_train_end": "2025-06-13 00:00:00",
+  "trained_through": "2026-06-13 00:00:00",
+  "calib_holdout": "last 365 days",
+  "calib_set_size": 1324,
+  "calib_date_range": {
+    "start": "2025-06-16 00:00:00",
+    "end": "2026-06-13 00:00:00"
+  }
+}
