@@ -12,8 +12,8 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path[:0] = [str(ROOT), str(ROOT / 'scripts')]
 
 from scripts.run_inference_v2 import InferenceEngine
-from update_database import NBADatabaseSync
-from models.model_registry import DEPLOYED_SUFFIX
+from core.update_database import NBADatabaseSync
+from team.model_registry import DEPLOYED_SUFFIX
 
 if __name__ == "__main__":
     db_path = Path.cwd() / 'data' / 'nba_stats.db'

@@ -22,7 +22,7 @@ import numpy as np
 import pandas as pd
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from models.odds_clean import load_clean_odds, american_to_payout
+from core.odds_clean import load_clean_odds, american_to_payout
 
 SPREAD_THRESHOLDS = [0.0, 2.5, 5.0]
 TOTAL_THRESHOLDS = [0.0, 3.0, 6.0]

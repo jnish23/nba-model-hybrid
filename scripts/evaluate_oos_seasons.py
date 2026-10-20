@@ -3,7 +3,7 @@ Score out-of-sample season predictions against the betting lines, per season.
 
 Inputs: reports/oos_predictions_<season>.csv (scripts/generate_season_predictions.py --eval-only)
 and predictions/predictions_2025-26.csv. Each season's models were trained only on earlier
-seasons. Bets use the shared rule in models/betting.py (the same one live picks and the dashboard
+seasons. Bets use the shared rule in team/betting.py (the same one live picks and the dashboard
 use): bet when P(win) = Phi(point edge / residual std) beats the -110 break-even by more than 5%,
 which is a point edge of T = std * Phi^-1(0.5238 + 0.05) on each market (about 2.5 pts on spreads and
 3.4 pts on totals). Lines in the files are the DraftKings openers (the model's own inputs); results
@@ -24,8 +24,8 @@ import numpy as np
 import pandas as pd
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from models.odds_clean import load_clean_odds
-from models.betting import points_threshold, DEFAULT_SPREAD_STD, DEFAULT_TOTAL_STD, DEFAULT_PROB_EDGE
+from core.odds_clean import load_clean_odds
+from team.betting import points_threshold, DEFAULT_SPREAD_STD, DEFAULT_TOTAL_STD, DEFAULT_PROB_EDGE
 
 PAY = 100 / 110
 BREAK_EVEN = 110 / 210

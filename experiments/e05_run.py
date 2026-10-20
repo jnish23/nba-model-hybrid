@@ -5,7 +5,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from experiments import features_e05                                  # noqa: E402
 from experiments.feature_exp import run_feature_experiment           # noqa: E402
-from models.data_paths import latest_training_set                     # noqa: E402
+from team.data_paths import latest_training_set                     # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 VARIANT = ROOT / 'data' / 'processed' / 'experiments' / 'e05_training_set.csv'

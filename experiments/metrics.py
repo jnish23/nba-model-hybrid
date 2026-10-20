@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 from scipy.stats import norm
 
-from models import betting as bt
+from team import betting as bt
 
 N_BOOT = 1000
 RNG_SEED = 20261017
@@ -119,7 +119,7 @@ def _imp(odds):
 def make_bets(df, thr=0.05, markets=('ml', 'spread', 'total'), rule='edge', flat_points=1.0,
               sigma_spread=None, sigma_total=None):
     """
-    One row per bet. rule='edge': bet when P(win) - break-even > thr (models/betting.py).
+    One row per bet. rule='edge': bet when P(win) - break-even > thr (team/betting.py).
     rule='flat': bet when |pred - line| > flat_points (spread/total only; ML uses the edge rule).
     Opening lines/prices (the model inputs) are used for settlement, as in the walk-forward backtests.
     Columns: gameId, gameDate, seasonYear, market, side, edge, price, line, close_line, won, push, profit (per $100).

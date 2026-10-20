@@ -21,8 +21,8 @@ from pathlib import Path
 import pandas as pd
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from models.train_baseline import BaselineModel
-from models.data_paths import latest_training_set
+from team.train_baseline import BaselineModel
+from team.data_paths import latest_training_set
 
 START_SEASON = '2021-22'
 

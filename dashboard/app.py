@@ -14,7 +14,7 @@ root_path = Path(__file__).resolve().parent.parent
 if str(root_path) not in sys.path:
     sys.path.append(str(root_path))
 
-from models.betting import (calculate_implied_prob, calculate_payout, calculate_bet_ev, get_ml_bet,
+from team.betting import (calculate_implied_prob, calculate_payout, calculate_bet_ev, get_ml_bet,
                             settle_bet, STANDARD_PRICE, get_spread_bet, get_total_bet, points_threshold,
                             DEFAULT_SPREAD_STD, DEFAULT_TOTAL_STD, DEFAULT_PROB_EDGE)
 
@@ -126,7 +126,7 @@ def load_data():
         st.error(f"Error loading data: {e}")
         return pd.DataFrame(), "unavailable"
 
-# Helper functions moved to models.betting
+# Helper functions moved to team.betting
 # calculate_implied_prob and calculate_payout are now imported
 
 

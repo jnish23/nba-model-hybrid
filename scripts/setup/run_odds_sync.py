@@ -1,7 +1,7 @@
 
 import sqlite3
 from pathlib import Path
-from update_database import NBADatabaseSync
+from core.update_database import NBADatabaseSync
 import logging
 
 # Setup logging
