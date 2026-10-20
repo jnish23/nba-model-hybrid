@@ -1,0 +1,157 @@
+"""train_and_save_all on a small synthetic history whose scoring level drifts upward (like the real 200 -> 230)."""
+import matplotlib
+import numpy as np
+import pandas as pd
+import pytest
+
+matplotlib.use('Agg')
+
+from team import market_models as mm
+from team import model_registry as mr
+from team.train_baseline import BaselineModel, SPREAD_GAP_COL, TOTAL_GAP_COL
+
+SEASONS = [('2020-21', '2020-10-20'), ('2021-22', '2021-10-20'), ('2022-23', '2022-10-20'), ('2023-24', '2023-10-20'),
+           ('2024-25', '2024-10-20')]
+
+
+def training_csv(path, seed=0, per_season=500, drift=10.0):
+    """Games with opening spread / total; total level rises `drift` points per season; x1 predicts the total gap, x0 the spread gap."""
+    rng = np.random.default_rng(seed)
+    rows = []
+    for k, (season, start) in enumerate(SEASONS):
+        n = per_season
+        dates = pd.Timestamp(start) + pd.to_timedelta(np.arange(n) // 4, unit='D')
+        x = rng.normal(size=(n, 4))
+        level = 205 + drift * k
+        line_total = np.round(level + rng.normal(0, 6, n) + 3 * x[:, 1] * 0)
+        line_spread = np.round(rng.normal(-2, 6, n) * 2) / 2
+        margin = -line_spread + 2.5 * x[:, 0] + rng.normal(0, 11, n)
+        total = line_total + 3.0 * x[:, 1] + rng.normal(0, 14, n)
+        df = pd.DataFrame({'gameDate': dates, 'seasonYear': season, 'gameId': [f'{season}{i:05d}' for i in range(n)],
+                           'teamId_home': 1, 'teamId_away': 2, 'target_point_diff': margin, 'target_total_pts': total,
+                           'target_home_win': (margin > 0).astype(int), 'points_home': 100, 'points_away': 100,
+                           'odds_home_spread': line_spread, 'odds_total': line_total,
+                           'odds_home_ml': np.where(line_spread < 0, -150, 130), 'odds_away_ml': np.where(line_spread < 0, 130, -150)})
+        for j in range(4):
+            df[f'diff_f{j}'] = x[:, j]
+            df[f'f{j}_home'] = x[:, j]
+            df[f'f{j}_away'] = rng.normal(size=n)
+        rows.append(df)
+    pd.concat(rows).to_csv(path, index=False)
+
+
+@pytest.fixture(scope='module')
+def trained(tmp_path_factory):
+    d = tmp_path_factory.mktemp('final')
+    csv = d / 'train.csv'
+    training_csv(csv)
+    m = BaselineModel(csv, model_dir=str(d / 'saved'))
+    seen = []
+    orig = m._select_features_from_subset
+
+    def spy(df, target, *a, **k):
+        seen.append(target)
+        return orig(df, target, *a, **k)
+
+    m._select_features_from_subset = spy
+    m.train_and_save_all(use_odds=True, save_suffix='_t', time_budget=2, calib_holdout_days=90)
+    return d, csv, m, seen
+
+
+def test_total_model_is_a_residual_model_and_its_sigma_follows(trained):
+    d, _, m, _ = trained
+    b = mr.load_bundle('_t', d / 'saved')
+    assert isinstance(b.total, mm.ResidualTotalModel) and isinstance(b.spread, mm.ResidualSpreadModel)
+    assert b.calib_meta['total_target'] == 'market_residual' and b.calib_meta['total_sigma_model']
+    assert b.sigma_total is not None
+
+
+def test_feature_selection_ranks_the_gap_the_models_are_fit_on(trained):
+    *_, seen = trained
+    assert seen == ['target_home_win', SPREAD_GAP_COL, TOTAL_GAP_COL]
+
+
+def test_total_forecast_does_not_lean_under_when_the_scoring_level_drifts(trained):
+    d, csv, m, _ = trained
+    b = mr.load_bundle('_t', d / 'saved')
+    last = m.df[m.df['seasonYear'] == SEASONS[-1][0]]
+    out = mm.predict_markets(b, last)
+    err = last['target_total_pts'].to_numpy() - out['total_pred'].to_numpy()
+    assert abs(err.mean()) < 1.5                                              # in-season level is tracked through the line
+    # control: a model of the total itself, trained on the earlier seasons, lags the drift (trees cannot extrapolate)
+    import lightgbm as lgb
+    past = m.df[m.df['seasonYear'] < SEASONS[-1][0]]
+    feats = b.features['total']
+    plain = lgb.LGBMRegressor(n_estimators=100, num_leaves=8, verbosity=-1, random_state=0).fit(past[feats], past['target_total_pts'])
+    plain_err = last['target_total_pts'].to_numpy() - plain.predict(last[feats])
+    assert plain_err.mean() > abs(err.mean()) + 1.0
+
+
+def test_no_total_forecast_without_an_opening_total(trained):
+    d, _, m, _ = trained
+    b = mr.load_bundle('_t', d / 'saved')
+    frame = m.df.tail(20).copy()
+    frame['odds_total'] = np.nan
+    assert predict_nan(b, frame)
+
+
+def predict_nan(b, frame):
+    out = mm.predict_markets(b, frame)
+    return out['total_pred'].isna().all() and out['spread_pred'].notna().all()
+
+
+# ------------------------------------------------------------------ calibration holdout by time, refit on everything
+
+from team.train_baseline import split_model_train_calibration, CALIB_HOLDOUT_DAYS
+
+
+def test_time_holdout_is_the_last_n_days_and_never_splits_a_game_night():
+    df = pd.DataFrame({'gameDate': pd.to_datetime('2024-10-20') + pd.to_timedelta(np.arange(3000) // 6, unit='D')})
+    mt, cal = split_model_train_calibration(df, calib_holdout_days=100)
+    assert cal['gameDate'].min() > df['gameDate'].max() - pd.Timedelta(days=100) - pd.Timedelta(days=1)
+    assert mt['gameDate'].max() < cal['gameDate'].min()                        # a date is on one side only
+    assert len(mt) + len(cal) == len(df) and len(cal) == 600
+
+
+def test_default_holdout_is_half_a_season_not_a_fifth_of_the_history():
+    # 13 seasons of ~1,300 games: the old 20% rule would hold out ~3,400 rows (2.6 seasons); the new one ~half a season
+    days = pd.date_range('2013-10-25', '2026-06-13', freq='D')
+    dates = np.repeat(days.to_numpy(), 1)
+    n_per_day = 5
+    df = pd.DataFrame({'gameDate': np.repeat(dates, n_per_day)})
+    mt, cal = split_model_train_calibration(df)
+    assert CALIB_HOLDOUT_DAYS == 183
+    assert (df['gameDate'].max() - mt['gameDate'].max()).days <= CALIB_HOLDOUT_DAYS + 1
+    old_mt, _ = split_model_train_calibration(df, calib_holdout_days=None)
+    assert (df['gameDate'].max() - old_mt['gameDate'].max()).days > 3 * CALIB_HOLDOUT_DAYS
+
+
+def test_holdout_too_small_for_calibration_is_refused():
+    df = pd.DataFrame({'gameDate': pd.to_datetime('2024-10-20') + pd.to_timedelta(np.arange(500) // 5, unit='D')})
+    with pytest.raises(ValueError, match='calibration holdout'):
+        split_model_train_calibration(df, calib_holdout_days=10)
+
+
+def test_base_models_are_refit_on_all_games_by_default(trained):
+    d, csv, m, _ = trained
+    import json
+    meta = json.loads((d / 'saved' / 'calibration_meta_t.json').read_text())
+    assert meta['refit_on_all'] is True
+    assert meta['trained_through'] == str(m.df['gameDate'].max())
+    assert meta['model_train_end'] < meta['calib_date_range']['start']
+    assert meta['calib_holdout'] == 'last 90 days'
+    # the saved models have seen the holdout: refit trees were fit on more rows than the pre-refit model_train
+    b = mr.load_bundle('_t', d / 'saved')
+    n_all = len(m.df)
+    assert b.ml.n_features_in_ == len(b.features['ml'])
+    assert b.ml.booster_.num_trees() > 0 and n_all > meta['calib_set_size']
+
+
+def test_refit_can_be_turned_off(tmp_path):
+    csv = tmp_path / 'train.csv'
+    training_csv(csv, per_season=300)
+    m = BaselineModel(csv, model_dir=str(tmp_path / 's'))
+    m.train_and_save_all(use_odds=True, save_suffix='_n', time_budget=1, calib_holdout_days=80, refit_on_all=False)
+    import json
+    meta = json.loads((tmp_path / 's' / 'calibration_meta_n.json').read_text())
+    assert meta['refit_on_all'] is False and meta['trained_through'] == meta['model_train_end']

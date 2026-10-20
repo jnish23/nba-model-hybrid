@@ -23,6 +23,7 @@ from sklearn.linear_model import LogisticRegression
 
 SEED = 42
 SPREAD_LINE_COL = 'odds_home_spread'
+TOTAL_LINE_COL = 'odds_total'
 SIGMA_MIN_ABS_ERR = 1.0            # floor on the predicted mean |error| (points)
 SIGMA_FOLDS = 5                    # forward-chaining parts inside model_train for the out-of-fold residuals
 SIGMA_FEATURES = [
@@ -73,6 +74,41 @@ class ResidualSpreadModel:
                 raise ValueError(f"ResidualSpreadModel.predict needs the opening spread: pass line= or include {SPREAD_LINE_COL}")
             line = X[SPREAD_LINE_COL]
         return -np.asarray(line, float) + self.model.predict(X)
+
+
+class ResidualTotalModel:
+    """LightGBM regressor on the market residual `target_total_pts - odds_total`.
+
+    predict(X, line) = line + f(X), where `line` is the opening total. Same idea as ResidualSpreadModel and the same reason:
+    a tree model cannot extrapolate a target that drifts (league scoring went from ~200 to ~230 points), so a model that
+    predicts the total itself lags the level and leans under once scoring rises; the gap from the line is stationary.
+    A missing line gives NaN (no total forecast without an opening total).
+    """
+
+    def __init__(self, model):
+        self.model = model
+
+    @property
+    def feature_name_(self):
+        return list(self.model.feature_name_)
+
+    @property
+    def feature_importances_(self):
+        return self.model.feature_importances_
+
+    @staticmethod
+    def make_target(df):
+        return df['target_total_pts'] - df[TOTAL_LINE_COL]
+
+    def predict_residual(self, X):
+        return self.model.predict(X)
+
+    def predict(self, X, line=None):
+        if line is None:
+            if TOTAL_LINE_COL not in X.columns:
+                raise ValueError(f"ResidualTotalModel.predict needs the opening total: pass line= or include {TOTAL_LINE_COL}")
+            line = X[TOTAL_LINE_COL]
+        return np.asarray(line, float) + self.model.predict(X)
 
 
 # ------------------------------------------------------------------------------------------------ E3
@@ -171,7 +207,11 @@ def predict_markets(bundle, frame, align=None):
     else:
         spread = bundle.spread.predict(X_spread)
     X_total = cols('Total', 'total')
-    total = bundle.total.predict(X_total)
+    if isinstance(bundle.total, ResidualTotalModel):
+        tline = frame[TOTAL_LINE_COL].to_numpy(float) if TOTAL_LINE_COL in frame.columns else np.full(len(frame), np.nan)
+        total = bundle.total.predict(X_total, line=tline)
+    else:
+        total = bundle.total.predict(X_total)
     meta = bundle.calib_meta
     spread_std = np.full(len(frame), float(meta.get('spread_std', np.nan)))
     total_std = np.full(len(frame), float(meta.get('total_std', np.nan)))
