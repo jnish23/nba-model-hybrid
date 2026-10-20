@@ -167,3 +167,15 @@ def test_minutes_residual_bank_is_standardized_out_of_sample(frame, fold):
         assert bank.shape == (len(minutes.BUCKET_EDGES) + 1, minutes.S) and np.isfinite(bank).all()
         assert np.all(np.diff(bank, axis=1) >= -1e-9)                                           # quantiles are ordered
         assert 0.5 < np.median(np.abs(bank[1])) < 3.0                                           # standardized: order one, not collapsed
+
+
+def test_recency_weights_halve_per_half_life_and_leave_other_columns_alone(frame, fold):
+    part = frame.iloc[fold.fit_idx].head(2000)
+    ref = frame.iloc[fold.calib_idx]['game_date'].max()
+    out = pipeline.recency_weights(part, ref, 365.0)
+    age = (pd.Timestamp(ref) - pd.to_datetime(part['game_date'])).dt.days
+    assert np.allclose(out['weight'], part['weight'] * 0.5 ** (age / 365.0))
+    assert (out['weight'] <= part['weight'] + 1e-12).all() and out['weight'].iloc[age.argmax()] < out['weight'].iloc[age.argmin()]
+    assert out.drop(columns='weight').equals(part.drop(columns='weight'))
+    bundle = pipeline.train_fold(frame, fold, SPEC, score_on_test=False, recency_half_life_days=365.0)
+    assert bundle['minutes'].info['regular']['rows'] > 0

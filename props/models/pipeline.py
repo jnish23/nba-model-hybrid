@@ -26,8 +26,17 @@ def observed(frame, stat):
     return (y[parts[0]] + y[parts[1]]).to_numpy(float)
 
 
-def train_fold(df, fold, spec: FeatureSpec, score_on_test=True, refit_all=False):
+def recency_weights(part, ref_date, half_life_days):
+    """Row weights scaled by 0.5 ** (age / half_life): the newest rows count fully, rows one half-life older count half."""
+    age = (pd.Timestamp(ref_date) - pd.to_datetime(part['game_date'])).dt.days.clip(lower=0)
+    return part.assign(weight=part['weight'] * 0.5 ** (age / float(half_life_days)))
+
+
+def train_fold(df, fold, spec: FeatureSpec, score_on_test=True, refit_all=False, recency_half_life_days=None):
     fit, cal, test = df.iloc[fold.fit_idx], df.iloc[fold.calib_idx], df.iloc[fold.test_idx]
+    if recency_half_life_days:                              # the old seasons (2019-21 here) taught corrections that stopped holding: let recent rows count more
+        ref = cal['game_date'].max()
+        fit = recency_weights(fit, ref, recency_half_life_days)
     bundle = {'fold': fold.describe(), 'spec': spec, 'availability': Availability(spec).fit(fit), 'minutes': MinutesModel(spec).fit(fit),
               'rates': RateModels(spec).fit(fit), 'family_scores': {}}
     if score_on_test:                                     # development folds only: rate-family comparison with the actual minutes as exposure
@@ -36,6 +45,8 @@ def train_fold(df, fold, spec: FeatureSpec, score_on_test=True, refit_all=False)
         # The calibration window exists to measure error out of sample. Once the dispersion maps are fitted from the fit-only models, the models that predict the
         # test season are refit on fit + calibration so they see the most recent data (otherwise they lag the test season by the whole calibration window).
         both = df.iloc[np.sort(np.concatenate([fold.fit_idx, fold.calib_idx]))]
+        if recency_half_life_days:
+            both = recency_weights(both, cal['game_date'].max(), recency_half_life_days)
         bundle['refit'] = {'availability': Availability(spec).fit(both), 'minutes': MinutesModel(spec).fit(both), 'rates': RateModels(spec).fit(both)}
     return bundle
 
