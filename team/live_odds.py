@@ -12,11 +12,13 @@ the caller skips such games.
 import numpy as np
 import pandas as pd
 
+from core.odds_pick import pick_book_odds
+
 MARKETS = ('home_ml', 'away_ml', 'home_spread', 'away_spread', 'total')
 # Prices (juice) of the spread / total bets at the current line; the edge on a bet is judged against its own price
 PRICE_MARKETS = ('home_spread_odds', 'away_spread_odds', 'over_odds', 'under_odds')
-# Same book priority as the training build (models/game_features_v2._load_db_odds)
-BOOKS = ('draftkings', 'fanduel', 'betmgm', 'bet365', 'caesars')
+# Same book priority as the training build (core/odds_pick.BOOKS_PRIORITY)
+BOOKS = ('draftkings', 'fanduel', 'betmgm', 'bet365', 'caesars', 'bet_rivers_ny')
 
 
 def first_book_value(item):
@@ -39,25 +41,33 @@ def first_book_value(item):
     return np.nan
 
 
+def _per_book(game, fields):
+    """SBR {field: {book: value}} -> {book: {field: value}}."""
+    return {b: {f: (game.get(f) or {}).get(b) if isinstance(game.get(f), dict) else None for f in fields} for b in BOOKS}
+
+
 def split_open_and_current(curr_game, open_game):
     """
     curr_game / open_game: SBR game dicts holding {book: value} dicts under MARKETS keys
-    (open_game may be None). Returns a flat dict:
+    (open_game may be None). Every field of a side comes from ONE book (core.odds_pick.pick_book_odds, the rule the
+    training build uses), so moneylines, spread and total are mutually consistent. Returns a flat dict:
       odds_<market>       model input: the opening line (NaN when it could not be fetched; never the current line)
       curr_odds_<market>  current line (for bets / EV)
-      curr_price_<name>   current spread / total price (home_spread_odds, away_spread_odds, over_odds, under_odds)
+      curr_price_<name>   current spread / total price from the same book as the current line
       odds_open_missing   number of markets on the board whose opening line is missing
     """
     open_game = open_game or {}
+    opened = pick_book_odds(_per_book(open_game, MARKETS), BOOKS)
+    curr = pick_book_odds(_per_book(curr_game, MARKETS), BOOKS)
     out, missing = {}, 0
     for market in MARKETS:
-        curr = first_book_value(curr_game.get(market))
-        opened = first_book_value(open_game.get(market))
-        if pd.isna(opened) and pd.notna(curr):
+        if pd.isna(opened[market]) and pd.notna(curr[market]):
             missing += 1
-        out[f'odds_{market}'] = opened
-        out[f'curr_odds_{market}'] = curr
+        out[f'odds_{market}'] = opened[market]
+        out[f'curr_odds_{market}'] = curr[market]
+    book = curr['book']
     for name in PRICE_MARKETS:
-        out[f'curr_price_{name}'] = first_book_value(curr_game.get(name))
+        out[f'curr_price_{name}'] = first_book_value({book: curr_game[name].get(book)}) if book and isinstance(curr_game.get(name), dict) else np.nan
     out['odds_open_missing'] = missing
     return out
+

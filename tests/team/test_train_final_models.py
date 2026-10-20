@@ -146,3 +146,41 @@ def test_refit_can_be_turned_off(tmp_path):
     import json
     meta = json.loads((tmp_path / 's' / 'calibration_meta_n.json').read_text())
     assert meta['refit_on_all'] is False and meta['trained_through'] == meta['model_train_end']
+
+
+def test_calibrated_brier_in_the_meta_is_cross_fitted_not_measured_on_the_fitting_block(trained_default):
+    import json
+    d = trained_default[0]
+    meta = json.loads((d / 'saved' / 'calibration_meta_t.json').read_text())
+    assert {'ml_brier_calibrated', 'ml_brier_calibrated_in_sample', 'ml_brier_raw_crossfit_rows'} <= set(meta)
+    # in-sample can only look better than (or equal to) the honest number on a fit this flexible
+    assert meta['ml_brier_calibrated_in_sample'] <= meta['ml_brier_calibrated'] + 0.01
+
+
+def test_crossfit_brier_scores_each_part_with_a_fit_on_earlier_parts_only():
+    from team.market_models import crossfit_brier
+    seen = []
+    y = np.arange(20) % 2
+
+    def fit_predict(tr, te):
+        seen.append((tr.max(), te.min(), te.max()))
+        return np.full(len(te), 0.5)
+
+    brier, rows = crossfit_brier(fit_predict, y, n_parts=4)
+    assert np.isclose(brier, 0.25) and len(rows) == 15                     # parts 2-4 are scored; part 1 only trains
+    assert all(tr_max < te_min for tr_max, te_min, _ in seen)              # never trained on the rows it scores
+
+
+def test_train_from_season_drops_earlier_seasons_and_era_marking_features_are_recorded(tmp_path):
+    import json
+    csv = tmp_path / 'train.csv'
+    training_csv(csv, per_season=300)
+    df = pd.read_csv(csv)
+    df.loc[df['seasonYear'] < '2022-23', 'odds_home_ml'] = np.nan                    # a moneyline that only exists in later seasons
+    df['f0_home'] = df['f0_home']                                                    # unchanged feature for contrast
+    df.to_csv(csv, index=False)
+    m = BaselineModel(csv, model_dir=str(tmp_path / 's'))
+    m.train_and_save_all(use_odds=True, save_suffix='_e', time_budget=1, calib_holdout_days=80, train_from_season='2021-22')
+    meta = json.loads((tmp_path / 's' / 'calibration_meta_e.json').read_text())
+    assert m.df['seasonYear'].min() == '2021-22' and len(m.df) == 4 * 300
+    assert 'era_marking_features' in meta and isinstance(meta['era_marking_features'], list)

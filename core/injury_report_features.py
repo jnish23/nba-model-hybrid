@@ -509,7 +509,10 @@ def add_injury_features(game_df, inj):
         side_df = inj.rename(columns={'teamId': tid, **{c: f'{c}_{side}' for c in INJ_COLS}})
         side_df[tid] = side_df[tid].astype('int64')
         g[tid] = g[tid].astype('int64')
-        g = g.merge(side_df, on=['_gid', tid], how='left')
+        n = len(g)
+        g = g.merge(side_df, on=['_gid', tid], how='left', validate='many_to_one')     # one report row per (game, team)
+        if len(g) != n:
+            raise ValueError(f"joining {side} injury features changed the row count ({n} -> {len(g)})")
     # diff_inj_* are created with every other home/away difference by
     # GameFeatureBuilder.add_derived_features (call this BEFORE that step).
     return g.drop(columns='_gid')

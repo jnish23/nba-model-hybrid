@@ -14,6 +14,22 @@ from core.player_features import PlayerFeatureBuilder
 from core.travel_builder import TravelFeatureBuilder
 
 
+def checked_merge(left, right, *, name, validate, keep_rows=False, **kwargs):
+    """
+    pandas merge that fails loudly instead of silently duplicating or dropping games: `validate` ('one_to_one', 'many_to_one', ...)
+    rejects duplicate keys on the side that must be unique, and keep_rows=True (left joins that only attach columns) rejects any
+    change in the number of rows. A fan-out here would double-count games in every rolling feature and the training targets.
+    """
+    n = len(left)
+    try:
+        out = left.merge(right, validate=validate, **kwargs)
+    except pd.errors.MergeError as e:
+        raise ValueError(f"merge '{name}': keys are not {validate}: {e}") from e
+    if keep_rows and len(out) != n:
+        raise ValueError(f"merge '{name}' changed the row count ({n} -> {len(out)})")
+    return out
+
+
 class GameFeatureBuilder:
     # Injury-report snapshot used for inj_* features. Must match when live inference runs
     # (see models/injury_report_features.SNAPSHOT_CUTOFFS); recorded in the training-set log.
@@ -85,41 +101,33 @@ class GameFeatureBuilder:
                     filled = opening.loc[missing_away, 'away_team'].str.strip().map(name_to_id)
                     opening.loc[missing_away, 'teamId_away'] = filled
 
-        # Helper to extract best odds across books
-        def get_best_odds(df, suffix=""):
-            # Priority: DraftKings > FanDuel > BetMGM > Bet365 > Caesars > Avg
-            books = ['draftkings', 'fanduel', 'betmgm', 'bet365', 'caesars', 'bet_rivers_ny']
-            
-            out = pd.DataFrame(index=df.index)
-            # Base keys
-            for k in ['home_spread', 'away_spread', 'home_ml', 'away_ml', 'total']:
-                target = f"odds_{k}{suffix}"
-                # Try each book
-                found = False
-                for b in books:
-                    col = f"{k}_{b}{suffix}"
-                    if col in df.columns:
-                        if not found:
-                            out[target] = df[col]
-                            found = True
-                        else:
-                            out[target] = out[target].combine_first(df[col])
-            return out
-
-        # Process Opening
+        # Opening odds: one book supplies every field of a game, after dropping books far from the cross-book consensus
+        # (core/odds_pick.py; the same rule live inference applies in team/live_odds.py)
         if not opening.empty and 'teamId_home' in opening.columns:
             # Drop rows still missing teamId_home (can't merge without a key)
             opening = opening.dropna(subset=['teamId_home'])
             opening['teamId_home'] = opening['teamId_home'].astype(int)
             opening['teamId_away'] = pd.to_numeric(opening['teamId_away'], errors='coerce').astype('Int64')
 
-            # We pass suffix="" so they map to 'odds_home_ml', etc.
-            o_vals = get_best_odds(opening, "")
+            o_vals = self.pick_opening_odds(opening)
             opening_processed = pd.concat([opening[['gameDate', 'teamId_home', 'teamId_away']], o_vals], axis=1)
         else:
             opening_processed = pd.DataFrame()
 
         return opening_processed
+
+    @staticmethod
+    def pick_opening_odds(opening):
+        """odds_home_ml / odds_away_ml / odds_home_spread / odds_away_spread / odds_total for each row of the wide
+        nba_odds_opening table, every field from the same book (core.odds_pick.pick_book_odds)."""
+        from core.odds_pick import BOOKS_PRIORITY, FIELDS, pick_book_odds
+        cols = {b: {f: opening[f'{f}_{b}'].to_numpy() if f'{f}_{b}' in opening.columns else None for f in FIELDS} for b in BOOKS_PRIORITY}
+        rows = []
+        for i in range(len(opening)):
+            per_book = {b: {f: (arr[i] if arr is not None else None) for f, arr in fields.items()} for b, fields in cols.items()}
+            picked = pick_book_odds(per_book)
+            rows.append({f'odds_{f}': picked[f] for f in FIELDS})
+        return pd.DataFrame(rows, index=opening.index)
 
     def _load_archive_odds(self, csv_path):
         """Load archive odds (now with pre-calculated IDs)"""
@@ -181,7 +189,8 @@ class GameFeatureBuilder:
         p = p_feats[['gameId', 'teamId', *cls.ROSTER_COLS]]
         for side in ('home', 'away'):
             side_p = p.rename(columns={'teamId': f'teamId_{side}', **{c: f'{c}_{side}' for c in cls.ROSTER_COLS}})
-            game_df = game_df.merge(side_p, on=['gameId', f'teamId_{side}'], how='left')
+            game_df = checked_merge(game_df, side_p, name=f'roster {side}', validate='many_to_one', keep_rows=True,
+                                    on=['gameId', f'teamId_{side}'], how='left')
         return game_df
 
     @classmethod
@@ -217,7 +226,8 @@ class GameFeatureBuilder:
         
         # 1b. Travel
         travel = self._get_travel_features()
-        df_features = df_features.merge(travel, on=['teamId', 'gameId'], how='left')
+        df_features = checked_merge(df_features, travel, name='travel', validate='one_to_one', keep_rows=True,
+                                    on=['teamId', 'gameId'], how='left')
 
         if seasons:
             df_features = df_features[df_features['seasonYear'].isin(seasons)]
@@ -229,7 +239,11 @@ class GameFeatureBuilder:
         meta = meta.rename(columns={'MATCHUP': 'matchup', 'WL': 'wl'})
         meta['gameDate'] = pd.to_datetime(meta['gameDate'])
         
-        df_features = df_features.merge(meta, on=['teamId', 'gameDate', 'seasonYear'], suffixes=('', '_meta'))
+        n_features = len(df_features)
+        df_features = checked_merge(df_features, meta, name='team_game_full metadata', validate='one_to_one',
+                                    on=['teamId', 'gameDate', 'seasonYear'], suffixes=('', '_meta'))
+        if len(df_features) != n_features:      # inner join: every team-game must have its metadata row
+            raise ValueError(f"team_game_full metadata matched {len(df_features)} of {n_features} team-games")
         if 'gameId_meta' in df_features.columns:
             df_features['gameId'] = df_features['gameId'].fillna(df_features['gameId_meta'])
             df_features = df_features.drop(columns=['gameId_meta'])
@@ -242,7 +256,10 @@ class GameFeatureBuilder:
         away_df = df_features[df_features['is_home'] == 0].copy()
         
         # 5. Merge on gameId
-        game_df = pd.merge(home_df, away_df, on=['gameId', 'seasonYear', 'gameDate'], suffixes=('_home', '_away'))
+        game_df = checked_merge(home_df, away_df, name='home/away', validate='one_to_one',
+                                on=['gameId', 'seasonYear', 'gameDate'], suffixes=('_home', '_away'))
+        if len(game_df) * 2 != len(home_df) + len(away_df):
+            raise ValueError(f"home/away pairing kept {len(game_df)} games from {len(home_df)} home and {len(away_df)} away rows")
         
         # 5b. Player (roster BPM) and injury-report features. They are merged BEFORE the diff step so
         # that diff_roster_bpm / diff_roster_bpm_ewma / diff_inj_* are created from the _home/_away
@@ -331,7 +348,8 @@ class GameFeatureBuilder:
 
         # Merge into Game DF
 
-        game_df = pd.merge(game_df, final_odds, left_on=['gameDate', 'teamId_home'], right_on=['gameDate', 'teamId_home'], how='left')
+        game_df = checked_merge(game_df, final_odds, name='odds', validate='many_to_one', keep_rows=True,
+                                on=['gameDate', 'teamId_home'], how='left')
         spread_cov = game_df['odds_home_spread'].notna().mean() if 'odds_home_spread' in game_df.columns else 0
         ml_cov = game_df['odds_home_ml'].notna().mean() if 'odds_home_ml' in game_df.columns else 0
         logging.info(f"Built training set with {len(game_df)} games. Spread coverage: {spread_cov:.2%}, ML coverage: {ml_cov:.2%} (Archive has spreads/totals; ML from DB)")

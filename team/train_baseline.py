@@ -22,9 +22,10 @@ from pathlib import Path
 from flaml import AutoML, tune
 from datetime import date
 
+from team.data_checks import missingness_era_report
 from team.model_registry import DEPLOYED_SUFFIX, assert_suffix_free, manifest_path, write_manifest
 from team.market_models import (MarginStackCalibrator, ResidualSpreadModel, ResidualTotalModel, SPREAD_LINE_COL, TOTAL_LINE_COL,
-                                fit_hetero_sigma)
+                                fit_hetero_sigma, crossfit_brier)
 
 # Fixed LightGBM settings used when no hyperparameter search is run. They were NOT chosen by looking
 # at any test season, which is what makes them safe for a walk-forward backtest.
@@ -1298,7 +1299,7 @@ class BaselineModel:
         return rows, self.features_total, 'target_total_pts'
 
     def train_and_save_all(self, use_odds=False, save_suffix='', calib_holdout_frac=0.2, time_budget=600,
-                           market_aware=None, calib_holdout_days=CALIB_HOLDOUT_DAYS, refit_on_all=True, total_target='level', overwrite=False):
+                           market_aware=None, calib_holdout_days=CALIB_HOLDOUT_DAYS, refit_on_all=True, total_target='level', overwrite=False, train_from_season=None):
         """
         Train final models on ALL available data and save them, including calibrators.
 
@@ -1309,6 +1310,9 @@ class BaselineModel:
           with the same hyperparameters and features, so the saved models have seen everything up to the last game.
           (Calibrators were fitted on the held-out predictions of the earlier fit; the refit model is slightly
           stronger, which makes them very slightly conservative, not leaky.)
+        - train_from_season: drop earlier seasons (e.g. '2019-20', the first with moneylines and injury reports) before the split.
+          Default None keeps all history; features that are empty for the old seasons are reported either way (calibration_meta
+          'era_marking_features') because a tree can learn "missing = old era".
         - overwrite: a suffix that already holds a model set is refused (FileExistsError) unless overwrite=True, so a log written
           by earlier files can always be tied to the files still on disk. Every set gets a model_manifest<suffix>.json with the
           hash of its files and of the training CSV (team/model_registry.py).
@@ -1335,6 +1339,9 @@ class BaselineModel:
         
         # Sort by date for proper temporal split
         self.df = self.df.sort_values('gameDate').reset_index(drop=True)
+        if train_from_season is not None:
+            self.df = self.df[self.df['seasonYear'] >= train_from_season].reset_index(drop=True)
+            logging.info(f"Training from {train_from_season}: {len(self.df)} games")
         
         model_train_df, calib_df = split_model_train_calibration(self.df, calib_holdout_days, calib_holdout_frac)
         logging.info(f"Final training split: model_train={len(model_train_df)} (to {model_train_df['gameDate'].max():%Y-%m-%d}), "
@@ -1357,6 +1364,11 @@ class BaselineModel:
             self.features_spread = self._select_features_from_subset(sel_df, 'target_point_diff')
             self.features_total = self._select_features_from_subset(sel_df, 'target_total_pts')
         
+        era_marks = missingness_era_report(self.df, sorted(set(self.features_ml) | set(self.features_spread) | set(self.features_total)))
+        if len(era_marks):
+            logging.warning("Selected features whose missingness marks the era (trees can learn 'missing = old season'):\n"
+                            + era_marks.to_string(index=False))
+
         # Save feature config
         feature_config = {
             'ml': self.features_ml,
@@ -1367,7 +1379,7 @@ class BaselineModel:
             json.dump(feature_config, f)
         logging.info(f"Saved feature config with {len(self.features_ml)}/{len(self.features_spread)}/{len(self.features_total)} features")
 
-        calibration_meta = {}
+        calibration_meta = {'era_marking_features': era_marks['feature'].tolist()}
 
         custom_hp = FLAML_CUSTOM_HP
 
@@ -1408,8 +1420,13 @@ class BaselineModel:
             iso_ml = IsotonicRegression(out_of_bounds='clip')
             iso_ml.fit(calib_probs_ml, y_calib_ml)
             brier_cal = brier_score_loss(y_calib_ml, np.clip(iso_ml.predict(calib_probs_ml), 1e-15, 1 - 1e-15))
-            logging.info(f"ML Calibration - Brier raw: {brier_raw:.4f}, calibrated: {brier_cal:.4f}")
-            calibration_meta['ml_brier_calibrated'] = float(brier_cal)
+            # the isotonic map was fitted on this block, so brier_cal is optimistic: report the cross-fitted score as well
+            y_cal = np.asarray(y_calib_ml, float)
+            oos, rows = crossfit_brier(lambda tr, te: IsotonicRegression(out_of_bounds='clip').fit(calib_probs_ml[tr], y_cal[tr]).predict(calib_probs_ml[te]), y_cal)
+            calibration_meta['ml_brier_calibrated_in_sample'] = float(brier_cal)
+            calibration_meta['ml_brier_calibrated'] = oos
+            calibration_meta['ml_brier_raw_crossfit_rows'] = float(np.mean((calib_probs_ml[rows] - y_cal[rows]) ** 2))
+            logging.info(f"ML Calibration - Brier raw: {brier_raw:.4f}, calibrated in-sample {brier_cal:.4f}, cross-fitted {oos:.4f}")
             self.save_model(iso_ml, f'calibrator_ml{save_suffix}.pkl')
         # (market aware: the stack calibrator needs the spread margin, so it is fitted after the spread model below)
         
@@ -1473,8 +1490,15 @@ class BaselineModel:
             stack = MarginStackCalibrator().fit(calib_probs_ml, calib_spread_pred, spread_std, y_calib_ml)
             p_cal = np.clip(stack.predict(calib_probs_ml, margin=calib_spread_pred), 1e-15, 1 - 1e-15)
             brier_cal = brier_score_loss(y_calib_ml, p_cal)
-            logging.info(f"ML Calibration (margin stack) - Brier raw: {brier_raw:.4f}, calibrated: {brier_cal:.4f}")
-            calibration_meta['ml_brier_calibrated'] = float(brier_cal)
+            # the stack was fitted on this block, so brier_cal is optimistic: report the cross-fitted score as the headline
+            y_cal = np.asarray(y_calib_ml, float)
+            oos, rows = crossfit_brier(
+                lambda tr, te: MarginStackCalibrator().fit(calib_probs_ml[tr], calib_spread_pred[tr], spread_std, y_cal[tr])
+                .predict(calib_probs_ml[te], margin=calib_spread_pred[te]), y_cal)
+            calibration_meta['ml_brier_calibrated_in_sample'] = float(brier_cal)
+            calibration_meta['ml_brier_calibrated'] = oos
+            calibration_meta['ml_brier_raw_crossfit_rows'] = float(np.mean((calib_probs_ml[rows] - y_cal[rows]) ** 2))
+            logging.info(f"ML Calibration (margin stack) - Brier raw: {brier_raw:.4f}, calibrated in-sample {brier_cal:.4f}, cross-fitted {oos:.4f}")
             calibration_meta['ml_calibrator'] = 'margin_stack'
             self.save_model(stack, f'calibrator_ml{save_suffix}.pkl')
         

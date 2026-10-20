@@ -147,6 +147,23 @@ class MarginStackCalibrator:
         return out
 
 
+def crossfit_brier(fit_predict, y, n_parts=4):
+    """
+    Out-of-sample Brier score of a calibrator that is fitted on the calibration block: forward-chaining parts, part k+1 is scored
+    by a calibrator fitted on parts 1..k, so no row is scored by a fit that saw it. `fit_predict(train_idx, test_idx)` returns
+    the calibrated probabilities of `test_idx`. Returns (brier of the cross-fitted rows, those rows' index array).
+    """
+    y = np.asarray(y, float)
+    parts = np.array_split(np.arange(len(y)), n_parts)
+    idx, prob = [], []
+    for k in range(1, n_parts):
+        tr, te = np.concatenate(parts[:k]), parts[k]
+        idx.append(te)
+        prob.append(np.asarray(fit_predict(tr, te), float))
+    idx, prob = np.concatenate(idx), np.concatenate(prob)
+    return float(np.mean((np.clip(prob, 1e-15, 1 - 1e-15) - y[idx]) ** 2)), idx
+
+
 # ------------------------------------------------------------------------------------------------ E4
 
 class HeteroSigma:

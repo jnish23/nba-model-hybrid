@@ -41,3 +41,19 @@ def test_current_prices_are_carried_for_edge_calculations():
     out = split_open_and_current(curr, curr)
     assert out['curr_price_home_spread_odds'] == -115 and out['curr_price_away_spread_odds'] == -105
     assert out['curr_price_over_odds'] == -120 and np.isnan(out['curr_price_under_odds'])
+
+
+def test_every_field_of_a_game_comes_from_one_book():
+    """Old rule: field-by-field fill, so the spread could be one book's and the moneyline another's."""
+    curr = {'home_spread': {'draftkings': -3.5, 'fanduel': -4.0}, 'away_spread': {'draftkings': 3.5, 'fanduel': 4.0},
+            'total': {'draftkings': 221.5, 'fanduel': 222.0}, 'home_ml': {'fanduel': -160}, 'away_ml': {'fanduel': 140}}   # DK has no ML
+    out = split_open_and_current(curr, curr)
+    assert (out['odds_home_spread'], out['odds_total'], out['odds_home_ml'], out['odds_away_ml']) == (-4.0, 222.0, -160, 140)   # all FanDuel
+
+
+def test_a_book_far_from_the_consensus_is_not_used():
+    quote = lambda dk, fd, mgm: {'draftkings': dk, 'fanduel': fd, 'betmgm': mgm}
+    curr = {'home_spread': quote(-9.5, -3.5, -3.5), 'away_spread': quote(9.5, 3.5, 3.5), 'total': quote(231.0, 221.5, 222.0),
+            'home_ml': quote(-900, -160, -165), 'away_ml': quote(600, 140, 140)}       # DK is an in-game quote
+    out = split_open_and_current(curr, curr)
+    assert out['odds_home_spread'] == -3.5 and out['odds_total'] == 221.5 and out['odds_home_ml'] == -160
