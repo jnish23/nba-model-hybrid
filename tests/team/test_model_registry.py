@@ -75,3 +75,18 @@ def test_train_baseline_runs_as_a_script():
                          capture_output=True, text=True, timeout=120)
     assert out.returncode == 0, out.stderr[-500:]
     assert '--deploy' in out.stdout
+
+
+def test_deployed_model_set_loads_in_a_fresh_process():
+    """Regression: the v6 pickles record their classes as models.market_models; after the core/ team/ move that path must still resolve."""
+    import subprocess
+    import sys
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[2]
+    code = ("from team.model_registry import load_bundle\n"
+            "from team.market_models import ResidualSpreadModel\n"
+            "b = load_bundle()\n"
+            "assert isinstance(b.spread, ResidualSpreadModel), type(b.spread)\n"
+            "print('ok', type(b.calibrator).__module__)")
+    r = subprocess.run([sys.executable, '-c', code], cwd=root, capture_output=True, text=True)
+    assert r.returncode == 0 and r.stdout.startswith('ok'), r.stderr[-800:]

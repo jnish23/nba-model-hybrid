@@ -10,12 +10,33 @@ A "model set" is the files that share a suffix in models/saved/:
 Loading refuses a set whose feature_config does not match the features stored inside each pickle,
 so a model can never be scored with another model's feature list.
 """
+import importlib
 import json
 import logging
+import sys
+import types
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import joblib
+
+# Pickles written before the core/ team/ layout record their classes under the old module path. Loading them needs these names to resolve,
+# without putting code back into models/ (which holds artifacts only). New pickles record the team.* path and need no alias.
+LEGACY_PICKLE_MODULES = {'models.market_models': 'team.market_models'}
+
+
+def alias_legacy_pickle_modules():
+    for old, new in LEGACY_PICKLE_MODULES.items():
+        if old in sys.modules:
+            continue
+        top = old.split('.')[0]
+        try:
+            importlib.import_module(top)
+        except ModuleNotFoundError:                      # pickle.find_class imports the top-level package first
+            stub = types.ModuleType(top)
+            stub.__path__ = []
+            sys.modules[top] = stub
+        sys.modules[old] = importlib.import_module(new)
 
 # Model artifacts stay in <repo>/models/saved (code lives in team/; models/ now holds data only)
 MODEL_DIR = Path(__file__).resolve().parent.parent / 'models' / 'saved'
@@ -73,6 +94,7 @@ class ModelBundle:
 def load_bundle(suffix=DEPLOYED_SUFFIX, model_dir=MODEL_DIR):
     """Load a complete, consistent model set; any missing piece or config mismatch is an error."""
     model_dir = Path(model_dir)
+    alias_legacy_pickle_modules()
 
     def path(stem, ext):
         return model_dir / f'{stem}{suffix}.{ext}'

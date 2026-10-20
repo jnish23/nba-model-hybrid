@@ -25,7 +25,7 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path[:0] = [str(ROOT), str(ROOT / 'scripts')]
-DATES = ['2026-01-15', '2025-03-12', '2022-11-23', '2020-01-17']
+DATES = ['2026-01-15', '2025-03-12', '2022-11-23', '2020-01-17']          # + the last game date in the database
 
 
 def imp(name, *candidates):
@@ -59,6 +59,7 @@ def dump(out):
     lf = imp('live_features', 'team.live_features', 'models.live_features')
     irf = imp('injury_report_features', 'core.injury_report_features', 'models.injury_report_features')
     mr = imp('model_registry', 'team.model_registry', 'models.model_registry')
+    mm = imp('market_models', 'team.market_models', 'models.market_models')
     ts = pd.read_csv(out / 'training_set.csv', low_memory=False)
     ts['gameDate'] = pd.to_datetime(ts['gameDate'])
     with sqlite3.connect(db) as conn:
@@ -85,12 +86,11 @@ def dump(out):
             inj = inj[inj['gameId'].astype(str).str.zfill(10).isin(games['gameId'])]
         frame = lf.build_live_game_frame(db, games, injury_features=inj)
         frame.to_csv(out / f'live_frame_{date}.csv', index=False)
-        raw = bundle.ml.predict_proba(lf.align_features(frame, bundle.features['ml'], 'ML'))[:, 1]
-        rows.append(pd.DataFrame({
-            'gameDate': date, 'gameId': frame['gameId'].values, 'ml_raw': raw,
-            'ml_cal': bundle.calibrator.predict(raw),
-            'spread': bundle.spread.predict(lf.align_features(frame, bundle.features['spread'], 'Spread')),
-            'total': bundle.total.predict(lf.align_features(frame, bundle.features['total'], 'Total'))}))
+        # the real inference path: predict_markets handles the market-aware set (residual spread, margin-stack calibrator, per-game total sigma)
+        out_df = mm.predict_markets(bundle, frame, align=lambda fr, name, cols: lf.align_features(fr, cols, name))
+        rows.append(pd.DataFrame({'gameDate': date, 'gameId': frame['gameId'].values, 'ml_raw': out_df['ml_prob_raw'].values, 'ml_cal': out_df['ml_prob'].values,
+                                  'spread': out_df['spread_pred'].values, 'total': out_df['total_pred'].values,
+                                  'spread_std': out_df['spread_std'].values, 'total_std': out_df['total_std'].values}))
     pd.concat(rows).to_csv(out / 'predictions.csv', index=False, float_format='%.17g')
     print(f'wrote {out}')
 
