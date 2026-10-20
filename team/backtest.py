@@ -20,11 +20,13 @@ class Backtester:
         # 1. Calculate Implied Probs
         # American Odds to Decimal: >0 -> (Odds/100) + 1; <0 -> (100/|Odds|) + 1
         def american_to_decimal(series):
-            return np.where(series > 0, (series/100)+1, (100/np.abs(series))+1)
+            return np.where(series > 0, (series/100)+1, np.where(series < 0, (100/np.abs(series))+1, np.nan))
 
         # Uses Closing Odds for now (can switch to Opening)
-        self.df['decimal_home'] = american_to_decimal(self.df['odds_home_ml'].fillna(-110)) # Default -110 if missing
-        self.df['decimal_away'] = american_to_decimal(self.df['odds_away_ml'].fillna(-110))
+        # A game without a price cannot be bet: the price is NaN, so no edge clears the threshold. (It used to be filled with
+        # -110, which invented a price for every game that had no moneyline and let the model "bet" it.)
+        self.df['decimal_home'] = american_to_decimal(self.df['odds_home_ml'])
+        self.df['decimal_away'] = american_to_decimal(self.df['odds_away_ml'])
         
         self.df['implied_home'] = 1 / self.df['decimal_home']
         self.df['implied_away'] = 1 / self.df['decimal_away']

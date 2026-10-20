@@ -138,7 +138,7 @@ def apply_entry_prices(df, entry):
 
 
 def make_bets(df, thr=0.05, markets=('ml', 'spread', 'total'), rule='edge', flat_points=1.0,
-              sigma_spread=None, sigma_total=None, entry=None):
+              sigma_spread=None, sigma_total=None, entry=None, push_aware=True):
     """
     One row per bet. rule='edge': bet when P(win) - break-even > thr (team/betting.py).
     rule='flat': bet when |pred - line| > flat_points (spread/total only; ML uses the edge rule).
@@ -146,6 +146,8 @@ def make_bets(df, thr=0.05, markets=('ml', 'spread', 'total'), rule='edge', flat
     backtests; the result is labelled entry_basis='open' and only its closing-line comparisons are valid (OPEN_BASIS_CAVEAT).
     entry=<load_entry_odds frame>: bets are priced at the first line at/after the feature cutoff (entry_basis='entry');
     games without one are skipped.
+    push_aware=True: spread / total win probabilities account for pushes on whole-number lines (betting.cover_probability, the live rule);
+    False reproduces the earlier reports, which used Phi(|edge| / sigma) on every line.
     Columns: gameId, gameDate, seasonYear, market, side, edge, price, line, close_line, won, push, profit (per $100), entry_basis.
     """
     if entry is not None:
@@ -180,7 +182,7 @@ def make_bets(df, thr=0.05, markets=('ml', 'spread', 'total'), rule='edge', flat
         if override is not None:
             sig = np.asarray(override, float) if np.ndim(override) else np.full(len(df), float(override))
         pe = pr + ln if mk == 'spread' else pr - ln
-        edge = norm.cdf(np.abs(pe) / sig) - BREAK_EVEN_110
+        edge = (bt.cover_probabilities(np.abs(pe), sig, lines=ln if push_aware else None)) - BREAK_EVEN_110
         ok = np.isfinite(pe) & (np.abs(pe) > flat_points if rule == 'flat' else edge > thr)
         first = pe > 0                      # home / over
         a = df[act].to_numpy(float)
