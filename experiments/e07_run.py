@@ -11,7 +11,7 @@ from experiments import decide, inj_variants as iv, metrics as M          # noqa
 from experiments.feature_exp import run_feature_experiment                  # noqa: E402
 from experiments.lib import OUT, load_run                                   # noqa: E402
 from experiments.report import compare, fmt_compare                         # noqa: E402
-from models.data_paths import latest_training_set                           # noqa: E402
+from team.data_paths import latest_training_set                           # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 DB = ROOT / 'data' / 'nba_stats.db'

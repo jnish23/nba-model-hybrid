@@ -24,8 +24,8 @@ from sklearn.isotonic import IsotonicRegression
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-from models.train_baseline import BaselineModel, FLAML_TRAIN_FRAC          # noqa: E402
-from models.data_paths import latest_training_set                           # noqa: E402
+from team.train_baseline import BaselineModel, FLAML_TRAIN_FRAC          # noqa: E402
+from team.data_paths import latest_training_set                           # noqa: E402
 
 SEED = 42
 TEST_SEASONS = ['2019-20', '2020-21', '2021-22', '2022-23', '2023-24', '2024-25', '2025-26']
@@ -94,7 +94,7 @@ def load_games(csv=None):
     m.load_data(use_odds=True)
     df = m.df
     df['gameId'] = df['gameId'].astype(str).str.zfill(10)
-    from models.odds_clean import load_clean_odds
+    from core.odds_clean import load_clean_odds
     o = load_clean_odds(ROOT / 'data' / 'nba_stats.db')
     o['gameId'] = o['gameId'].astype(str).str.zfill(10)
     keep = ['gameId', 'close_home_spread', 'close_total', 'close_home_prob', 'open_home_prob', 'close_source']

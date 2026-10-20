@@ -23,7 +23,7 @@ try:
 except ImportError:  # only needed to parse new PDFs; the parsed cache is used here
     sys.modules['pdfplumber'] = types.ModuleType('pdfplumber')
 
-from models import injury_report_features as irf
+from core import injury_report_features as irf
 
 DB = Path('data/nba_stats.db')
 OUT = Path('reports/audit')

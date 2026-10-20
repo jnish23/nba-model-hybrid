@@ -1,6 +1,6 @@
 """Injury-value variants for E7 (bench-depth replacement level) and E8 (fresh vs chronic absences).
 
-They plug into models.injury_report_features.build_injury_features by patching `reported_features` (and INJ_COLS) for the
+They plug into core.injury_report_features.build_injury_features by patching `reported_features` (and INJ_COLS) for the
 duration of one call, so the production code path and the baseline stay untouched. Inputs of these functions are the same
 point-in-time objects the production function receives: the report snapshot rows, the coverage frame and the candidate
 frame (cand['played'] is a post-game outcome and must never influence a feature - tests shuffle it).
@@ -13,8 +13,8 @@ from unittest import mock
 import numpy as np
 import pandas as pd
 
-from models import injury_report_features as irf
-from models.availability_features import REPLACEMENT_BPM
+from core import injury_report_features as irf
+from core.availability_features import REPLACEMENT_BPM
 
 ROOT = Path(__file__).resolve().parent.parent
 _POS = {}

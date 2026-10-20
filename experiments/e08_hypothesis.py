@@ -13,7 +13,7 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from experiments import inj_variants as iv, metrics as M          # noqa: E402
 from experiments.lib import OUT                                      # noqa: E402
-from models.data_paths import latest_training_set                    # noqa: E402
+from team.data_paths import latest_training_set                    # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 DB = ROOT / 'data' / 'nba_stats.db'

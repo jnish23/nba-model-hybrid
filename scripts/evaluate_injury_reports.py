@@ -31,9 +31,9 @@ import pandas as pd
 warnings.filterwarnings('ignore', category=FutureWarning)
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from models.odds_clean import load_clean_odds
-from models.availability_features import build_player_game_candidates, build_availability_features, to_game_level
-from models import injury_report_features as irf
+from core.odds_clean import load_clean_odds
+from core.availability_features import build_player_game_candidates, build_availability_features, to_game_level
+from core import injury_report_features as irf
 
 DB = Path('data/nba_stats.db')
 SEASONS = ['2019-20', '2020-21', '2021-22', '2022-23', '2023-24', '2024-25', '2025-26']

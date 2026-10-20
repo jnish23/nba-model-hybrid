@@ -10,8 +10,8 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from experiments.lib import OUT                                             # noqa: E402
-from models import injury_report_features as irf, injury_source_compare as sc   # noqa: E402
-from models.injury_downgrades import build_downgrade_features                # noqa: E402
+from core import injury_report_features as irf, injury_source_compare as sc   # noqa: E402
+from core.injury_downgrades import build_downgrade_features                # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 DB = ROOT / 'data' / 'nba_stats.db'
@@ -22,12 +22,12 @@ def main():
     lines = [f'# {NAME}\n', 'No backtest result is claimed for this item.\n']
     # (1) ESPN is nowhere on the live feature path
     espn_refs = {}
-    for rel in ['scripts/run_inference_v2.py', 'models/live_features.py', 'models/live_rotation_v2.py', 'models/injury_report_features.py',
-                'models/injury_downgrades.py', 'models/game_features_v2.py']:
+    for rel in ['scripts/run_inference_v2.py', 'team/live_features.py', 'team/live_rotation_v2.py', 'core/injury_report_features.py',
+                'core/injury_downgrades.py', 'team/game_features_v2.py']:
         src = (ROOT / rel).read_text(encoding='utf-8')
         espn_refs[rel] = len(re.findall(r'espn\.com|BeautifulSoup', src, re.I))
     lines += ['## 1. ESPN references on live/feature paths (espn.com / BeautifulSoup)\n', '```', json.dumps(espn_refs, indent=1), '```',
-              'ESPN is reachable only from `models/injury_source_compare.py` (comparator + logging); `live_rotation_v2.py` now reads the official PDFs.', '']
+              'ESPN is reachable only from `core/injury_source_compare.py` (comparator + logging); `live_rotation_v2.py` now reads the official PDFs.', '']
     # (2) downgrade flag over history (descriptive coverage only) + the lookahead ordering check
     reports = irf.parse_all_reports()
     seasons = ['2019-20', '2020-21', '2021-22', '2022-23', '2023-24', '2024-25', '2025-26']

@@ -12,7 +12,7 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from experiments import metrics as M                                                   # noqa: E402
 from experiments.lib import OUT, load_games, load_run                                   # noqa: E402
-from models import odds_clean as oc                                                     # noqa: E402
+from core import odds_clean as oc                                                     # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 NAME = 'E12_line_shopping'
