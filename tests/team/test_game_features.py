@@ -48,3 +48,24 @@ def test_diff_step_is_idempotent_in_column_names():
     g = GameFeatureBuilder.add_roster_features(_games(), _players())
     out = GameFeatureBuilder.add_derived_features(g)
     assert out.columns.is_unique
+
+
+# ------------------------------------------------------------------ merge guards
+
+import pytest
+
+from team.game_features_v2 import checked_merge
+
+
+def test_checked_merge_rejects_a_duplicated_key_that_would_fan_out_games():
+    games = pd.DataFrame({'gameDate': ['2026-01-01', '2026-01-02'], 'teamId_home': [1, 2], 'x': [1, 2]})
+    odds = pd.DataFrame({'gameDate': ['2026-01-01', '2026-01-01', '2026-01-02'], 'teamId_home': [1, 1, 2], 'odds_total': [220, 221, 230]})
+    with pytest.raises(ValueError, match="merge 'odds'.*many_to_one"):
+        checked_merge(games, odds, name='odds', validate='many_to_one', keep_rows=True, on=['gameDate', 'teamId_home'], how='left')
+
+
+def test_checked_merge_passes_clean_keys_and_keeps_every_row():
+    games = pd.DataFrame({'gameDate': ['2026-01-01', '2026-01-02'], 'teamId_home': [1, 2]})
+    odds = pd.DataFrame({'gameDate': ['2026-01-01'], 'teamId_home': [1], 'odds_total': [220]})
+    out = checked_merge(games, odds, name='odds', validate='many_to_one', keep_rows=True, on=['gameDate', 'teamId_home'], how='left')
+    assert len(out) == 2 and out['odds_total'].isna().tolist() == [False, True]

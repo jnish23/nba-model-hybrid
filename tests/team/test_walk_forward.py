@@ -86,7 +86,7 @@ def test_feature_selection_stops_before_the_flaml_validation_block(tmp_path):
         return orig(df, target, *a, **k)
 
     m._select_features_from_subset = spy
-    m.train_and_save_all(use_odds=False, save_suffix='_t', time_budget=1)
+    m.train_and_save_all(use_odds=False, save_suffix='_t', time_budget=1, calib_holdout_days=None)
     data = pd.read_csv(csv, parse_dates=['gameDate']).sort_values('gameDate').reset_index(drop=True)
     n_model_train = int(len(data) * 0.8)                # model_train | calibration holdout
     n_flaml_train = int(n_model_train * 0.8)            # FLAML train | FLAML validation

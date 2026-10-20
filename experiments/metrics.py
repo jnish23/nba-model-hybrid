@@ -116,14 +116,42 @@ def _imp(odds):
         return np.where(odds < 0, -odds / (-odds + 100), 100 / (odds + 100))
 
 
+ENTRY_COLUMNS = {'odds_home_ml': 'entry_home_ml', 'odds_away_ml': 'entry_away_ml',
+                 'odds_home_spread': 'entry_home_spread', 'odds_total': 'entry_total'}
+OPEN_BASIS_CAVEAT = ("bets are priced at the OPENING line, which is posted before the game-day-noon injury report the model reads "
+                     "(GameFeatureBuilder.INJURY_SNAPSHOT): ROI and CLV measured this way include line movement the model could not "
+                     "have bet at. Treat only comparisons with the CLOSING line as valid, or pass entry= (core.odds_clean.load_entry_odds).")
+
+
+def apply_entry_prices(df, entry):
+    """
+    Copy of `df` whose odds_* columns hold the ENTRY price (first pre-game line at/after the feature cutoff) instead of the
+    opening line. The model predictions are untouched. Games with no entry price get NaN lines, so they are never bet:
+    the opener is deliberately not a fallback. `entry` has a gameId column plus entry_* columns (load_entry_odds).
+    """
+    e = entry.assign(gameId=entry['gameId'].astype(str).str.zfill(10)).drop_duplicates('gameId').set_index('gameId')
+    out = df.copy()
+    ids = out['gameId'].astype(str).str.zfill(10)
+    for col, ecol in ENTRY_COLUMNS.items():
+        out[col] = ids.map(e[ecol]).to_numpy(float) if ecol in e.columns else np.nan
+    return out
+
+
 def make_bets(df, thr=0.05, markets=('ml', 'spread', 'total'), rule='edge', flat_points=1.0,
-              sigma_spread=None, sigma_total=None):
+              sigma_spread=None, sigma_total=None, entry=None, push_aware=True):
     """
     One row per bet. rule='edge': bet when P(win) - break-even > thr (team/betting.py).
     rule='flat': bet when |pred - line| > flat_points (spread/total only; ML uses the edge rule).
-    Opening lines/prices (the model inputs) are used for settlement, as in the walk-forward backtests.
-    Columns: gameId, gameDate, seasonYear, market, side, edge, price, line, close_line, won, push, profit (per $100).
+    entry=None: the OPENING lines/prices (the model inputs) price and settle the bets, as in the earlier walk-forward
+    backtests; the result is labelled entry_basis='open' and only its closing-line comparisons are valid (OPEN_BASIS_CAVEAT).
+    entry=<load_entry_odds frame>: bets are priced at the first line at/after the feature cutoff (entry_basis='entry');
+    games without one are skipped.
+    push_aware=True: spread / total win probabilities account for pushes on whole-number lines (betting.cover_probability, the live rule);
+    False reproduces the earlier reports, which used Phi(|edge| / sigma) on every line.
+    Columns: gameId, gameDate, seasonYear, market, side, edge, price, line, close_line, won, push, profit (per $100), entry_basis.
     """
+    if entry is not None:
+        df = apply_entry_prices(df, entry)
     frames = []
     base = df[['gameId', 'gameDate', 'seasonYear']].copy()
     if 'ml' in markets:
@@ -154,7 +182,7 @@ def make_bets(df, thr=0.05, markets=('ml', 'spread', 'total'), rule='edge', flat
         if override is not None:
             sig = np.asarray(override, float) if np.ndim(override) else np.full(len(df), float(override))
         pe = pr + ln if mk == 'spread' else pr - ln
-        edge = norm.cdf(np.abs(pe) / sig) - BREAK_EVEN_110
+        edge = (bt.cover_probabilities(np.abs(pe), sig, lines=ln if push_aware else None)) - BREAK_EVEN_110
         ok = np.isfinite(pe) & (np.abs(pe) > flat_points if rule == 'flat' else edge > thr)
         first = pe > 0                      # home / over
         a = df[act].to_numpy(float)
@@ -174,6 +202,8 @@ def make_bets(df, thr=0.05, markets=('ml', 'spread', 'total'), rule='edge', flat
     out = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
     if len(out):
         out['gameDate'] = pd.to_datetime(out['gameDate'])
+        out['entry_basis'] = 'open' if entry is None else 'entry'
+    out.attrs['entry_basis'] = 'open' if entry is None else 'entry'
     return out
 
 

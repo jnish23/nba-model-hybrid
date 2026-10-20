@@ -151,3 +151,43 @@ def test_set_that_declares_a_sigma_model_but_lacks_the_file_is_refused(tmp_path)
     (tmp_path / 'sigma_total_m.pkl').unlink()
     with pytest.raises(FileNotFoundError, match='sigma_total'):
         mr.load_bundle('_m', tmp_path)
+
+
+def test_residual_total_model_adds_back_the_opening_total():
+    df = _games()
+    y = mm.ResidualTotalModel.make_target(df)
+    assert np.allclose(y, df['target_total_pts'] - df['odds_total'])
+    m = mm.ResidualTotalModel(_reg(df, y))
+    pred = m.predict(df[['x']], line=df['odds_total'].to_numpy())
+    assert np.allclose(pred, df['odds_total'] + m.predict_residual(df[['x']]))        # + line (the spread model subtracts it)
+    assert np.isnan(m.predict(df[['x']], line=np.full(len(df), np.nan))).all()
+    with pytest.raises(ValueError):
+        m.predict(df[['x']])
+
+
+def test_residual_total_keeps_its_bias_when_the_level_drifts_beyond_the_training_range():
+    rng = np.random.default_rng(3)
+    n = 3000
+    x = rng.normal(size=n)
+    line = np.linspace(200, 232, n)                       # scoring level drifts up over the history
+    actual = line + 2 * x + rng.normal(0, 14, n)
+    df = pd.DataFrame({'x': x, 'odds_total': line, 'target_total_pts': actual})
+    tr, te = df.iloc[:2400], df.iloc[2400:]               # test games sit above every training total
+    plain = lgb.LGBMRegressor(n_estimators=60, num_leaves=8, verbosity=-1, random_state=0).fit(tr[['x', 'odds_total']], tr['target_total_pts'])
+    resid = mm.ResidualTotalModel(_reg(tr, mm.ResidualTotalModel.make_target(tr)))
+    plain_bias = (te['target_total_pts'] - plain.predict(te[['x', 'odds_total']])).mean()
+    resid_bias = (te['target_total_pts'] - resid.predict(te[['x']], line=te['odds_total'].to_numpy())).mean()
+    assert plain_bias > 4 and abs(resid_bias) < 1.5
+
+
+def test_predict_markets_uses_the_opening_total_for_a_residual_total_model():
+    df = _games(400)
+    sp = mm.ResidualSpreadModel(_reg(df, mm.ResidualSpreadModel.make_target(df)))
+    tt = mm.ResidualTotalModel(_reg(df, mm.ResidualTotalModel.make_target(df)))
+    ml = lgb.LGBMClassifier(n_estimators=20, verbosity=-1, random_state=0).fit(df[['x']], df['target_home_win'])
+    cal = mm.MarginStackCalibrator().fit(ml.predict_proba(df[['x']])[:, 1], sp.predict(df[['x']], line=df['odds_home_spread']), 12.0, df['target_home_win'])
+    bundle = mr.ModelBundle(suffix='_t', ml=ml, calibrator=cal, spread=sp, total=tt,
+                            features={'ml': ['x'], 'spread': ['x'], 'total': ['x']}, calib_meta={'spread_std': 12.0, 'total_std': 18.0})
+    out = mm.predict_markets(bundle, df)
+    assert np.allclose(out['total_pred'], df['odds_total'] + tt.predict_residual(df[['x']]))
+    assert mm.predict_markets(bundle, df.assign(odds_total=np.nan))['total_pred'].isna().all()

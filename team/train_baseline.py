@@ -22,8 +22,10 @@ from pathlib import Path
 from flaml import AutoML, tune
 from datetime import date
 
-from team.model_registry import DEPLOYED_SUFFIX
-from team.market_models import (MarginStackCalibrator, ResidualSpreadModel, SPREAD_LINE_COL, fit_hetero_sigma)
+from team.data_checks import missingness_era_report
+from team.model_registry import DEPLOYED_SUFFIX, assert_suffix_free, manifest_path, write_manifest
+from team.market_models import (MarginStackCalibrator, ResidualSpreadModel, ResidualTotalModel, SPREAD_LINE_COL, TOTAL_LINE_COL,
+                                fit_hetero_sigma, crossfit_brier)
 
 # Fixed LightGBM settings used when no hyperparameter search is run. They were NOT chosen by looking
 # at any test season, which is what makes them safe for a walk-forward backtest.
@@ -34,6 +36,38 @@ NEUTRAL_PARAMS = dict(n_estimators=1000, learning_rate=0.01, max_depth=6,
 # selection must therefore also stop at that boundary, otherwise the validation block has already
 # shaped the feature set the tuner is scored on.
 FLAML_TRAIN_FRAC = 0.8
+
+# Market-aware models are fit on the gap from the opening line (ResidualSpreadModel / ResidualTotalModel.make_target), so
+# feature selection must rank features by what they explain of THAT target, not of the raw margin / total.
+SPREAD_GAP_COL = 'target_spread_gap'
+TOTAL_GAP_COL = 'target_total_gap'
+
+# Final models: the calibrators / sigma are fitted on the LAST `CALIB_HOLDOUT_DAYS` days of history, not on the last 20% of rows. A
+# row-count split of a 13-season history put the base-model cut 2.7 seasons before the end of the data. Because the base models are
+# refit on all games afterwards, the length of this block does not make them stale; it only sets how much (and how recent) data the
+# calibrators see. One year, not half a season: on two held-out windows (last 120 and last 250 days of the data) a 183-day block
+# gave the worst calibrated ML log loss (0.5361 vs raw 0.5257 on the last 120 days: the stack hurt), 365 and 548 days both fixed it
+# (0.5269 / 0.5238) and 365 was never worse than 183 (reports/audit_fixes/TEAM_AUDIT_2.md section 3b).
+CALIB_HOLDOUT_DAYS = 365
+MIN_HOLDOUT_ROWS = 300
+
+
+def split_model_train_calibration(df, calib_holdout_days=CALIB_HOLDOUT_DAYS, calib_holdout_frac=0.2):
+    """
+    (model_train, calibration) for a frame sorted by gameDate. With `calib_holdout_days` the calibration block is every game in
+    the last N days before the final game date (the cut falls between dates, so one night's games are never on both sides);
+    with calib_holdout_days=None it is the last `calib_holdout_frac` of the rows (the pre-audit behaviour).
+    """
+    if calib_holdout_days is None:
+        n = int(len(df) * (1 - calib_holdout_frac))
+        return df.iloc[:n], df.iloc[n:]
+    cut = df['gameDate'].max() - pd.Timedelta(days=calib_holdout_days)
+    model_train, calib = df[df['gameDate'] <= cut], df[df['gameDate'] > cut]
+    if len(calib) < MIN_HOLDOUT_ROWS or len(model_train) < 2 * MIN_HOLDOUT_ROWS:
+        raise ValueError(f"A {calib_holdout_days}-day calibration holdout leaves {len(calib)} calibration and {len(model_train)} "
+                         f"model-train rows (need >= {MIN_HOLDOUT_ROWS} and >= {2 * MIN_HOLDOUT_ROWS}); pass a different holdout")
+    return model_train, calib
+
 
 FLAML_CUSTOM_HP = {
     "lgbm": {
@@ -377,9 +411,9 @@ class BaselineModel:
 
     def _get_pool_for_target(self, target: str) -> list:
         """Return the correct feature pool for a given target."""
-        if target in ('target_home_win', 'target_point_diff'):
+        if target in ('target_home_win', 'target_point_diff', SPREAD_GAP_COL):
             return self.features_diff   # Differences for ML / Spread
-        elif target == 'target_total_pts':
+        elif target in ('target_total_pts', TOTAL_GAP_COL):
             return self.features_sep    # Separate home/away for Totals
         else:
             return self.features        # Fallback: full union
@@ -1262,15 +1296,44 @@ class BaselineModel:
         logging.info("Saved error_distribution.png")
 
 
+    def _tune_params(self, X, y, task, time_budget, tuner):
+        """Hyperparameters for one model: FLAML on the first FLAML_TRAIN_FRAC of the rows (validated on the rest), or the fixed grid."""
+        if tuner == 'grid':
+            from team.tuning import pick_config
+            return pick_config('clf' if task == 'classification' else 'reg', X, y, int(len(X) * FLAML_TRAIN_FRAC))[0]
+        if tuner != 'flaml':
+            raise ValueError(f"tuner must be 'flaml' or 'grid', got {tuner!r}")
+        return self._tune_fold_params(X, y, task, time_budget)
+
+    def _sigma_fit_args(self, rows, total_residual):
+        """(frame, features, target column) for fit_hetero_sigma: the target is the total, or its gap from the opening total."""
+        if total_residual:
+            return rows.assign(**{TOTAL_GAP_COL: ResidualTotalModel.make_target(rows)}), self.features_total, TOTAL_GAP_COL
+        return rows, self.features_total, 'target_total_pts'
+
     def train_and_save_all(self, use_odds=False, save_suffix='', calib_holdout_frac=0.2, time_budget=600,
-                           market_aware=None):
+                           market_aware=None, calib_holdout_days=CALIB_HOLDOUT_DAYS, refit_on_all=True, total_target='level', overwrite=False, train_from_season=None, tuner='flaml'):
         """
         Train final models on ALL available data and save them, including calibrators.
 
-        Split: [model_train (80%)] [calibration (20%)]
-        - Models trained on model_train
-        - Calibrators fitted on calibration set
-        - Both saved for production use
+        Split: [model_train] [calibration = the last `calib_holdout_days` days (default one year)]
+        (calib_holdout_days=None: the last `calib_holdout_frac` of the rows, the pre-audit behaviour)
+        - Hyperparameters / feature selection / calibrators come from the split above
+        - refit_on_all: after the calibrators are fitted, the base models are refit on model_train + calibration
+          with the same hyperparameters and features, so the saved models have seen everything up to the last game.
+          (Calibrators were fitted on the held-out predictions of the earlier fit; the refit model is slightly
+          stronger, which makes them very slightly conservative, not leaky.)
+        - tuner: 'flaml' (default, the deployed behaviour: FLAML search for `time_budget` seconds per model, so the result depends on
+          machine speed) or 'grid' (team/tuning.py: the fixed 8-config grid the walk-forward backtests validated; seconds, deterministic).
+        - train_from_season: drop earlier seasons (e.g. '2019-20', the first with moneylines and injury reports) before the split.
+          Default None keeps all history; features that are empty for the old seasons are reported either way (calibration_meta
+          'era_marking_features') because a tree can learn "missing = old era".
+        - overwrite: a suffix that already holds a model set is refused (FileExistsError) unless overwrite=True, so a log written
+          by earlier files can always be tied to the files still on disk. Every set gets a model_manifest<suffix>.json with the
+          hash of its files and of the training CSV (team/model_registry.py).
+        - total_target: 'level' (default) fits the total itself; 'residual' fits the gap from the opening total
+          (ResidualTotalModel). 'residual' is OPT-IN: experiment E1 and the audit follow-up measured it 0.27-0.3 points WORSE
+          in total MAE than 'level' (reports/audit_fixes/REPORT.md), so it is not the default.
 
         market_aware (default: use_odds) adopts experiments E1/E3/E4 (team/market_models.py), which need the
         opening lines as inputs: the spread model learns the residual against the opening spread, the ML probability
@@ -1280,24 +1343,49 @@ class BaselineModel:
         market_aware = use_odds if market_aware is None else market_aware
         if market_aware and not use_odds:
             raise ValueError("market_aware models need the opening lines: use_odds=True")
+        if tuner not in ('flaml', 'grid'):
+            raise ValueError(f"tuner must be 'flaml' or 'grid', got {tuner!r}")
+        if total_target not in ('level', 'residual'):
+            raise ValueError(f"total_target must be 'level' or 'residual', got {total_target!r}")
+        total_residual = market_aware and total_target == 'residual'
+        if overwrite:
+            manifest_path(save_suffix, self.model_dir).unlink(missing_ok=True)      # the old record would describe files about to be replaced
+        else:
+            assert_suffix_free(save_suffix, self.model_dir)
         self.load_data(use_odds=use_odds)
         
         # Sort by date for proper temporal split
         self.df = self.df.sort_values('gameDate').reset_index(drop=True)
+        if train_from_season is not None:
+            self.df = self.df[self.df['seasonYear'] >= train_from_season].reset_index(drop=True)
+            logging.info(f"Training from {train_from_season}: {len(self.df)} games")
         
-        n_model_train = int(len(self.df) * (1 - calib_holdout_frac))
-        model_train_df = self.df.iloc[:n_model_train]
-        calib_df = self.df.iloc[n_model_train:]
-        
-        logging.info(f"Final training split: model_train={len(model_train_df)}, calib={len(calib_df)}")
+        model_train_df, calib_df = split_model_train_calibration(self.df, calib_holdout_days, calib_holdout_frac)
+        logging.info(f"Final training split: model_train={len(model_train_df)} (to {model_train_df['gameDate'].max():%Y-%m-%d}), "
+                     f"calib={len(calib_df)} ({calib_df['gameDate'].min():%Y-%m-%d}..{calib_df['gameDate'].max():%Y-%m-%d})")
         
         # Select features from model_train only (no leakage)
         # (FLAML validates on the last 20% of model_train, so selection stops before that block)
         sel_df = self.selection_rows(model_train_df, tuning=True)
         self.features_ml = self._select_features_from_subset(sel_df, 'target_home_win')
-        self.features_spread = self._select_features_from_subset(sel_df, 'target_point_diff')
-        self.features_total = self._select_features_from_subset(sel_df, 'target_total_pts')
+        if market_aware:
+            # the spread model learns the gap from the opening line: select on the gap (rows without a line have none)
+            sp = sel_df.assign(**{SPREAD_GAP_COL: ResidualSpreadModel.make_target(sel_df)}).dropna(subset=[SPREAD_GAP_COL])
+            self.features_spread = self._select_features_from_subset(sp, SPREAD_GAP_COL)
+            if total_residual:
+                tt = sel_df.assign(**{TOTAL_GAP_COL: ResidualTotalModel.make_target(sel_df)}).dropna(subset=[TOTAL_GAP_COL])
+                self.features_total = self._select_features_from_subset(tt, TOTAL_GAP_COL)
+            else:
+                self.features_total = self._select_features_from_subset(sel_df, 'target_total_pts')
+        else:
+            self.features_spread = self._select_features_from_subset(sel_df, 'target_point_diff')
+            self.features_total = self._select_features_from_subset(sel_df, 'target_total_pts')
         
+        era_marks = missingness_era_report(self.df, sorted(set(self.features_ml) | set(self.features_spread) | set(self.features_total)))
+        if len(era_marks):
+            logging.warning("Selected features whose missingness marks the era (trees can learn 'missing = old season'):\n"
+                            + era_marks.to_string(index=False))
+
         # Save feature config
         feature_config = {
             'ml': self.features_ml,
@@ -1308,7 +1396,7 @@ class BaselineModel:
             json.dump(feature_config, f)
         logging.info(f"Saved feature config with {len(self.features_ml)}/{len(self.features_spread)}/{len(self.features_total)} features")
 
-        calibration_meta = {}
+        calibration_meta = {'era_marking_features': era_marks['feature'].tolist()}
 
         custom_hp = FLAML_CUSTOM_HP
 
@@ -1319,39 +1407,30 @@ class BaselineModel:
         y_calib_ml = calib_df['target_home_win']
         
         # Temporal split for FLAML validation (within model_train)
-        n_flaml_train = int(len(X_model_train_ml) * FLAML_TRAIN_FRAC)
-        
-        logging.info("Training FLAML AutoML for Moneyline...")
-        automl_ml = AutoML()
-        automl_ml.fit(
-            X_model_train_ml.iloc[:n_flaml_train], y_model_train_ml.iloc[:n_flaml_train],
-            task="classification",
-            time_budget=time_budget,
-            metric='log_loss',
-            estimator_list=['lgbm'],
-            custom_hp=custom_hp,
-            X_val=X_model_train_ml.iloc[n_flaml_train:],
-            y_val=y_model_train_ml.iloc[n_flaml_train:],
-            verbose=0
-        )
-        logging.info(f"Best ML Config: {automl_ml.best_config}")
+        logging.info(f"Tuning the moneyline model ({tuner})...")
+        best_ml_cfg = self._tune_params(X_model_train_ml, y_model_train_ml, 'classification', time_budget, tuner)
+        logging.info(f"Best ML Config ({tuner}): {best_ml_cfg}")
         
         # Refit on full model_train with best params
-        best_ml_params = automl_ml.best_config.copy()
+        best_ml_params = best_ml_cfg.copy()
         final_ml = lgb.LGBMClassifier(**best_ml_params, verbosity=-1, random_state=42)
         final_ml.fit(X_model_train_ml, y_model_train_ml)
         
         calib_probs_ml = final_ml.predict_proba(X_calib_ml)[:, 1]
         brier_raw = brier_score_loss(y_calib_ml, calib_probs_ml)
         calibration_meta['ml_brier_raw'] = float(brier_raw)
-        self.save_model(final_ml, f'model_ml{save_suffix}.pkl')
         if not market_aware:
             # Isotonic calibrator on the calibration set
             iso_ml = IsotonicRegression(out_of_bounds='clip')
             iso_ml.fit(calib_probs_ml, y_calib_ml)
             brier_cal = brier_score_loss(y_calib_ml, np.clip(iso_ml.predict(calib_probs_ml), 1e-15, 1 - 1e-15))
-            logging.info(f"ML Calibration - Brier raw: {brier_raw:.4f}, calibrated: {brier_cal:.4f}")
-            calibration_meta['ml_brier_calibrated'] = float(brier_cal)
+            # the isotonic map was fitted on this block, so brier_cal is optimistic: report the cross-fitted score as well
+            y_cal = np.asarray(y_calib_ml, float)
+            oos, rows = crossfit_brier(lambda tr, te: IsotonicRegression(out_of_bounds='clip').fit(calib_probs_ml[tr], y_cal[tr]).predict(calib_probs_ml[te]), y_cal)
+            calibration_meta['ml_brier_calibrated_in_sample'] = float(brier_cal)
+            calibration_meta['ml_brier_calibrated'] = oos
+            calibration_meta['ml_brier_raw_crossfit_rows'] = float(np.mean((calib_probs_ml[rows] - y_cal[rows]) ** 2))
+            logging.info(f"ML Calibration - Brier raw: {brier_raw:.4f}, calibrated in-sample {brier_cal:.4f}, cross-fitted {oos:.4f}")
             self.save_model(iso_ml, f'calibrator_ml{save_suffix}.pkl')
         # (market aware: the stack calibrator needs the spread margin, so it is fitted after the spread model below)
         
@@ -1369,24 +1448,11 @@ class BaselineModel:
         X_calib_spread = calib_df[self.features_spread]
         y_calib_spread = calib_df['target_point_diff']
         
-        n_flaml_train = int(len(X_model_train_spread) * FLAML_TRAIN_FRAC)
+        logging.info(f"Tuning the spread model ({tuner})...")
+        best_spread_cfg = self._tune_params(X_model_train_spread, y_model_train_spread, 'regression', time_budget, tuner)
+        logging.info(f"Best Spread Config ({tuner}): {best_spread_cfg}")
         
-        logging.info("Training FLAML AutoML for Spread...")
-        automl_spread = AutoML()
-        automl_spread.fit(
-            X_model_train_spread.iloc[:n_flaml_train], y_model_train_spread.iloc[:n_flaml_train],
-            task="regression",
-            time_budget=time_budget,
-            metric='mse',
-            estimator_list=['lgbm'],
-            custom_hp=custom_hp,
-            X_val=X_model_train_spread.iloc[n_flaml_train:],
-            y_val=y_model_train_spread.iloc[n_flaml_train:],
-            verbose=0
-        )
-        logging.info(f"Best Spread Config: {automl_spread.best_config}")
-        
-        best_spread_params = automl_spread.best_config.copy()
+        best_spread_params = best_spread_cfg.copy()
         final_spread = lgb.LGBMRegressor(**best_spread_params, verbosity=-1, random_state=42)
         final_spread.fit(X_model_train_spread, y_model_train_spread)
         if market_aware:
@@ -1410,15 +1476,20 @@ class BaselineModel:
         calibration_meta['spread_mae'] = spread_mae
         calibration_meta['spread_target'] = 'market_residual' if market_aware else 'margin'
 
-        self.save_model(final_spread, f'model_spread{save_suffix}.pkl')
-
         if market_aware:
             # E3: logistic stack of [logit(raw ML prob), spread margin / sigma] on the calibration block
             stack = MarginStackCalibrator().fit(calib_probs_ml, calib_spread_pred, spread_std, y_calib_ml)
             p_cal = np.clip(stack.predict(calib_probs_ml, margin=calib_spread_pred), 1e-15, 1 - 1e-15)
             brier_cal = brier_score_loss(y_calib_ml, p_cal)
-            logging.info(f"ML Calibration (margin stack) - Brier raw: {brier_raw:.4f}, calibrated: {brier_cal:.4f}")
-            calibration_meta['ml_brier_calibrated'] = float(brier_cal)
+            # the stack was fitted on this block, so brier_cal is optimistic: report the cross-fitted score as the headline
+            y_cal = np.asarray(y_calib_ml, float)
+            oos, rows = crossfit_brier(
+                lambda tr, te: MarginStackCalibrator().fit(calib_probs_ml[tr], calib_spread_pred[tr], spread_std, y_cal[tr])
+                .predict(calib_probs_ml[te], margin=calib_spread_pred[te]), y_cal)
+            calibration_meta['ml_brier_calibrated_in_sample'] = float(brier_cal)
+            calibration_meta['ml_brier_calibrated'] = oos
+            calibration_meta['ml_brier_raw_crossfit_rows'] = float(np.mean((calib_probs_ml[rows] - y_cal[rows]) ** 2))
+            logging.info(f"ML Calibration (margin stack) - Brier raw: {brier_raw:.4f}, calibrated in-sample {brier_cal:.4f}, cross-fitted {oos:.4f}")
             calibration_meta['ml_calibrator'] = 'margin_stack'
             self.save_model(stack, f'calibrator_ml{save_suffix}.pkl')
         
@@ -1426,35 +1497,32 @@ class BaselineModel:
             json.dump(best_spread_params, f)
 
         # ===== TOTAL =====
-        X_model_train_total = model_train_df[self.features_total]
-        y_model_train_total = model_train_df['target_total_pts']
+        total_train_rows = model_train_df
+        if total_residual:
+            total_train_rows = model_train_df[model_train_df[TOTAL_LINE_COL].notna()]
+        X_model_train_total = total_train_rows[self.features_total]
+        y_model_train_total = (ResidualTotalModel.make_target(total_train_rows) if total_residual
+                               else total_train_rows['target_total_pts'])
         X_calib_total = calib_df[self.features_total]
         y_calib_total = calib_df['target_total_pts']
         
-        n_flaml_train = int(len(X_model_train_total) * FLAML_TRAIN_FRAC)
+        logging.info(f"Tuning the total model ({tuner})...")
+        best_total_cfg = self._tune_params(X_model_train_total, y_model_train_total, 'regression', time_budget, tuner)
+        logging.info(f"Best Total Config ({tuner}): {best_total_cfg}")
         
-        logging.info("Training FLAML AutoML for Total...")
-        automl_total = AutoML()
-        automl_total.fit(
-            X_model_train_total.iloc[:n_flaml_train], y_model_train_total.iloc[:n_flaml_train],
-            task="regression",
-            time_budget=time_budget,
-            metric='mse',
-            estimator_list=['lgbm'],
-            custom_hp=custom_hp,
-            X_val=X_model_train_total.iloc[n_flaml_train:],
-            y_val=y_model_train_total.iloc[n_flaml_train:],
-            verbose=0
-        )
-        logging.info(f"Best Total Config: {automl_total.best_config}")
-        
-        best_total_params = automl_total.best_config.copy()
+        best_total_params = best_total_cfg.copy()
         final_total = lgb.LGBMRegressor(**best_total_params, verbosity=-1, random_state=42)
         final_total.fit(X_model_train_total, y_model_train_total)
-        
+        if total_residual:
+            final_total = ResidualTotalModel(final_total)
+
         # Compute error distribution on calibration set
-        calib_total_pred = final_total.predict(X_calib_total)
-        total_errors = y_calib_total.values - calib_total_pred
+        if total_residual:
+            calib_total_pred = final_total.predict(X_calib_total, line=calib_df[TOTAL_LINE_COL].to_numpy(float))
+        else:
+            calib_total_pred = final_total.predict(X_calib_total)
+        has_total_line = np.isfinite(calib_total_pred)
+        total_errors = (y_calib_total.values - calib_total_pred)[has_total_line]
         total_std = float(total_errors.std())
         total_bias = float(total_errors.mean())
         total_mae = float(np.abs(total_errors).mean())
@@ -1464,22 +1532,50 @@ class BaselineModel:
         calibration_meta['total_std'] = total_std
         calibration_meta['total_bias'] = total_bias
         calibration_meta['total_mae'] = total_mae
+        calibration_meta['total_target'] = 'market_residual' if total_residual else 'total'
 
-        self.save_model(final_total, f'model_total{save_suffix}.pkl')
 
         if market_aware:
             # E4: per-game sigma for the total's cover probability, from out-of-fold errors inside model_train
-            sigma_total = fit_hetero_sigma(model_train_df, self.features_total, 'target_total_pts',
-                                           best_total_params, fallback_std=total_std)
+            # the sigma model learns the error of the total model above (an error is the same quantity for a level or a gap target)
+            sigma_total = fit_hetero_sigma(*self._sigma_fit_args(total_train_rows, total_residual), best_total_params, fallback_std=total_std)
             sig_calib = sigma_total.predict(calib_df)
             logging.info(f"Total per-game sigma on the calibration block: mean {sig_calib.mean():.2f} "
                          f"(global std {total_std:.2f}), range [{sig_calib.min():.2f}, {sig_calib.max():.2f}]")
             calibration_meta['total_sigma_model'] = True
             calibration_meta['total_sigma_mean_calib'] = float(sig_calib.mean())
-            self.save_model(sigma_total, f'sigma_total{save_suffix}.pkl')
         
         with open(self.model_dir / f'best_config_total{save_suffix}.json', 'w') as f:
             json.dump(best_total_params, f)
+
+        # ===== REFIT THE BASE MODELS ON EVERYTHING, THEN SAVE THEM =====
+        all_df = self.df
+        if refit_on_all:
+            logging.info(f"Refitting the base models on all {len(all_df)} games (to {all_df['gameDate'].max():%Y-%m-%d}) "
+                         "with the hyperparameters and features chosen above")
+            final_ml = lgb.LGBMClassifier(**best_ml_params, verbosity=-1, random_state=42).fit(
+                all_df[self.features_ml], all_df['target_home_win'])
+            sp_rows = all_df[all_df[SPREAD_LINE_COL].notna()] if market_aware else all_df
+            final_spread = lgb.LGBMRegressor(**best_spread_params, verbosity=-1, random_state=42).fit(
+                sp_rows[self.features_spread], ResidualSpreadModel.make_target(sp_rows) if market_aware else sp_rows['target_point_diff'])
+            if market_aware:
+                final_spread = ResidualSpreadModel(final_spread)
+            tt_rows = all_df[all_df[TOTAL_LINE_COL].notna()] if total_residual else all_df
+            final_total = lgb.LGBMRegressor(**best_total_params, verbosity=-1, random_state=42).fit(
+                tt_rows[self.features_total], ResidualTotalModel.make_target(tt_rows) if total_residual else tt_rows['target_total_pts'])
+            if total_residual:
+                final_total = ResidualTotalModel(final_total)
+            if market_aware:
+                sigma_total = fit_hetero_sigma(*self._sigma_fit_args(tt_rows, total_residual), best_total_params, fallback_std=total_std)
+        self.save_model(final_ml, f'model_ml{save_suffix}.pkl')
+        self.save_model(final_spread, f'model_spread{save_suffix}.pkl')
+        self.save_model(final_total, f'model_total{save_suffix}.pkl')
+        if market_aware:
+            self.save_model(sigma_total, f'sigma_total{save_suffix}.pkl')
+        calibration_meta['refit_on_all'] = bool(refit_on_all)
+        calibration_meta['model_train_end'] = str(model_train_df['gameDate'].max())
+        calibration_meta['trained_through'] = str(all_df['gameDate'].max() if refit_on_all else model_train_df['gameDate'].max())
+        calibration_meta['calib_holdout'] = f'last {calib_holdout_days} days' if calib_holdout_days is not None else f'last {calib_holdout_frac:.0%} of rows'
 
         # ===== SAVE CALIBRATION METADATA =====
         calibration_meta['calib_set_size'] = len(calib_df)
@@ -1492,6 +1588,10 @@ class BaselineModel:
             json.dump(calibration_meta, f, indent=2)
         
         logging.info(f"Saved calibration metadata to calibration_meta{save_suffix}.json")
+        manifest = write_manifest(save_suffix, self.model_dir, training_set=self.data_path,
+                                  extra={'trained_through': calibration_meta['trained_through'], 'calib_holdout': calibration_meta['calib_holdout'],
+                                         'refit_on_all': bool(refit_on_all), 'total_target': calibration_meta['total_target'], 'rows': int(len(all_df))})
+        logging.info(f"Model set {save_suffix}: files {manifest['model_set_hash'][:12]}, training set {str(manifest['training_set_hash'])[:12]}")
         
         # Print summary
         print("\n" + "="*60)
@@ -1514,6 +1614,8 @@ def main():
                              f'"{DEPLOYED_SUFFIX}", the set scripts/run_inference_v2.py loads')
     parser.add_argument('--no-research-model', action='store_true', help='skip the dated no-odds research model')
     parser.add_argument('--time-budget', type=int, default=600, help='FLAML seconds per model when training final models')
+    parser.add_argument('--overwrite', action='store_true',
+                        help='replace an existing model set with the same suffix (refused by default, e.g. the deployed set)')
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO)
 
@@ -1537,14 +1639,15 @@ def main():
         print("\n" + "="*80)
         print("TRAINING FINAL MODELS (NO ODDS)")
         print("="*80)
-        model.train_and_save_all(use_odds=False, save_suffix=f'_no_odds_{today}', time_budget=args.time_budget)
+        model.train_and_save_all(use_odds=False, save_suffix=f'_no_odds_{today}', time_budget=args.time_budget,
+                                 overwrite=args.overwrite)
 
     if args.deploy:
         print("\n" + "="*80)
         print(f"TRAINING DEPLOYED MODEL SET ({DEPLOYED_SUFFIX}, WITH opening odds)")
         print("="*80)
         BaselineModel(data_path).train_and_save_all(use_odds=True, save_suffix=DEPLOYED_SUFFIX,
-                                                    time_budget=args.time_budget)
+                                                    time_budget=args.time_budget, overwrite=args.overwrite)
 
 
 if __name__ == "__main__":

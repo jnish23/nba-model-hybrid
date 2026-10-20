@@ -14,13 +14,18 @@ PRIMARY = {  # column in game_losses -> (label, lower is better)
     'ae_spread': 'Spread MAE', 'se_spread': 'Spread MSE', 'ae_total': 'Total MAE', 'se_total': 'Total MSE'}
 
 
-def evaluate(name, test=None, save=True):
-    """Pooled and per-season primary metrics, reliability table, bets (5% edge rule) with CIs, CLV."""
+def evaluate(name, test=None, save=True, entry=None):
+    """Pooled and per-season primary metrics, reliability table, bets (5% edge rule) with CIs, CLV.
+
+    ROI and CLV are priced at the opening line unless `entry` (core.odds_clean.load_entry_odds) is given; see metrics.OPEN_BASIS_CAVEAT."""
     if test is None:
         test, _ = load_run(name)
     res = {'pooled': M.core_metrics(test), 'per_season': M.per_season(test).round(5).to_dict('index')}
     res['reliability'] = M.reliability(test['target_home_win'], test['ml_prob']).round(4).to_dict('records')
-    bets = M.make_bets(test, thr=0.05)
+    bets = M.make_bets(test, thr=0.05, entry=entry)
+    res['entry_basis'] = bets.attrs.get('entry_basis')
+    if res['entry_basis'] == 'open':
+        res['entry_basis_caveat'] = M.OPEN_BASIS_CAVEAT
     res['bets_5pct'] = {mk: M.bet_metrics(bets[bets['market'] == mk]) for mk in ('ml', 'spread', 'total')}
     clv = M.clv_points(bets)
     res['clv_points'] = {mk: {'n': int(len(clv[bets.loc[clv.index, 'market'] == mk])),

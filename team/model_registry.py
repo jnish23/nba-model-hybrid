@@ -10,9 +10,12 @@ A "model set" is the files that share a suffix in models/saved/:
 Loading refuses a set whose feature_config does not match the features stored inside each pickle,
 so a model can never be scored with another model's feature list.
 """
+import datetime as dt
+import hashlib
 import importlib
 import json
 import logging
+import subprocess
 import sys
 import types
 from dataclasses import dataclass, field
@@ -52,6 +55,82 @@ class ModelConfigMismatch(RuntimeError):
     pass
 
 
+class ModelSetHashMismatch(RuntimeError):
+    """The files of a model set no longer match the manifest written when it was trained (overwritten or edited in place)."""
+
+
+# Files whose bytes define a model set. best_config_* are the tuner's output (already reflected in the models) and the manifest is
+# the record of the hash itself, so neither is hashed.
+HASHED_STEMS = [('model_ml', 'pkl'), ('calibrator_ml', 'pkl'), ('model_spread', 'pkl'), ('model_total', 'pkl'),
+                ('sigma_total', 'pkl'), ('feature_config', 'json'), ('calibration_meta', 'json')]
+REQUIRED_STEMS = HASHED_STEMS[:4] + HASHED_STEMS[5:]      # sigma_total is optional
+
+
+def model_set_paths(suffix, model_dir=MODEL_DIR):
+    return [Path(model_dir) / f'{stem}{suffix}.{ext}' for stem, ext in HASHED_STEMS]
+
+
+def file_sha256(path, chunk=1 << 20):
+    h = hashlib.sha256()
+    with open(path, 'rb') as f:
+        while block := f.read(chunk):
+            h.update(block)
+    return h.hexdigest()
+
+
+def model_set_hash(suffix, model_dir=MODEL_DIR):
+    """sha256 over the (file name, content hash) pairs of the model set's files that exist. Changes if any file is rewritten."""
+    h = hashlib.sha256()
+    for p in model_set_paths(suffix, model_dir):
+        if p.exists():
+            h.update(p.name.encode())
+            h.update(file_sha256(p).encode())
+    return h.hexdigest()
+
+
+def manifest_path(suffix, model_dir=MODEL_DIR):
+    return Path(model_dir) / f'model_manifest{suffix}.json'
+
+
+def assert_suffix_free(suffix, model_dir=MODEL_DIR):
+    """Refuse to train into a suffix that already holds a model set: a log written by the old files could no longer be tied to them."""
+    existing = [p.name for p in model_set_paths(suffix, model_dir) + [manifest_path(suffix, model_dir)] if p.exists()]
+    if existing:
+        raise FileExistsError(
+            f"Model set '{suffix}' already exists in {model_dir} ({len(existing)} files, e.g. {existing[0]}). Train under a new suffix, "
+            "or pass overwrite=True / --overwrite to replace it deliberately (anything logged with the old files will no longer match).")
+
+
+def _git_commit():
+    try:
+        out = subprocess.run(['git', 'rev-parse', 'HEAD'], capture_output=True, text=True, timeout=10,
+                             cwd=Path(__file__).resolve().parent)
+        return out.stdout.strip() or None
+    except Exception:
+        return None
+
+
+def write_manifest(suffix, model_dir=MODEL_DIR, training_set=None, extra=None):
+    """Record what a model set was trained from: the hash of its files and of the training set CSV. Returns the manifest dict."""
+    manifest = {
+        'suffix': suffix,
+        'created_at': dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'model_set_hash': model_set_hash(suffix, model_dir),
+        'files': {p.name: file_sha256(p) for p in model_set_paths(suffix, model_dir) if p.exists()},
+        'training_set': Path(training_set).name if training_set else None,
+        'training_set_hash': file_sha256(training_set) if training_set else None,
+        'git_commit': _git_commit(),
+        **(extra or {}),
+    }
+    manifest_path(suffix, model_dir).write_text(json.dumps(manifest, indent=2))
+    return manifest
+
+
+def read_manifest(suffix, model_dir=MODEL_DIR):
+    p = manifest_path(suffix, model_dir)
+    return json.loads(p.read_text()) if p.exists() else None
+
+
 def model_feature_names(model):
     """Ordered feature names stored in a fitted LightGBM sklearn model (None if it has none)."""
     if hasattr(model, 'feature_name_') and model.feature_name_:
@@ -89,6 +168,8 @@ class ModelBundle:
     features: dict
     calib_meta: dict = field(default_factory=dict)
     sigma_total: object = None          # models/market_models.HeteroSigma; None for sets trained before E4 (global std)
+    model_set_hash: str = None          # sha256 of the set's files (computed on load)
+    training_set_hash: str = None       # sha256 of the training CSV, from the manifest (None for sets trained before manifests existed)
 
 
 def load_bundle(suffix=DEPLOYED_SUFFIX, model_dir=MODEL_DIR):
@@ -122,5 +203,13 @@ def load_bundle(suffix=DEPLOYED_SUFFIX, model_dir=MODEL_DIR):
         raise FileNotFoundError(f"Model set '{suffix}' says it uses a per-game total sigma but {sigma_path.name} is missing")
     for target in TARGETS:
         assert_config_matches_model(target, getattr(bundle, target), features[target])
+    bundle.model_set_hash = model_set_hash(suffix, model_dir)
+    manifest = read_manifest(suffix, model_dir)
+    if manifest is not None:
+        if manifest['model_set_hash'] != bundle.model_set_hash:
+            raise ModelSetHashMismatch(
+                f"Model set '{suffix}' was changed after it was trained: files hash to {bundle.model_set_hash[:12]} but the manifest "
+                f"recorded {manifest['model_set_hash'][:12]} ({manifest['created_at']}). Do not reuse a suffix for a new model set.")
+        bundle.training_set_hash = manifest.get('training_set_hash')
     logging.info(f"Loaded model set '{suffix}' ({', '.join(f'{t}: {len(features[t])} features' for t in TARGETS)})")
     return bundle

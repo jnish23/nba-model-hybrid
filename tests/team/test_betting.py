@@ -151,3 +151,56 @@ def test_betting_module_does_not_need_scipy():
             "assert 'scipy' not in sys.modules\n")
     r = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True, cwd=str(__import__('pathlib').Path(__file__).resolve().parents[2]))
     assert r.returncode == 0, r.stderr
+
+
+# ------------------------------------------------------------------ pushes and the bet's own price
+
+def test_whole_number_line_probability_is_the_win_share_among_bets_that_settle():
+    # half-point line: unchanged
+    assert b.cover_probability(2.0, 13.0, line=-3.5) == pytest.approx(b.cover_probability(2.0, 13.0))
+    # whole-number line: win = Phi((e-.5)/s), loss = Phi((-e-.5)/s), compared as win / (win + loss)
+    w, l = b._NORM.cdf(1.5 / 13), b._NORM.cdf(-2.5 / 13)
+    assert b.cover_probability(2.0, 13.0, line=-3.0) == pytest.approx(w / (w + l))
+    # a push-free zero edge is a coin flip either way
+    assert b.cover_probability(0.0, 13.0, line=-3.0) == pytest.approx(0.5)
+    # it is the break-even-consistent number: positive EV at -110 exactly when it exceeds 110/210
+    e, sd = 3.0, 13.0
+    win, loss = b._NORM.cdf((e - 0.5) / sd), b._NORM.cdf((-e - 0.5) / sd)
+    ev = win * 100 / 110 - loss
+    assert (ev > 0) == (b.cover_probability(e, sd, line=-3.0) > b.calculate_implied_prob(-110))
+    assert ev == pytest.approx((win + loss) * (b.cover_probability(e, sd, line=-3.0) * 100 / 110 - (1 - b.cover_probability(e, sd, line=-3.0))))
+
+
+def test_vectorized_cover_probabilities_match_the_scalar_rule():
+    e = np.array([0.5, 2.0, 5.0, 8.0])
+    lines = np.array([-3.5, -3.0, 221.0, 221.5])
+    got = b.cover_probabilities(e, 13.0, lines)
+    assert got == pytest.approx([b.cover_probability(x, 13.0, line=ln) for x, ln in zip(e, lines)])
+    assert b.cover_probabilities(e, 13.0) == pytest.approx([b.cover_probability(x, 13.0) for x in e])
+    assert np.isfinite(b.cover_probabilities([1.0], 13.0, [np.nan])).all()            # a missing line falls back to the half-point rule
+
+
+def test_pushes_make_a_whole_line_bet_slightly_better_than_the_half_point_formula_says():
+    """Win share among settled bets is higher than Phi(edge/std) (the old rule counted a push as half a win), so the old rule
+    rejected a few whole-number-line bets that clear 5%."""
+    just_under = b.points_threshold(13.4) - 0.03
+    assert b.get_spread_bet(just_under + 3.5, -3.5, 13.4)[0] is None        # half-point line: below the threshold
+    assert b.get_spread_bet(just_under + 3.0, -3.0, 13.4)[0] == 'home'      # whole-number line: pushes refund, edge clears 5%
+
+
+def test_spread_and_total_bets_use_the_sides_own_price():
+    edge_standard = b.get_spread_bet(7.5, -3.5, 13.4)[1]          # 4 points of edge at -110
+    edge_120 = b.get_spread_bet(7.5, -3.5, 13.4, home_price=-120)[1]
+    assert edge_standard - edge_120 == pytest.approx(b.calculate_implied_prob(-120) - b.calculate_implied_prob(-110))
+    # the other side's price is irrelevant to a home bet
+    assert b.get_spread_bet(7.5, -3.5, 13.4, away_price=-130)[1] == pytest.approx(edge_standard)
+    # an away bet is priced with the away price
+    assert b.get_spread_bet(-1.5, -3.5, 13.4, away_price=-125)[1] == pytest.approx(
+        b.cover_probability(5.0, 13.4, line=-3.5) - b.calculate_implied_prob(-125))
+    # a 5% edge at -110 can vanish at -120 (the audit's 1-2 points of edge)
+    pts = b.points_threshold(18.2) + 0.1
+    assert b.get_total_bet(220.5 + pts, 220.5, 18.2)[0] == 'over'
+    assert b.get_total_bet(220.5 + pts, 220.5, 18.2, over_price=-120)[0] is None
+    assert b.get_total_bet(220.5 - pts, 220.5, 18.2, over_price=-120)[0] == 'under'     # under is priced at the standard -110
+    assert b.get_total_bet(220.5 - pts, 220.5, 18.2, under_price=-125)[0] is None
+    assert b.get_total_bet(220.5 + pts, 220.5, 18.2, over_price=np.nan)[0] == 'over'    # unknown price -> -110

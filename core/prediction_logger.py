@@ -24,12 +24,15 @@ CREATE_TABLE_SQL = """
         home_score INTEGER,
         away_score INTEGER,
         status TEXT DEFAULT 'PENDING',
-        model_version TEXT
+        model_version TEXT,
+        model_set_hash TEXT,
+        training_set_hash TEXT
     )
 """
 COLUMNS = ['game_id', 'game_date', 'prediction_date', 'home_team', 'away_team', 'matchup', 'ml_prob',
            'spread_pred', 'total_pred', 'odds_home_ml', 'odds_away_ml', 'odds_home_spread', 'odds_total',
-           'home_score', 'away_score', 'status', 'model_version']
+           'home_score', 'away_score', 'status', 'model_version', 'model_set_hash', 'training_set_hash']
+PROVENANCE_COLUMNS = ['model_version', 'model_set_hash', 'training_set_hash']   # added to older tables with ALTER TABLE
 
 
 def ensure_primary_key(conn):
@@ -43,8 +46,9 @@ def ensure_primary_key(conn):
     info = conn.execute(f"PRAGMA table_info({TABLE})").fetchall()
     cols = [r[1] for r in info]
     if any(r[5] for r in info):                     # r[5] = pk position
-        if 'model_version' not in cols:
-            conn.execute(f"ALTER TABLE {TABLE} ADD COLUMN model_version TEXT")
+        for c in PROVENANCE_COLUMNS:
+            if c not in cols:
+                conn.execute(f"ALTER TABLE {TABLE} ADD COLUMN {c} TEXT")
         return False
 
     stamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -128,6 +132,8 @@ class PredictionLogger:
             'odds_total': prediction.get('line_total'),
             'status': 'PENDING',            # only used when the game is new
             'model_version': prediction.get('model_version'),
+            'model_set_hash': prediction.get('model_set_hash'),         # which files (and training CSV) produced this row
+            'training_set_hash': prediction.get('training_set_hash'),
         }
         refreshed = [c for c in row if c not in ('game_id', 'status')]
 

@@ -107,7 +107,7 @@ class InferenceEngine:
             for g in sb_curr.games:
                 key = f"{g.get('away_team')} @ {g.get('home_team')}"
                 if key not in open_map:
-                    logging.warning(f"No opening line on SBR for {key}; the current line stands in as model input")
+                    logging.warning(f"No opening line on SBR for {key}; the game is skipped (the current line is not a model input)")
                 row = {
                     'gameDate': today,
                     'away_team': g.get('away_team'),
@@ -119,6 +119,13 @@ class InferenceEngine:
                 games.append(row)
 
             df = pd.DataFrame(games)
+            incomplete = df['odds_open_missing'] > 0
+            if incomplete.any():
+                logging.warning("Skipping games without an opening line: "
+                                + ", ".join(f"{a} @ {h}" for a, h in zip(df.loc[incomplete, 'away_team'], df.loc[incomplete, 'home_team'])))
+                df = df[~incomplete].reset_index(drop=True)
+            if df.empty:
+                return pd.DataFrame()
 
             abbr_map = { 'BK':'BKN',
                         'CHAR':'CHA',
@@ -307,6 +314,8 @@ class InferenceEngine:
                     'line_ml_home': ml_home, # Raw American Odds
                     'line_ml_away': ml_away,
                     'model_version': 'v1.0.0_hybrid',
+                    'model_set_hash': self.bundle.model_set_hash,       # ties the row to the exact files / training CSV
+                    'training_set_hash': self.bundle.training_set_hash,
                 }
                 self.logger.log_prediction(log_entry)
             except Exception as e:
@@ -317,8 +326,13 @@ class InferenceEngine:
             # probability by more than DEFAULT_PROB_EDGE. Spread/total win probability is
             # Phi(point edge / residual std) with the std saved with the model set.
             ml_bet, ml_edge = get_ml_bet({'ml_prob': prob, 'odds_home_ml': ml_home, 'odds_away_ml': ml_away})
-            spread_bet, spread_edge = get_spread_bet(pred_spread, line, spread_std)
-            total_bet, total_edge = get_total_bet(pred_total, total_line, total_std)
+            def price(name):
+                v = g.get(f'curr_price_{name}')
+                return float(v) if v is not None and pd.notna(v) else None
+            spread_bet, spread_edge = get_spread_bet(pred_spread, line, spread_std,
+                                                     home_price=price('home_spread_odds'), away_price=price('away_spread_odds'))
+            total_bet, total_edge = get_total_bet(pred_total, total_line, total_std,
+                                                  over_price=price('over_odds'), under_price=price('under_odds'))
             recommendation = "; ".join(
                 f"{market} {side.upper()} ({edge:+.1%})"
                 for market, side, edge in (('ML', ml_bet, ml_edge), ('SPREAD', spread_bet, spread_edge),

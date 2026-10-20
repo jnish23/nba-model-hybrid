@@ -23,6 +23,7 @@ from sklearn.linear_model import LogisticRegression
 
 SEED = 42
 SPREAD_LINE_COL = 'odds_home_spread'
+TOTAL_LINE_COL = 'odds_total'
 SIGMA_MIN_ABS_ERR = 1.0            # floor on the predicted mean |error| (points)
 SIGMA_FOLDS = 5                    # forward-chaining parts inside model_train for the out-of-fold residuals
 SIGMA_FEATURES = [
@@ -75,6 +76,43 @@ class ResidualSpreadModel:
         return -np.asarray(line, float) + self.model.predict(X)
 
 
+class ResidualTotalModel:
+    """LightGBM regressor on the market residual `target_total_pts - odds_total` (OPT-IN: train_and_save_all(total_target='residual')).
+
+    predict(X, line) = line + f(X), where `line` is the opening total (the spread model subtracts it, the total adds it).
+    A missing line gives NaN (no total forecast without an opening total).
+
+    Not the default: the audit suggested it to stop the total model leaning under, but experiment E1 (reports/experiments/E01_residual_targets)
+    and the audit follow-up (reports/audit_fixes/REPORT.md) measured it 0.27-0.3 points WORSE in total MAE than a model of the level,
+    because the totals gap is almost pure noise and f(X) mostly adds variance (and absolute-level features then act as era markers).
+    """
+
+    def __init__(self, model):
+        self.model = model
+
+    @property
+    def feature_name_(self):
+        return list(self.model.feature_name_)
+
+    @property
+    def feature_importances_(self):
+        return self.model.feature_importances_
+
+    @staticmethod
+    def make_target(df):
+        return df['target_total_pts'] - df[TOTAL_LINE_COL]
+
+    def predict_residual(self, X):
+        return self.model.predict(X)
+
+    def predict(self, X, line=None):
+        if line is None:
+            if TOTAL_LINE_COL not in X.columns:
+                raise ValueError(f"ResidualTotalModel.predict needs the opening total: pass line= or include {TOTAL_LINE_COL}")
+            line = X[TOTAL_LINE_COL]
+        return np.asarray(line, float) + self.model.predict(X)
+
+
 # ------------------------------------------------------------------------------------------------ E3
 
 class MarginStackCalibrator:
@@ -107,6 +145,23 @@ class MarginStackCalibrator:
             if ok.any():
                 out[ok] = self.stack.predict_proba(np.column_stack([_logit(raw_prob[ok]), margin[ok] / self.sigma]))[:, 1]
         return out
+
+
+def crossfit_brier(fit_predict, y, n_parts=4):
+    """
+    Out-of-sample Brier score of a calibrator that is fitted on the calibration block: forward-chaining parts, part k+1 is scored
+    by a calibrator fitted on parts 1..k, so no row is scored by a fit that saw it. `fit_predict(train_idx, test_idx)` returns
+    the calibrated probabilities of `test_idx`. Returns (brier of the cross-fitted rows, those rows' index array).
+    """
+    y = np.asarray(y, float)
+    parts = np.array_split(np.arange(len(y)), n_parts)
+    idx, prob = [], []
+    for k in range(1, n_parts):
+        tr, te = np.concatenate(parts[:k]), parts[k]
+        idx.append(te)
+        prob.append(np.asarray(fit_predict(tr, te), float))
+    idx, prob = np.concatenate(idx), np.concatenate(prob)
+    return float(np.mean((np.clip(prob, 1e-15, 1 - 1e-15) - y[idx]) ** 2)), idx
 
 
 # ------------------------------------------------------------------------------------------------ E4
@@ -171,7 +226,11 @@ def predict_markets(bundle, frame, align=None):
     else:
         spread = bundle.spread.predict(X_spread)
     X_total = cols('Total', 'total')
-    total = bundle.total.predict(X_total)
+    if isinstance(bundle.total, ResidualTotalModel):
+        tline = frame[TOTAL_LINE_COL].to_numpy(float) if TOTAL_LINE_COL in frame.columns else np.full(len(frame), np.nan)
+        total = bundle.total.predict(X_total, line=tline)
+    else:
+        total = bundle.total.predict(X_total)
     meta = bundle.calib_meta
     spread_std = np.full(len(frame), float(meta.get('spread_std', np.nan)))
     total_std = np.full(len(frame), float(meta.get('total_std', np.nan)))
