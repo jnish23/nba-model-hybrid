@@ -1292,6 +1292,15 @@ class BaselineModel:
         logging.info("Saved error_distribution.png")
 
 
+    def _tune_params(self, X, y, task, time_budget, tuner):
+        """Hyperparameters for one model: FLAML on the first FLAML_TRAIN_FRAC of the rows (validated on the rest), or the fixed grid."""
+        if tuner == 'grid':
+            from team.tuning import pick_config
+            return pick_config('clf' if task == 'classification' else 'reg', X, y, int(len(X) * FLAML_TRAIN_FRAC))[0]
+        if tuner != 'flaml':
+            raise ValueError(f"tuner must be 'flaml' or 'grid', got {tuner!r}")
+        return self._tune_fold_params(X, y, task, time_budget)
+
     def _sigma_fit_args(self, rows, total_residual):
         """(frame, features, target column) for fit_hetero_sigma: the target is the total, or its gap from the opening total."""
         if total_residual:
@@ -1299,7 +1308,7 @@ class BaselineModel:
         return rows, self.features_total, 'target_total_pts'
 
     def train_and_save_all(self, use_odds=False, save_suffix='', calib_holdout_frac=0.2, time_budget=600,
-                           market_aware=None, calib_holdout_days=CALIB_HOLDOUT_DAYS, refit_on_all=True, total_target='level', overwrite=False, train_from_season=None):
+                           market_aware=None, calib_holdout_days=CALIB_HOLDOUT_DAYS, refit_on_all=True, total_target='level', overwrite=False, train_from_season=None, tuner='flaml'):
         """
         Train final models on ALL available data and save them, including calibrators.
 
@@ -1310,6 +1319,8 @@ class BaselineModel:
           with the same hyperparameters and features, so the saved models have seen everything up to the last game.
           (Calibrators were fitted on the held-out predictions of the earlier fit; the refit model is slightly
           stronger, which makes them very slightly conservative, not leaky.)
+        - tuner: 'flaml' (default, the deployed behaviour: FLAML search for `time_budget` seconds per model, so the result depends on
+          machine speed) or 'grid' (team/tuning.py: the fixed 8-config grid the walk-forward backtests validated; seconds, deterministic).
         - train_from_season: drop earlier seasons (e.g. '2019-20', the first with moneylines and injury reports) before the split.
           Default None keeps all history; features that are empty for the old seasons are reported either way (calibration_meta
           'era_marking_features') because a tree can learn "missing = old era".
@@ -1328,6 +1339,8 @@ class BaselineModel:
         market_aware = use_odds if market_aware is None else market_aware
         if market_aware and not use_odds:
             raise ValueError("market_aware models need the opening lines: use_odds=True")
+        if tuner not in ('flaml', 'grid'):
+            raise ValueError(f"tuner must be 'flaml' or 'grid', got {tuner!r}")
         if total_target not in ('level', 'residual'):
             raise ValueError(f"total_target must be 'level' or 'residual', got {total_target!r}")
         total_residual = market_aware and total_target == 'residual'
@@ -1390,25 +1403,12 @@ class BaselineModel:
         y_calib_ml = calib_df['target_home_win']
         
         # Temporal split for FLAML validation (within model_train)
-        n_flaml_train = int(len(X_model_train_ml) * FLAML_TRAIN_FRAC)
-        
-        logging.info("Training FLAML AutoML for Moneyline...")
-        automl_ml = AutoML()
-        automl_ml.fit(
-            X_model_train_ml.iloc[:n_flaml_train], y_model_train_ml.iloc[:n_flaml_train],
-            task="classification",
-            time_budget=time_budget,
-            metric='log_loss',
-            estimator_list=['lgbm'],
-            custom_hp=custom_hp,
-            X_val=X_model_train_ml.iloc[n_flaml_train:],
-            y_val=y_model_train_ml.iloc[n_flaml_train:],
-            verbose=0
-        )
-        logging.info(f"Best ML Config: {automl_ml.best_config}")
+        logging.info(f"Tuning the moneyline model ({tuner})...")
+        best_ml_cfg = self._tune_params(X_model_train_ml, y_model_train_ml, 'classification', time_budget, tuner)
+        logging.info(f"Best ML Config ({tuner}): {best_ml_cfg}")
         
         # Refit on full model_train with best params
-        best_ml_params = automl_ml.best_config.copy()
+        best_ml_params = best_ml_cfg.copy()
         final_ml = lgb.LGBMClassifier(**best_ml_params, verbosity=-1, random_state=42)
         final_ml.fit(X_model_train_ml, y_model_train_ml)
         
@@ -1444,24 +1444,11 @@ class BaselineModel:
         X_calib_spread = calib_df[self.features_spread]
         y_calib_spread = calib_df['target_point_diff']
         
-        n_flaml_train = int(len(X_model_train_spread) * FLAML_TRAIN_FRAC)
+        logging.info(f"Tuning the spread model ({tuner})...")
+        best_spread_cfg = self._tune_params(X_model_train_spread, y_model_train_spread, 'regression', time_budget, tuner)
+        logging.info(f"Best Spread Config ({tuner}): {best_spread_cfg}")
         
-        logging.info("Training FLAML AutoML for Spread...")
-        automl_spread = AutoML()
-        automl_spread.fit(
-            X_model_train_spread.iloc[:n_flaml_train], y_model_train_spread.iloc[:n_flaml_train],
-            task="regression",
-            time_budget=time_budget,
-            metric='mse',
-            estimator_list=['lgbm'],
-            custom_hp=custom_hp,
-            X_val=X_model_train_spread.iloc[n_flaml_train:],
-            y_val=y_model_train_spread.iloc[n_flaml_train:],
-            verbose=0
-        )
-        logging.info(f"Best Spread Config: {automl_spread.best_config}")
-        
-        best_spread_params = automl_spread.best_config.copy()
+        best_spread_params = best_spread_cfg.copy()
         final_spread = lgb.LGBMRegressor(**best_spread_params, verbosity=-1, random_state=42)
         final_spread.fit(X_model_train_spread, y_model_train_spread)
         if market_aware:
@@ -1515,24 +1502,11 @@ class BaselineModel:
         X_calib_total = calib_df[self.features_total]
         y_calib_total = calib_df['target_total_pts']
         
-        n_flaml_train = int(len(X_model_train_total) * FLAML_TRAIN_FRAC)
+        logging.info(f"Tuning the total model ({tuner})...")
+        best_total_cfg = self._tune_params(X_model_train_total, y_model_train_total, 'regression', time_budget, tuner)
+        logging.info(f"Best Total Config ({tuner}): {best_total_cfg}")
         
-        logging.info("Training FLAML AutoML for Total...")
-        automl_total = AutoML()
-        automl_total.fit(
-            X_model_train_total.iloc[:n_flaml_train], y_model_train_total.iloc[:n_flaml_train],
-            task="regression",
-            time_budget=time_budget,
-            metric='mse',
-            estimator_list=['lgbm'],
-            custom_hp=custom_hp,
-            X_val=X_model_train_total.iloc[n_flaml_train:],
-            y_val=y_model_train_total.iloc[n_flaml_train:],
-            verbose=0
-        )
-        logging.info(f"Best Total Config: {automl_total.best_config}")
-        
-        best_total_params = automl_total.best_config.copy()
+        best_total_params = best_total_cfg.copy()
         final_total = lgb.LGBMRegressor(**best_total_params, verbosity=-1, random_state=42)
         final_total.fit(X_model_train_total, y_model_train_total)
         if total_residual:

@@ -32,28 +32,8 @@ TEST_SEASONS = ['2019-20', '2020-21', '2021-22', '2022-23', '2023-24', '2024-25'
 OUT = ROOT / 'reports' / 'experiments'
 TARGETS = {'ml': 'target_home_win', 'spread': 'target_point_diff', 'total': 'target_total_pts'}
 
-# Candidate hyperparameters, searched inside each fold (deterministic: same grid, same seed, same split)
-GRID = [
-    dict(learning_rate=0.02, n_estimators=400, num_leaves=4, min_child_samples=70, reg_lambda=20.0, colsample_bytree=0.7),
-    dict(learning_rate=0.02, n_estimators=400, num_leaves=8, min_child_samples=50, reg_lambda=10.0, colsample_bytree=0.7),
-    dict(learning_rate=0.01, n_estimators=800, num_leaves=4, min_child_samples=70, reg_lambda=20.0, colsample_bytree=0.7),
-    dict(learning_rate=0.01, n_estimators=800, num_leaves=8, min_child_samples=50, reg_lambda=10.0, colsample_bytree=0.7),
-    dict(learning_rate=0.05, n_estimators=150, num_leaves=4, min_child_samples=70, reg_lambda=20.0, colsample_bytree=0.7),
-    dict(learning_rate=0.03, n_estimators=300, num_leaves=16, min_child_samples=40, reg_lambda=5.0, colsample_bytree=0.7),
-    dict(learning_rate=0.01, n_estimators=1000, num_leaves=31, min_child_samples=30, reg_lambda=0.5, colsample_bytree=1.0),
-    dict(learning_rate=0.02, n_estimators=600, num_leaves=6, min_child_samples=100, reg_lambda=30.0, colsample_bytree=0.7),
-]
-
-
-def make_est(kind, cfg):
-    cls = lgb.LGBMClassifier if kind == 'clf' else lgb.LGBMRegressor
-    return cls(**cfg, random_state=SEED, deterministic=True, force_row_wise=True, verbosity=-1, n_jobs=-1)
-
-
-def raw_predict(est, kind, X, init=None):
-    """Link-scale prediction (+ init_score offset)."""
-    r = est.predict(X, raw_score=True) if kind == 'clf' else est.predict(X)
-    return r + (0.0 if init is None else init)
+# GRID / make_est / raw_predict live in team/tuning.py (the final-model trainer uses the same search)
+from team.tuning import GRID, make_est, raw_predict          # noqa: E402,F401
 
 
 def fit_tuned(kind, X, y, n_fit, init=None, grid=GRID):
