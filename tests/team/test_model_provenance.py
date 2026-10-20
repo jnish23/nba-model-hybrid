@@ -111,3 +111,41 @@ def test_logger_stores_the_hashes_and_upgrades_old_tables(tmp_path):
         row = pd.read_sql("SELECT * FROM predictions_log_v2", conn).iloc[0]
     assert row['model_set_hash'] == 'abc123' and row['training_set_hash'] == 'def456'
     assert pd.read_csv(tmp_path / 'p.csv', dtype=str).loc[0, 'model_set_hash'] == 'abc123'
+
+
+# ------------------------------------------------------------------ line endings (Windows CRLF vs Linux CI LF)
+
+def _convert_json_line_endings(d, suffix, to):
+    for p in d.glob(f'*{suffix}.json'):
+        if p.name.startswith('model_manifest'):
+            continue
+        data = p.read_bytes().replace(b'\r\n', b'\n')
+        p.write_bytes(data.replace(b'\n', b'\r\n') if to == 'crlf' else data)
+
+
+def test_hash_is_the_same_for_crlf_and_lf_checkouts(tmp_path):
+    write_set(tmp_path)
+    (tmp_path / 'calibration_meta_x.json').write_bytes(b'{\n  "a": 1,\n  "b": 2\n}')
+    _convert_json_line_endings(tmp_path, '_x', 'lf')
+    lf = mr.model_set_hash('_x', tmp_path)
+    _convert_json_line_endings(tmp_path, '_x', 'crlf')
+    assert b'\r\n' in (tmp_path / 'calibration_meta_x.json').read_bytes()
+    assert mr.model_set_hash('_x', tmp_path) == lf                      # git converting the JSON must not break the manifest
+    joblib.dump({'stem': 'model_ml', 'seed': 9}, tmp_path / 'model_ml_x.pkl')
+    assert mr.model_set_hash('_x', tmp_path) != lf                      # but a real change still does
+
+
+def test_manifest_written_on_windows_before_hash_version_existed_still_verifies_on_linux(trained_set):
+    """The first manifests hashed JSON with CRLF (written on Windows). CI checks the files out with LF and must still accept them."""
+    d, suffix = trained_set
+    _convert_json_line_endings(d, suffix, 'crlf')
+    legacy = mr.read_manifest(suffix, d)
+    legacy['model_set_hash'] = mr.model_set_hash(suffix, d, version=1)
+    legacy.pop('hash_version')
+    mr.manifest_path(suffix, d).write_text(json.dumps(legacy))
+    b = mr.load_bundle(suffix, d)                                        # CRLF files, legacy manifest
+    assert b.model_set_hash == legacy['model_set_hash']                  # the value already logged on rows is unchanged
+    _convert_json_line_endings(d, suffix, 'lf')                          # what the Linux runner checks out
+    assert mr.load_bundle(suffix, d).model_set_hash == legacy['model_set_hash']
+    assert log_audit.provenance_report(pd.DataFrame({'model_set_hash': [legacy['model_set_hash']]}), d)['hashes'][
+        legacy['model_set_hash']]['files_unchanged'] is True
