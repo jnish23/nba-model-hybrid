@@ -1291,8 +1291,14 @@ class BaselineModel:
         logging.info("Saved error_distribution.png")
 
 
+    def _sigma_fit_args(self, rows, total_residual):
+        """(frame, features, target column) for fit_hetero_sigma: the target is the total, or its gap from the opening total."""
+        if total_residual:
+            return rows.assign(**{TOTAL_GAP_COL: ResidualTotalModel.make_target(rows)}), self.features_total, TOTAL_GAP_COL
+        return rows, self.features_total, 'target_total_pts'
+
     def train_and_save_all(self, use_odds=False, save_suffix='', calib_holdout_frac=0.2, time_budget=600,
-                           market_aware=None, calib_holdout_days=CALIB_HOLDOUT_DAYS, refit_on_all=True):
+                           market_aware=None, calib_holdout_days=CALIB_HOLDOUT_DAYS, refit_on_all=True, total_target='level'):
         """
         Train final models on ALL available data and save them, including calibrators.
 
@@ -1303,6 +1309,9 @@ class BaselineModel:
           with the same hyperparameters and features, so the saved models have seen everything up to the last game.
           (Calibrators were fitted on the held-out predictions of the earlier fit; the refit model is slightly
           stronger, which makes them very slightly conservative, not leaky.)
+        - total_target: 'level' (default) fits the total itself; 'residual' fits the gap from the opening total
+          (ResidualTotalModel). 'residual' is OPT-IN: experiment E1 and the audit follow-up measured it 0.27-0.3 points WORSE
+          in total MAE than 'level' (reports/audit_fixes/REPORT.md), so it is not the default.
 
         market_aware (default: use_odds) adopts experiments E1/E3/E4 (team/market_models.py), which need the
         opening lines as inputs: the spread model learns the residual against the opening spread, the ML probability
@@ -1312,6 +1321,9 @@ class BaselineModel:
         market_aware = use_odds if market_aware is None else market_aware
         if market_aware and not use_odds:
             raise ValueError("market_aware models need the opening lines: use_odds=True")
+        if total_target not in ('level', 'residual'):
+            raise ValueError(f"total_target must be 'level' or 'residual', got {total_target!r}")
+        total_residual = market_aware and total_target == 'residual'
         self.load_data(use_odds=use_odds)
         
         # Sort by date for proper temporal split
@@ -1326,11 +1338,14 @@ class BaselineModel:
         sel_df = self.selection_rows(model_train_df, tuning=True)
         self.features_ml = self._select_features_from_subset(sel_df, 'target_home_win')
         if market_aware:
-            # the spread / total models learn the gap from the opening line: select on the gap (rows without a line have none)
+            # the spread model learns the gap from the opening line: select on the gap (rows without a line have none)
             sp = sel_df.assign(**{SPREAD_GAP_COL: ResidualSpreadModel.make_target(sel_df)}).dropna(subset=[SPREAD_GAP_COL])
-            tt = sel_df.assign(**{TOTAL_GAP_COL: ResidualTotalModel.make_target(sel_df)}).dropna(subset=[TOTAL_GAP_COL])
             self.features_spread = self._select_features_from_subset(sp, SPREAD_GAP_COL)
-            self.features_total = self._select_features_from_subset(tt, TOTAL_GAP_COL)
+            if total_residual:
+                tt = sel_df.assign(**{TOTAL_GAP_COL: ResidualTotalModel.make_target(sel_df)}).dropna(subset=[TOTAL_GAP_COL])
+                self.features_total = self._select_features_from_subset(tt, TOTAL_GAP_COL)
+            else:
+                self.features_total = self._select_features_from_subset(sel_df, 'target_total_pts')
         else:
             self.features_spread = self._select_features_from_subset(sel_df, 'target_point_diff')
             self.features_total = self._select_features_from_subset(sel_df, 'target_total_pts')
@@ -1461,11 +1476,10 @@ class BaselineModel:
 
         # ===== TOTAL =====
         total_train_rows = model_train_df
-        if market_aware:
-            # learn the gap from the opening total: a tree cannot extrapolate a total that drifts, the gap does not drift
+        if total_residual:
             total_train_rows = model_train_df[model_train_df[TOTAL_LINE_COL].notna()]
         X_model_train_total = total_train_rows[self.features_total]
-        y_model_train_total = (ResidualTotalModel.make_target(total_train_rows) if market_aware
+        y_model_train_total = (ResidualTotalModel.make_target(total_train_rows) if total_residual
                                else total_train_rows['target_total_pts'])
         X_calib_total = calib_df[self.features_total]
         y_calib_total = calib_df['target_total_pts']
@@ -1490,11 +1504,11 @@ class BaselineModel:
         best_total_params = automl_total.best_config.copy()
         final_total = lgb.LGBMRegressor(**best_total_params, verbosity=-1, random_state=42)
         final_total.fit(X_model_train_total, y_model_train_total)
-        if market_aware:
+        if total_residual:
             final_total = ResidualTotalModel(final_total)
 
         # Compute error distribution on calibration set
-        if market_aware:
+        if total_residual:
             calib_total_pred = final_total.predict(X_calib_total, line=calib_df[TOTAL_LINE_COL].to_numpy(float))
         else:
             calib_total_pred = final_total.predict(X_calib_total)
@@ -1509,15 +1523,13 @@ class BaselineModel:
         calibration_meta['total_std'] = total_std
         calibration_meta['total_bias'] = total_bias
         calibration_meta['total_mae'] = total_mae
-        calibration_meta['total_target'] = 'market_residual' if market_aware else 'total'
+        calibration_meta['total_target'] = 'market_residual' if total_residual else 'total'
 
 
         if market_aware:
             # E4: per-game sigma for the total's cover probability, from out-of-fold errors inside model_train
-            # the sigma model learns the error of the model above, i.e. of the gap from the opening total
-            sigma_rows = total_train_rows.assign(**{TOTAL_GAP_COL: ResidualTotalModel.make_target(total_train_rows)})
-            sigma_total = fit_hetero_sigma(sigma_rows, self.features_total, TOTAL_GAP_COL,
-                                           best_total_params, fallback_std=total_std)
+            # the sigma model learns the error of the total model above (an error is the same quantity for a level or a gap target)
+            sigma_total = fit_hetero_sigma(*self._sigma_fit_args(total_train_rows, total_residual), best_total_params, fallback_std=total_std)
             sig_calib = sigma_total.predict(calib_df)
             logging.info(f"Total per-game sigma on the calibration block: mean {sig_calib.mean():.2f} "
                          f"(global std {total_std:.2f}), range [{sig_calib.min():.2f}, {sig_calib.max():.2f}]")
@@ -1539,14 +1551,13 @@ class BaselineModel:
                 sp_rows[self.features_spread], ResidualSpreadModel.make_target(sp_rows) if market_aware else sp_rows['target_point_diff'])
             if market_aware:
                 final_spread = ResidualSpreadModel(final_spread)
-            tt_rows = all_df[all_df[TOTAL_LINE_COL].notna()] if market_aware else all_df
+            tt_rows = all_df[all_df[TOTAL_LINE_COL].notna()] if total_residual else all_df
             final_total = lgb.LGBMRegressor(**best_total_params, verbosity=-1, random_state=42).fit(
-                tt_rows[self.features_total], ResidualTotalModel.make_target(tt_rows) if market_aware else tt_rows['target_total_pts'])
-            if market_aware:
+                tt_rows[self.features_total], ResidualTotalModel.make_target(tt_rows) if total_residual else tt_rows['target_total_pts'])
+            if total_residual:
                 final_total = ResidualTotalModel(final_total)
-                sigma_total = fit_hetero_sigma(
-                    tt_rows.assign(**{TOTAL_GAP_COL: ResidualTotalModel.make_target(tt_rows)}), self.features_total, TOTAL_GAP_COL,
-                    best_total_params, fallback_std=total_std)
+            if market_aware:
+                sigma_total = fit_hetero_sigma(*self._sigma_fit_args(tt_rows, total_residual), best_total_params, fallback_std=total_std)
         self.save_model(final_ml, f'model_ml{save_suffix}.pkl')
         self.save_model(final_spread, f'model_spread{save_suffix}.pkl')
         self.save_model(final_total, f'model_total{save_suffix}.pkl')

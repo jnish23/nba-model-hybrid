@@ -77,12 +77,14 @@ class ResidualSpreadModel:
 
 
 class ResidualTotalModel:
-    """LightGBM regressor on the market residual `target_total_pts - odds_total`.
+    """LightGBM regressor on the market residual `target_total_pts - odds_total` (OPT-IN: train_and_save_all(total_target='residual')).
 
-    predict(X, line) = line + f(X), where `line` is the opening total. Same idea as ResidualSpreadModel and the same reason:
-    a tree model cannot extrapolate a target that drifts (league scoring went from ~200 to ~230 points), so a model that
-    predicts the total itself lags the level and leans under once scoring rises; the gap from the line is stationary.
+    predict(X, line) = line + f(X), where `line` is the opening total (the spread model subtracts it, the total adds it).
     A missing line gives NaN (no total forecast without an opening total).
+
+    Not the default: the audit suggested it to stop the total model leaning under, but experiment E1 (reports/experiments/E01_residual_targets)
+    and the audit follow-up (reports/audit_fixes/REPORT.md) measured it 0.27-0.3 points WORSE in total MAE than a model of the level,
+    because the totals gap is almost pure noise and f(X) mostly adds variance (and absolute-level features then act as era markers).
     """
 
     def __init__(self, model):

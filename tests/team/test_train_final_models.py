@@ -40,8 +40,7 @@ def training_csv(path, seed=0, per_season=500, drift=10.0):
     pd.concat(rows).to_csv(path, index=False)
 
 
-@pytest.fixture(scope='module')
-def trained(tmp_path_factory):
+def _train(tmp_path_factory, total_target):
     d = tmp_path_factory.mktemp('final')
     csv = d / 'train.csv'
     training_csv(csv)
@@ -54,11 +53,30 @@ def trained(tmp_path_factory):
         return orig(df, target, *a, **k)
 
     m._select_features_from_subset = spy
-    m.train_and_save_all(use_odds=True, save_suffix='_t', time_budget=2, calib_holdout_days=90)
+    m.train_and_save_all(use_odds=True, save_suffix='_t', time_budget=2, calib_holdout_days=90, total_target=total_target)
     return d, csv, m, seen
 
 
-def test_total_model_is_a_residual_model_and_its_sigma_follows(trained):
+@pytest.fixture(scope='module')
+def trained(tmp_path_factory):
+    """total_target='residual' (opt-in)."""
+    return _train(tmp_path_factory, 'residual')
+
+
+@pytest.fixture(scope='module')
+def trained_default(tmp_path_factory):
+    return _train(tmp_path_factory, 'level')
+
+
+def test_default_total_model_predicts_the_level_as_validated_in_e1(trained_default):
+    d, _, m, seen = trained_default
+    b = mr.load_bundle('_t', d / 'saved')
+    assert not isinstance(b.total, mm.ResidualTotalModel) and isinstance(b.spread, mm.ResidualSpreadModel)
+    assert b.calib_meta['total_target'] == 'total'
+    assert seen == ['target_home_win', SPREAD_GAP_COL, 'target_total_pts']       # spread selected on its gap, total on the level
+
+
+def test_residual_total_is_opt_in_and_its_sigma_follows(trained):
     d, _, m, _ = trained
     b = mr.load_bundle('_t', d / 'saved')
     assert isinstance(b.total, mm.ResidualTotalModel) and isinstance(b.spread, mm.ResidualSpreadModel)
@@ -71,7 +89,7 @@ def test_feature_selection_ranks_the_gap_the_models_are_fit_on(trained):
     assert seen == ['target_home_win', SPREAD_GAP_COL, TOTAL_GAP_COL]
 
 
-def test_total_forecast_does_not_lean_under_when_the_scoring_level_drifts(trained):
+def test_residual_total_forecast_tracks_a_drifting_scoring_level(trained):
     d, csv, m, _ = trained
     b = mr.load_bundle('_t', d / 'saved')
     last = m.df[m.df['seasonYear'] == SEASONS[-1][0]]
@@ -132,8 +150,8 @@ def test_holdout_too_small_for_calibration_is_refused():
         split_model_train_calibration(df, calib_holdout_days=10)
 
 
-def test_base_models_are_refit_on_all_games_by_default(trained):
-    d, csv, m, _ = trained
+def test_base_models_are_refit_on_all_games_by_default(trained_default):
+    d, csv, m, _ = trained_default
     import json
     meta = json.loads((d / 'saved' / 'calibration_meta_t.json').read_text())
     assert meta['refit_on_all'] is True
