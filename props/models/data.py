@@ -16,7 +16,8 @@ from props.features import build, dictionary
 POS_GROUPS = ['G', 'F', 'C', 'GF', 'FC']
 REASON_CLASSES = ['none', 'injury', 'illness', 'rest', 'g_league', 'personal', 'other']
 CATEGORICAL = {'pos_group': POS_GROUPS, 'inj_reason_class': REASON_CLASSES}
-NOT_FEATURES = {'game_id', 'player_id', 'team_id', 'opp_team_id', 'season', 'game_date', 'game_type', 'inj_status'}   # keys, dates, and a string duplicate of inj_status_code
+NOT_FEATURES = {'game_id', 'player_id', 'team_id', 'opp_team_id', 'season', 'game_date', 'game_type', 'inj_status',   # keys, dates, and a string duplicate of inj_status_code
+                'env_source'}                                                                                         # which source supplied the market environment: it encodes the era (SBR proxy before 2023-24), so it is never a model input
 BASE_GROUPS = {'minutes', 'role', 'rest', 'rates', 'conversion', 'team_context', 'opponent', 'schedule', 'injury', 'teammates'}
 ENV_GROUPS = {'market_env'}
 BUBBLE_START = '2020-07-30'                       # games from here to the end of 2019-20 were played in the Orlando bubble

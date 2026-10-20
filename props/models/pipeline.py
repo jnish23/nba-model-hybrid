@@ -26,12 +26,17 @@ def observed(frame, stat):
     return (y[parts[0]] + y[parts[1]]).to_numpy(float)
 
 
-def train_fold(df, fold, spec: FeatureSpec, score_on_test=True):
+def train_fold(df, fold, spec: FeatureSpec, score_on_test=True, refit_all=False):
     fit, cal, test = df.iloc[fold.fit_idx], df.iloc[fold.calib_idx], df.iloc[fold.test_idx]
     bundle = {'fold': fold.describe(), 'spec': spec, 'availability': Availability(spec).fit(fit), 'minutes': MinutesModel(spec).fit(fit),
               'rates': RateModels(spec).fit(fit), 'family_scores': {}}
     if score_on_test:                                     # development folds only: rate-family comparison with the actual minutes as exposure
         bundle['family_scores'] = {f: bundle['rates'].score(test, f) for f in FAMILIES}
+    if refit_all:
+        # The calibration window exists to measure error out of sample. Once the dispersion maps are fitted from the fit-only models, the models that predict the
+        # test season are refit on fit + calibration so they see the most recent data (otherwise they lag the test season by the whole calibration window).
+        both = df.iloc[np.sort(np.concatenate([fold.fit_idx, fold.calib_idx]))]
+        bundle['refit'] = {'availability': Availability(spec).fit(both), 'minutes': MinutesModel(spec).fit(both), 'rates': RateModels(spec).fit(both)}
     return bundle
 
 
@@ -66,6 +71,9 @@ def predict_fold(df, fold, bundle, families, n_sims=4000, seed=0):
     cres = distributions(bundle, cal, families, n_sims, seed + 1)
     scaler = dispersion.DispersionScaler()
     calibrator = calibrate.ThresholdCalibrator()
+    final = dict(bundle, **bundle['refit']) if 'refit' in bundle else bundle           # models that predict the test season (refit on fit + calibration if asked)
+    if 'refit' in bundle:
+        final['rates'].nb_k = rm.nb_k                                                    # NB dispersion was estimated out of sample by the fit-only models
     for stat in oc.CAPS:
         y = observed(cal, stat)
         ok = ~np.isnan(y)
@@ -73,11 +81,11 @@ def predict_fold(df, fold, bundle, families, n_sims=4000, seed=0):
         calibrator.fit(stat, scaler.transform(stat, cres[stat][ok], cres['minutes_mean'][ok]), y[ok])
     test = df.iloc[fold.test_idx]
     played = test[(test['lbl_played'] == 1) & (test['lbl_minutes'] > 0)]
-    res = distributions(bundle, played, families, n_sims, seed)
+    res = distributions(final, played, families, n_sims, seed)
     idx = played[['game_id', 'player_id', 'minutes_before', 'season', 'game_date']].reset_index(drop=True)
     idx['minutes_mean'] = res.pop('minutes_mean')
-    idx['p_limited'] = bundle['minutes'].components(played)['p_limited']
-    idx['p_play_model'] = bundle['availability'].predict(played)
+    idx['p_limited'] = final['minutes'].components(played)['p_limited']
+    idx['p_play_model'] = final['availability'].predict(played)
     idx['p_play_table'] = played['inj_p_play'].to_numpy()
     res.pop('sim_means', None)
     for stat in oc.CAPS:

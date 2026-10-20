@@ -42,17 +42,22 @@ def reason_class(reason):
     return 'other'
 
 
-def latest_report_rows(reports, tip_ref_et, minutes_before):
+PUBLISH_LAG_MIN = 15          # a report is stamped with its scheduled slot, not the time it was posted: it counts as known only this many minutes after its stamp
+
+
+def latest_report_rows(reports, tip_ref_et, minutes_before, publish_lag_min=PUBLISH_LAG_MIN):
     """
     reports: linked report rows (gameId, teamId, personId, report_ts [ET], status, reason, not_submitted).
     tip_ref_et: Series game_id -> naive ET reference tip. Returns (rows of the chosen report per game, per-game table with report_ts, age).
+    A report is usable at the decision time T only if its stamp is at least publish_lag_min before T (the stamp is the scheduled slot; the PDF can appear minutes
+    later). The age is still measured from T.
     """
     r = reports.dropna(subset=['gameId']).copy()
     r['gameId'] = r['gameId'].astype(str).str.zfill(10)
     r['report_ts'] = pd.to_datetime(r['report_ts'])
     cutoff = tip_ref_et - pd.Timedelta(minutes=minutes_before)
     r['cutoff'] = r['gameId'].map(cutoff)
-    r = r[r['cutoff'].notna() & (r['report_ts'] <= r['cutoff'])]
+    r = r[r['cutoff'].notna() & (r['report_ts'] <= r['cutoff'] - pd.Timedelta(minutes=publish_lag_min))]
     r['chosen_ts'] = r['gameId'].map(r.groupby('gameId')['report_ts'].max())
     r = r[r['report_ts'] == r['chosen_ts']]
     games = r.groupby('gameId').agg(report_ts=('report_ts', 'first'), cutoff=('cutoff', 'first'))

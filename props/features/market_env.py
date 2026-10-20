@@ -33,7 +33,7 @@ def snapshot_env(props_db, grid=GRID):
                 JOIN event_ref r ON r.event_id_vendor = t.event_id_vendor
                 LEFT JOIN snapshot_ref s ON s.snapshot_ts_utc = t.snapshot_ts_utc AND s.event_id_vendor = t.event_id_vendor
                 WHERE l.mode IN ({','.join('?' * len(modes))}) AND r.game_id IS NOT NULL AND COALESCE(s.in_game, 0) = 0
-                  AND s.minutes_to_ref >= CAST(substr(l.mode, 8) AS REAL) - 1.0"""
+                  AND s.minutes_to_ref >= CAST(substr(l.mode, 8) AS REAL)"""
         d = pd.read_sql(q, conn, params=modes)
     d['minutes_before'] = d['mode'].str.replace('hist_T-', '', regex=False).astype(int)
     fair_home, _, _ = devig.devig_prices(d['home_ml'], d['away_ml'], 'multiplicative')

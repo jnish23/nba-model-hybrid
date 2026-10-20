@@ -7,6 +7,7 @@ Props model registry: versioned, separate from the team registry (models/saved i
 
 A version is immutable once written; a new configuration gets a new version name.
 """
+import hashlib
 import json
 import subprocess
 from pathlib import Path
@@ -68,3 +69,12 @@ def load_predictions(version, season, root=ROOT):
     d = version_dir(version, root) / season
     idx = pd.read_csv(d / 'index.csv', dtype={'game_id': str})
     return idx, {p.stem.replace('pred_', ''): np.load(p) for p in sorted(d.glob('pred_*.npy'))}
+
+
+def sha256_file(path, chunk=1 << 22):
+    """Content hash of a data file (the dataset a version was trained on), recorded in the manifest so a rebuilt dataset cannot silently stand behind an old version."""
+    h = hashlib.sha256()
+    with open(path, 'rb') as f:
+        for block in iter(lambda: f.read(chunk), b''):
+            h.update(block)
+    return h.hexdigest()

@@ -18,6 +18,7 @@ from pathlib import Path
 import pandas as pd
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
+from props.features import build  # noqa: E402
 from props.models import common, data, folds as folds_mod, pipeline, registry, report  # noqa: E402
 
 
@@ -26,6 +27,8 @@ def main():
     ap.add_argument('--version', required=True)
     ap.add_argument('--spec', default='base', choices=['base', 'with_env'])
     ap.add_argument('--exclude-groups', nargs='*', default=[])
+    ap.add_argument('--features-db', default=None, help='dataset database (default data/props_features.db)')
+    ap.add_argument('--refit-all', action='store_true', help='refit the models on fit + calibration windows before predicting the test season (dispersion maps still come from the fit-only models)')
     ap.add_argument('--exclude-features', nargs='*', default=[], help='single feature columns to drop (e.g. the R1 season-position features)')
     ap.add_argument('--folds', nargs='*', default=list(folds_mod.DEV_TEST_SEASONS))
     ap.add_argument('--sims', type=int, default=4000)
@@ -38,15 +41,16 @@ def main():
     held_out = set(args.folds) & {folds_mod.VALIDATION_SEASON, folds_mod.FINAL_SEASON}
     if held_out and not args.families_from:
         raise SystemExit(f'{sorted(held_out)} are not development folds: pass --families-from <frozen version> so nothing is selected on them')
-    df = data.load_frame()
+    fdb = args.features_db or str(build.OUT_DB)
+    df = data.load_frame(fdb)
     spec = data.FeatureSpec(args.spec, frozenset(args.exclude_groups), exclude_features=frozenset(args.exclude_features))
-    registry.write_manifest(args.version, {'spec': args.spec, 'exclude_groups': args.exclude_groups, 'exclude_features': args.exclude_features, 'folds': args.folds, 'sims': args.sims, 'seed': args.seed,
+    registry.write_manifest(args.version, {'spec': args.spec, 'exclude_groups': args.exclude_groups, 'exclude_features': args.exclude_features, 'refit_all': args.refit_all, 'features_db': fdb, 'features_db_sha256': registry.sha256_file(fdb), 'folds': args.folds, 'sims': args.sims, 'seed': args.seed,
                                            'rows': int(len(df)), 'calib_frac': folds_mod.CALIB_FRAC, 'first_season': folds_mod.FIRST_SEASON})
     fold_objs, bundles = {}, {}
     for s in args.folds:
         t = time.time()
         fold_objs[s] = folds_mod.make_fold(df, s)
-        bundles[s] = pipeline.train_fold(df, fold_objs[s], spec, score_on_test=not args.families_from)
+        bundles[s] = pipeline.train_fold(df, fold_objs[s], spec, score_on_test=not args.families_from, refit_all=args.refit_all)
         logging.info(f'{s}: trained in {time.time() - t:.0f}s {fold_objs[s].describe()}')
     if args.families_from:
         frozen = json.loads((registry.version_dir(args.families_from) / 'manifest.json').read_text(encoding='utf-8'))
