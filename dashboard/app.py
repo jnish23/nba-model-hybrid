@@ -16,7 +16,9 @@ if str(root_path) not in sys.path:
 
 from team.betting import (calculate_implied_prob, calculate_payout, calculate_bet_ev, get_ml_bet,
                             settle_bet, STANDARD_PRICE, get_spread_bet, get_total_bet, points_threshold,
-                            DEFAULT_SPREAD_STD, DEFAULT_TOTAL_STD, DEFAULT_PROB_EDGE)
+                            DEFAULT_SPREAD_STD, DEFAULT_TOTAL_STD, DEFAULT_PROB_EDGE, implied_prob_edge,
+                            cover_probability)
+from core.season_utils import season_date_range, season_for_date, season_options
 
 # Set page config
 st.set_page_config(
@@ -673,31 +675,41 @@ def main():
     st.sidebar.header("Configuration")
     st.sidebar.caption(f"Data: {source} · {df['game_date'].min()} to {df['game_date'].max()}")
     
-    # Date Filter
-    # Check if we have data
-    if 'game_date' in df.columns and not df['game_date'].isnull().all():
-        min_date = df['game_date'].min()
-        max_date = df['game_date'].max()
-    else:
-        min_date = datetime.date.today()
-        max_date = datetime.date.today()
-    
-    start_date = st.sidebar.date_input("Start Date", min_date, min_value=min_date, max_value=max_date)
-    end_date = st.sidebar.date_input("End Date", max_date, min_value=min_date, max_value=max_date)
-    
+    # Season + date filter: choosing a season resets the dates to that season's span (the current season runs from its
+    # opening night to today); the dates can then be narrowed further.
+    game_dates = [d for d in df['game_date'] if pd.notna(d)] if 'game_date' in df.columns else []
+    today = datetime.date.today()
+    seasons = season_options(game_dates, today)
+    season = st.sidebar.selectbox("Season", seasons, index=0, help="Defaults to the current season. Picking a season sets the start and end dates below.")
+    start_default, end_default, min_date, max_date = season_date_range(game_dates, season, today)
+    start_date = st.sidebar.date_input("Start Date", start_default, min_value=min_date, max_value=max_date, key=f"start_{season}")
+    end_date = st.sidebar.date_input("End Date", end_default, min_value=min_date, max_value=max_date, key=f"end_{season}")
+
     # What-If Analysis
     st.sidebar.subheader("What-If Analysis")
-    
+
     bet_type = st.sidebar.selectbox("Bet Type", ["Moneyline", "Spread", "Totals"])
-    
-    # One rule for every market: bet when the model's win probability beats the price's break-even
-    # probability by this much (spread/total win probability = Phi(point edge / residual std)).
-    threshold = st.sidebar.slider("Edge Threshold (probability)", 0.0, 0.20, DEFAULT_PROB_EDGE, 0.005, format="%.3f",
-                                  help="Bet only when the model's win probability exceeds the price's break-even probability by this amount.")
-    if bet_type == "Spread":
-        st.sidebar.caption(f"= a {points_threshold(DEFAULT_SPREAD_STD, threshold):.1f}-point edge over the line (residual std {DEFAULT_SPREAD_STD} pts).")
-    elif bet_type == "Totals":
-        st.sidebar.caption(f"= a {points_threshold(DEFAULT_TOTAL_STD, threshold):.1f}-point edge over the total (residual std {DEFAULT_TOTAL_STD} pts).")
+
+    # One rule for every market (team/betting.py): bet when the model's win probability beats the price's break-even
+    # probability by `threshold`. For the moneyline that is the natural control. For spread/totals a point edge over the line
+    # is easier to reason about, so the slider is in points and converted: P(win) = Phi(edge / residual std) at -110.
+    if bet_type == "Moneyline":
+        threshold = st.sidebar.slider("Minimum edge (probability points)", 0.0, 0.20, DEFAULT_PROB_EDGE, 0.005, format="%.3f",
+                                      help="Bet only when the model's win probability exceeds the price's break-even probability by this much "
+                                           "(0.05 = 5 percentage points, e.g. the model says 60% and the price implies 55%).")
+        points_edge = None
+    else:
+        std = DEFAULT_SPREAD_STD if bet_type == "Spread" else DEFAULT_TOTAL_STD
+        line_word = "spread" if bet_type == "Spread" else "total"
+        default_pts = round(points_threshold(std, DEFAULT_PROB_EDGE), 1)
+        points_edge = st.sidebar.slider(f"Minimum edge (points vs the {line_word})", 0.0, 10.0, default_pts, 0.1,
+                                        key=f"pts_{bet_type}",
+                                        help=f"Bet only when the model's {line_word} differs from the market line by at least this many points. "
+                                             f"{default_pts} points is the model's standard 5% edge rule.")
+        threshold = implied_prob_edge(points_edge, std)
+        st.sidebar.caption(f"{points_edge:.1f} pts ≈ the model wins {cover_probability(points_edge, std):.1%} of such bets vs 52.4% to break even at -110 "
+                           f"(a {threshold:+.1%} edge; residual std {std} pts).")
+    threshold_label = f"≥ {points_edge:.1f} pts ({threshold:+.1%} edge)" if points_edge is not None else f"{threshold:.3f}"
 
     # Filter Data for Display
     mask = (df['game_date'] >= start_date) & (df['game_date'] <= end_date)
@@ -1059,7 +1071,7 @@ def main():
         with st.expander("View Raw Data", expanded=False):
             st.dataframe(display_df)
         
-        st.caption(f"Simulating {bet_type} bets with threshold {threshold} from {start_date} to {end_date}.")
+        st.caption(f"Simulating {bet_type} bets with minimum edge {threshold_label} from {start_date} to {end_date}.")
         
         # Reactive Simulation (Runs automatically)
         sim_df = simulate_strategies(display_df, threshold, bet_type)
@@ -1127,7 +1139,7 @@ def main():
 
     with tab4:
         st.subheader("📋 Team Performance Breakdown")
-        st.caption(f"Bet Type: **{bet_type}** · Threshold: **{threshold}** · Date Range: {start_date} → {end_date}")
+        st.caption(f"Bet Type: **{bet_type}** · Minimum edge: **{threshold_label}** · Date Range: {start_date} → {end_date}")
 
         # Build team list from filtered data
         all_teams = sorted(set(
@@ -1188,7 +1200,7 @@ def main():
 
     with tab5:
         st.subheader("🏆 League-Wide Summary")
-        st.caption(f"Model Threshold: **{threshold}** (Applies to all model bet columns). Date Range: {start_date} → {end_date}")
+        st.caption(f"Model minimum edge: **{threshold:+.1%} win-probability edge** (Applies to all model bet columns). Date Range: {start_date} → {end_date}")
         
         with st.spinner("Calculating league summary..."):
             league_df = build_league_summary(display_df, threshold)
