@@ -35,7 +35,7 @@ Date 2026-10-21 (run 2026-10-20 evening). Pre-registration: [phase5_revised_rule
 - **At average prices there is no edge.** The same bets priced at the median bettable quote are worth +0.8%, -1.7%, -0.5%: statistically zero.
 - **The edge is price dispersion across books, not forecasting.** Taking the best of five or six books' quotes is worth about 5 points of ROI. The market-only rule, which ignores the model entirely and only buys a quote that beats the consensus fair probability by 3 points, earned +4.3%, +2.3% and +7.0% in the three seasons. The model adds selection on top (the blind-under benchmarks lose), but most of what this simulation earns is available without it.
 - **Executability is the whole question and history cannot answer it.** Whether a quote that looks best in a snapshot is still there when a bet is placed, what the limits are, and how fast accounts get restricted when they win are all outside this simulation. The simulation also bets 1.5 times per player-game on average; capping at one bet per player-game gives +6.5% [+4.4%, +8.4%] on 10,145 bets (family-wise [+3.8%, +9.4%]).
-- **Sides:** unders +6.1% [+3.8%, +8.3%] on 10,031 bets, overs +2.1% [-0.9%, +4.8%] on 5,562. The market's lean (overs overpriced by about 1.3 points in the comparable sample) persisted.
+- **Sides:** unders +6.1% [+3.8%, +8.3%] on 10,031 bets, overs +2.1% [-0.9%, +4.8%] on 5,562. The market's lean (overs overpriced by about 1.4 points in the comparable sample) persisted.
 
 ## 5. Declared sensitivities (reported beside the headline, none selected)
 
