@@ -182,6 +182,8 @@ def main():
           f'CLV to T-5 (bets placed at T-240 or T-60): {clv_counts}\n', r(clv) if len(clv) else 'not enough bets with a T-5 quote\n',
           '### Primary rule by side, stat and book\n', r(by_side), r(by_stat), r(by_book),
           "### Decomposition: where the primary rule's ROI comes from (settlement: bet stands)\n", r(decomp),
+          '### Placebo model (same k, selection and prices; probabilities swapped with a random other market of the same stat)\n', r(placebo), '### CLV: real minus placebo\n', r(excess),
+          f'### Exposure: {expo}\n', r(caps),
           f'## 3. {len(grid)} tried rules (+3 exposure caps above) (settlement: bet stands). `lo_adj/hi_adj` = interval at the Bonferroni level for {TRIED} rules\n', r(grid.drop(columns=['treatment']))]
     Path(a.out).write_text('\n'.join(md), encoding='utf-8')
     print(score.round(4).to_string(index=False)); print(slope.round(3).to_string(index=False)); print(prim_all.round(4).to_string(index=False)); print(clv.round(4).to_string(index=False), clv_counts); print(decomp.round(4).to_string(index=False)); print(placebo.round(3).to_string(index=False)); print(excess.round(3).to_string(index=False)); print(caps.round(4).to_string(index=False)); print(expo)
