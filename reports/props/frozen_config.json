@@ -1,6 +1,6 @@
 {
   "frozen_on": "2026-10-20",
-  "status": "FROZEN: no change to anything below before 2025-26 has been scored once",
+  "status": "FROZEN, with one open item: R2b adoption is under review after the second audit (see reports/props/phase5_dev_gate.md section 4); nothing else changes before 2025-26 is scored once",
   "code_commit_at_freeze": "724bad5c87ccd3e2ccf8b05df93f29f27f64d26a",
   "branch": "props-phase4 (stacked on props-onto-main, PR #17)",
   "dataset": {
@@ -10,7 +10,8 @@
       "injury reports usable only if stamped >= 15 min before T",
       "market-environment snapshots strictly at or before T",
       "env_source is never a model input"
-    ]
+    ],
+    "build_guards": "merge cardinality validated and duplicate drops bounded; rebuild identical to the stored dataset"
   },
   "features": {
     "spec": "base (every group except market_env)",
@@ -61,7 +62,8 @@
         28.0
       ],
       "max_c": 1.6,
-      "fitted_on": "calibration window of each fold, fit-only models"
+      "fitted_on": "calibration window of each fold, fit-only models",
+      "note": "floor c >= 1 unchanged; a narrowing variant (min_c 0.7) was tried on the dev folds and not adopted"
     },
     "isotonic_layer": "fitted for reporting, NOT applied",
     "R2b": {
@@ -69,7 +71,8 @@
       "prior_player_games": 1000.0,
       "row_weight": 0.3333333333333333,
       "carry_over": "previous season's final game-dates, forecast by that season's own fold; no carry-over for the first test season",
-      "status": "adopted 2026-10-20 as a documented deviation (non-harm condition on pra, 2022-23: +0.026% CRPS, within bootstrap noise)"
+      "status": "adopted 2026-10-20 by documented deviation on a flawed window; corrected implementation (per game type) passes 2023-24 and fails the non-harm rule on assists 2022-23: DECISION PENDING",
+      "window": "previous 21 game-dates of the same game group (regular 002 / postseason); regular-season rows also see the previous regular season last 21 game-dates; postseason never carries over"
     }
   },
   "folds": {

@@ -57,3 +57,14 @@ Tried rules so far: R1, R2 (twice, same constants), R2b, R3, plus design correct
 3. Per-merge `validate=` guards in the props dataset build.
 4. Rerun the 2024-25 numbers on the final configuration, as "seen" results, once the configuration is frozen.
 5. Phase 5 plan: 20,000-sim rows, book-line metrics as gate criteria, snapshot-era-only H1/H2, joint re-simulation for portfolio risk.
+
+## Second audit (props-phase4 up to commit 31c0046), 2026-10-20
+
+| Item | Verdict | Action and result |
+|---|---|---|
+| B1: R2b season-start window is 100% playoff games | **Genuine.** Carry-over windows were game type 004 only; ratios 0.914 and 0.949 against 1.048 and 1.003 for the last 21 regular-season dates | Per-game-type windows (`game_group`), tested. Corrected R2b: passes the bias bar on 2023-24 (-55%), fails non-harm on 2022-23 (assists, +0.0006). Decision pending |
+| B2: CLV gate passed by a model with no information | **Genuine** (placebo CLV +0.19 vs real +0.41) | Placebo comparison added; gate becomes real minus placebo (excess +0.22 points, conservative lower bound +0.16) |
+| W1: pmfs too wide, scaler cannot narrow | **Genuine** (variance ratios 0.90-0.99) | Narrowing implemented and tried: a near no-op, slightly worse for rebounds; not adopted. Cause is the fit-only/refit mismatch of the calibration; a rolling dispersion calibration would be a new tried rule |
+| Tuned on one season | Genuine, not fixable | Validation reports ROI by side and the market's lean |
+| Same-player bets counted separately | **Genuine** | Exposure caps and distinct player-games reported (12,198 player-games behind 27,934 bets) |
+| Merge guards | **Genuine** | Cardinality validation on every dataset merge, bounded de-duplication; rebuild identical |
