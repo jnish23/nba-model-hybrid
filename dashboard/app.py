@@ -8,6 +8,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from pathlib import Path
 import sys
+import textwrap
 
 # Add root to sys.path to allow importing models
 root_path = Path(__file__).resolve().parent.parent
@@ -19,6 +20,8 @@ from team.betting import (calculate_implied_prob, calculate_payout, calculate_be
                             DEFAULT_SPREAD_STD, DEFAULT_TOTAL_STD, DEFAULT_PROB_EDGE, implied_prob_edge,
                             cover_probability)
 from core.season_utils import date_bounds, season_date_range, season_for_date, season_options
+from team.explain import (COLUMNS as EXPLANATION_COLUMNS, SPREAD, TOTAL, chart_steps, game_features, game_flags, game_pieces,
+                          load_explanations, normalize_game_ids, summary_sentence)
 
 # Set page config
 st.set_page_config(
@@ -87,6 +90,9 @@ DB_PATH = Path(os.environ.get("NBA_DASHBOARD_DB", Path(__file__).resolve().paren
 # e.g. on Streamlit Community Cloud or in a fresh clone)
 REMOTE_DATA_URL = "https://raw.githubusercontent.com/jnish23/nba-model-hybrid/dashboard-data/predictions_log.csv"
 SNAPSHOT_PATH = Path(__file__).resolve().parent / "snapshot" / "predictions_log.csv"
+# Why the model likes each game (team/explain.py), published next to the predictions
+EXPLANATIONS_URL = "https://raw.githubusercontent.com/jnish23/nba-model-hybrid/dashboard-data/explanations.csv"
+EXPLANATIONS_SNAPSHOT_PATH = Path(__file__).resolve().parent / "snapshot" / "explanations.csv"
 
 
 def _read_predictions():
@@ -102,6 +108,80 @@ def _read_predictions():
     if SNAPSHOT_PATH.exists():
         return pd.read_csv(SNAPSHOT_PATH, dtype={'game_id': str}), "bundled snapshot"
     raise FileNotFoundError(f"No data: {DB_PATH}, {REMOTE_DATA_URL} and {SNAPSHOT_PATH} are all unavailable")
+
+
+def _read_explanations():
+    """Explanation rows from the local DB, else the published data branch, else the bundled snapshot; an empty frame if none has any."""
+    if DB_PATH.exists():
+        found = load_explanations(DB_PATH)
+        if not found.empty:
+            return found
+    try:
+        return pd.read_csv(EXPLANATIONS_URL, dtype={'game_id': str})
+    except Exception:
+        pass
+    if EXPLANATIONS_SNAPSHOT_PATH.exists():
+        return pd.read_csv(EXPLANATIONS_SNAPSHOT_PATH, dtype={'game_id': str})
+    return pd.DataFrame(columns=EXPLANATION_COLUMNS)
+
+
+@st.cache_data(ttl=600)
+def load_explanation_data():
+    """Explanation rows with canonical game ids. Never raises: the panel just says 'No explanation available'."""
+    try:
+        return normalize_game_ids(_read_explanations()).reindex(columns=EXPLANATION_COLUMNS)
+    except Exception:
+        return pd.DataFrame(columns=EXPLANATION_COLUMNS)
+
+
+def explanation_chart(steps):
+    """Horizontal waterfall from the current line to the model's number (team.explain.chart_steps)."""
+    labels = ['<br>'.join(textwrap.wrap(label, 24)) for label, _, _ in steps]     # wrapped so the bars keep room on a phone
+    values = [value for _, value, _ in steps]
+    measures = ['total' if m == 'absolute' and i > 0 else m for i, (_, _, m) in enumerate(steps)]
+    levels, running = [], 0.0
+    for value, measure in zip(values, measures):
+        running = value if measure != 'relative' else running + value
+        levels.append(running)
+    pad = max(1.0, 0.15 * (max(levels) - min(levels)))
+    fig = go.Figure(go.Waterfall(
+        orientation='h', y=labels, x=values, measure=measures,
+        text=[f"{v:.1f}" if m != 'relative' else f"{v:+.1f}" for v, m in zip(values, measures)], textposition='outside', cliponaxis=False,
+        increasing={'marker': {'color': '#2E86C1'}}, decreasing={'marker': {'color': '#E67E22'}},
+        totals={'marker': {'color': '#7F8C8D'}}, connector={'line': {'color': '#B0B0B0'}}))
+    fig.update_xaxes(range=[min(levels) - pad, max(levels) + pad], title='points')
+    fig.update_yaxes(autorange='reversed')
+    fig.update_layout(height=70 + 46 * len(steps), margin=dict(l=0, r=40, t=10, b=0), showlegend=False)
+    return fig
+
+
+def render_explanation(expl, game):
+    """The panel under Today's Games for one game row: a Total and a Spread tab."""
+    gid = str(game['game_id']).zfill(10)
+    st.markdown(f"#### Why the model likes {game['matchup']}")
+    st.caption("Starts at today's betting line and ends at the model's number. Each bar is a group of related inputs: "
+               "blue pushes the model's number up, orange pushes it down.")
+    tabs = st.tabs(["Total", "Spread"])
+    for tab, market in zip(tabs, (TOTAL, SPREAD)):
+        with tab:
+            pieces = game_pieces(expl, gid, market)
+            if pieces.empty:
+                st.info("No explanation available")
+                continue
+            st.markdown(summary_sentence(pieces, market, game.get('home_team')))
+            for flag in game_flags(expl, gid, market).itertuples():
+                (st.warning if flag.severity == 'warn' else st.info)(flag.label)
+            st.plotly_chart(explanation_chart(chart_steps(pieces)), use_container_width=True, key=f"why_{gid}_{market}")
+            with st.expander("Feature detail"):
+                st.caption("Every input of the model, biggest push first. The chart sums these by group; for the total, the opening total's own push "
+                           "is shown there as 'how much the model trusts the opening line'.")
+                detail = game_features(expl, gid, market)
+                st.dataframe(pd.DataFrame({
+                    'Factor': detail['label'], 'Group': detail['group'], 'This game': detail['value'].round(2),
+                    'League percentile': (100 * detail['pctile']).round(0), 'Contribution (pts)': detail['contribution'].round(2)}),
+                    hide_index=True, use_container_width=True,
+                    column_config={'League percentile': st.column_config.NumberColumn(
+                        help="Where this game's value ranks among recent seasons' games (50 = typical, 95 = higher than 95% of them).", format="%d")})
 
 
 @st.cache_data(ttl=3600)
@@ -805,8 +885,13 @@ def main():
             # Filter existing cols
             final_cols = [c for c in cols_to_show if c in todays_games.columns]
             
-            st.dataframe(todays_games[final_cols])
+            todays_games = todays_games.reset_index(drop=True)
+            st.caption("Click a game to see why the model likes it.")
+            event = st.dataframe(todays_games[final_cols], hide_index=True, use_container_width=True, key="todays_games_table",
+                                 on_select="rerun", selection_mode="single-row")
             st.metric("Total Games", len(todays_games))
+            if event.selection.rows:
+                render_explanation(load_explanation_data(), todays_games.iloc[event.selection.rows[0]])
 
     with tab2:
         st.subheader("Model Performance: Last 14 Days")
