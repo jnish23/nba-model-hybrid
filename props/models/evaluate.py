@@ -17,6 +17,18 @@ MIN_HIST = 5                       # fewer prior games than this: that row falls
 RATE_COLS = ['m_min_h15', 'r_points_h15', 'r_rebounds_h15', 'r_assists_h15', 'r_fg3m_h15']
 
 
+def load_rows_light(version, season, features_db=None):
+    """Predictions joined to the LABELS only (a few columns read straight from SQLite). Enough for bias, CRPS-between-versions and calibration comparisons;
+    the baselines and segment tables need the full frame (load_rows)."""
+    import sqlite3
+    from props.features import build
+    idx, pmfs = registry.load_predictions(version, season)
+    with sqlite3.connect(str(features_db or build.OUT_DB)) as conn:
+        lab = pd.read_sql('SELECT game_id, player_id, lbl_played, lbl_minutes, y_points, y_rebounds, y_assists, y_threes, y_pra FROM player_game_labels', conn)
+    lab['game_id'] = lab['game_id'].astype(str)
+    return idx.merge(lab, on=['game_id', 'player_id'], how='left', validate='many_to_one'), pmfs
+
+
 def load_rows(version, season, frame):
     idx, pmfs = registry.load_predictions(version, season)
     keep = [c for c in frame.columns if c.startswith(('y_', 'lbl_'))] + RATE_COLS + ['pos_group']
