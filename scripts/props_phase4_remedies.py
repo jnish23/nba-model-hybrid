@@ -34,22 +34,22 @@ def verdict(cmp, need_shrink, label, check_bias=True):
     return ok
 
 
-def r2dev(frame):
+def r2dev(base):
     rec = recalibrate.RollingRecalibrator()
     res = {}
     for season in ('2022-23', '2023-24'):
-        rows, pm = ev.load_rows('v2_base', season, frame)
+        rows, pm = ev.load_rows_light(base, season)
         after = {}
         for stat in pm:
             after[stat], _ = rec.apply(stat, pm[stat], rows['game_date'], observed(rows, stat))
         cmp = ev.compare_versions(rows, pm, rows, after)
-        print(f'\nR2 on {season}: original (A) vs rolling-recalibrated (B)')
+        print(f'\nR2 on {season} (base {base}): original (A) vs rolling-recalibrated (B)')
         print(cmp.round(4).to_string(index=False))
         res[season] = cmp
     print('\nPre-registered R2 verdict:')
     a = verdict(res['2023-24'], 0.5, '2023-24 (bias must shrink by half, no CRPS harm)')
     b = verdict(res['2022-23'], 0.0, '2022-23 (no harm)', check_bias=False)
-    print(f'R2 ADOPTED on the dev folds: {a and b}')
+    print(f'R2 ADOPTED on the dev folds (base {base}): {a and b}')
 
 
 def r1dev(frame, r1_version):
@@ -67,6 +67,9 @@ if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument('mode', choices=['r2dev', 'r1dev'])
     ap.add_argument('--r1-version', default='r1_2023-24')
+    ap.add_argument('--base-version', default='v2_base', help='saved version R2 is applied to')
     a = ap.parse_args()
-    fr = data.load_frame()
-    r2dev(fr) if a.mode == 'r2dev' else r1dev(fr, a.r1_version)
+    if a.mode == 'r2dev':
+        r2dev(a.base_version)
+    else:
+        r1dev(data.load_frame(), a.r1_version)
