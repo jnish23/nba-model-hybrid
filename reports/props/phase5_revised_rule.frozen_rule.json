@@ -1,0 +1,75 @@
+{
+  "stats": [
+    "rebounds",
+    "assists",
+    "threes",
+    "ra"
+  ],
+  "k_by_stat": {
+    "assists": 0.2876616660071663,
+    "ra": 0.2296613439360755,
+    "rebounds": 0.2615007750472374,
+    "threes": 0.31211602398414057
+  },
+  "primary": {
+    "e": 0.03,
+    "time": "earliest",
+    "min_books": 3
+  },
+  "developed_on": [
+    "2023-24",
+    "2024-25"
+  ],
+  "tried_rules": 37,
+  "recalibration": "none",
+  "pooled_slopes": {
+    "all": [
+      0.1579,
+      0.1212,
+      0.1946
+    ],
+    "assists": [
+      0.2877,
+      0.2284,
+      0.3485
+    ],
+    "pa": [
+      0.0805,
+      0.0234,
+      0.138
+    ],
+    "points": [
+      0.0892,
+      0.0408,
+      0.1393
+    ],
+    "pr": [
+      0.0969,
+      0.0453,
+      0.1502
+    ],
+    "pra": [
+      0.0621,
+      0.0128,
+      0.1102
+    ],
+    "ra": [
+      0.2297,
+      0.1644,
+      0.2921
+    ],
+    "rebounds": [
+      0.2615,
+      0.2065,
+      0.3199
+    ],
+    "threes": [
+      0.3121,
+      0.2359,
+      0.3831
+    ]
+  },
+  "code_commit": "761705dcca2bad18eb02ea70cbfb02c43bcb1dcb",
+  "features_db_sha256": "2d221a8d39923a300b2496395a4ea9abc9d723d0f4adc6f860746c66007cfab9",
+  "n_comparisons": 636982
+}
