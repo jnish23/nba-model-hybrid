@@ -1,5 +1,8 @@
 # Phase 4 interim report: evaluation against outcomes (2024-25 validation)
 
+> **Update 2026-10-20:** a later audit changed the protocol and several pipeline details; read [phase4_audit_response.md](phase4_audit_response.md) and [phase4_protocol_update.md](phase4_protocol_update.md) first. All 2024-25 figures below are now labelled *seen* (not out of sample for decisions), the seasonality hypothesis (R1) was refuted, and the go/no-go criteria are re-scored once on 2025-26 after the configuration is frozen.
+
+
 Date 2026-10-19/20. Full tables: [phase4_eval_2024-25.md](phase4_eval_2024-25.md). Plan and pre-registered rules: [phase4_plan.md](phase4_plan.md). **2025-26 is untouched.** The feature-group ablations are still running (section 5); everything else in the plan is done except the decision in section 6.
 
 ## 1. Headline
