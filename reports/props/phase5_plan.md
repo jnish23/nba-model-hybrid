@@ -55,9 +55,18 @@ For each (player, game, stat, T) and each side, with p_mkt the consensus de-vigg
 
 One unit-stake bet has a standard deviation of about 1.0, so the standard error of ROI over N independent bets is about 1/sqrt(N). Detectable ROI at 80% power and a 5% two-sided level is about 2.8/sqrt(N): N = 5,000 independent bets -> 4.0%; 10,000 -> 2.8%; 20,000 -> 2.0%. A player-game appears at three decision times and in up to eight related stats, so the effective N is roughly a third of the raw count. In 2023-24 there were 334k comparable quotes (about 110k independent player-game-stats); a rule that fires on 10% of them gives about 11k independent bets, enough to detect an ROI near 2.7%. **Smaller true edges cannot be confirmed in one season**; the report will say "not distinguishable from zero" rather than "no edge" in that case, and CLV over three seasons will carry the weight.
 
-## 6. Gates
+## 6. Gates (wording approved by the user 2026-10-20, after the audits)
 
-Go to Phase 6 (paper trading, live parity) only if, on 2025-26 and under both settlement treatments, the primary rule has a positive lower bound on ROI, positive mean CLV to T-5 with an interval above zero, and an information slope above zero; and the 2024-25 validation did not contradict it. Anything less is reported as it is and the project stops at the market-benchmark and information results.
+Go to Phase 6 (paper trading, live parity) only if, on 2025-26 and under all three settlement treatments, the HEADLINE configuration (v3 pipeline, no recalibration; R2b reported beside it as a declared sensitivity) shows ALL of:
+
+1. **Information:** slope of realized-minus-market on model-minus-market with a 95% interval above zero.
+2. **CLV net of the placebo:** real CLV to T-5 minus the CLV of the no-information placebo (same k, rule and prices; at least four runs) is positive, with a positive conservative lower bound (the real model's lower bound minus the placebo's largest upper bound). Raw CLV alone is not a criterion, because selection against consensus noise produces positive CLV by itself.
+3. **ROI:** the primary rule's ROI at the best bettable price has a lower bound above zero, AND the ROI at the **median** bettable price has a non-negative point estimate, with the best-price ROI always quoted next to it and never alone.
+4. The 2024-25 validation did not contradict the development result, as defined below.
+
+Criteria 2 and 3 of the Phase 4 list (bias, ECE) are met only through the plan's fallback (bias reported; bets judged by net CLV and these criteria) unless the configuration passes them outright on 2025-26.
+
+**What counts as contradicting, fixed before 2024-25 was loaded:** the validation (frozen k and rule from the no-R2b development run) contradicts the development result if the information-slope interval includes zero or is below it, OR the net-of-placebo conservative CLV lower bound is not positive, OR the best-price ROI interval lies entirely below zero. Anything else is reported as consistent, with the magnitude differences shown (development numbers are in-sample for k and the rule, so a smaller validation ROI is expected and is not a contradiction).
 
 ## 7. Pitfalls handled
 
@@ -65,7 +74,7 @@ Selection from pulled lines (a quote that disappears when a player is ruled out 
 
 ## 8. What I need from you before building
 
-1. **Which sportsbooks can you actually bet at** (state and accounts)? The backfill holds DraftKings, FanDuel, BetMGM, Caesars, BetRivers, Bovada, BetOnline, Fanatics, Unibet and others. Default if you do not answer: the US-regulated ones only, offshore books excluded from the bettable set (still used in the consensus).
+1. (answered: DraftKings, FanDuel, BetMGM, Caesars, BetRivers, Fanatics, Unibet; offshore books only in the consensus) **Which sportsbooks can you actually bet at** (state and accounts)? The backfill holds DraftKings, FanDuel, BetMGM, Caesars, BetRivers, Bovada, BetOnline, Fanatics, Unibet and others. Default if you do not answer: the US-regulated ones only, offshore books excluded from the bettable set (still used in the consensus).
 2. Approve the three-stage protocol in section 2 and the 20,000-draw simulations (about 30 minutes of compute per season, no cost).
 3. Approve the primary rule (e = 0.03, earliest decision time with positive EV, at least 3 books, pooled) as the headline, designated now.
 
