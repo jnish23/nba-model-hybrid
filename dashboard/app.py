@@ -862,39 +862,28 @@ def main():
             todays_games['Spread Pick'] = todays_games.apply(get_spread_pick, axis=1)
             todays_games['Total Pick'] = todays_games.apply(get_total_pick, axis=1)
             
-            # 3. Clean Columns
-            cols_to_show = [
-                'matchup', 
-                'game_date',
-                'Model Home Prob (%)',
-                'Implied Home Prob (%)',
-                'Model Away Prob (%)',
-                'Implied Away Prob (%)',
-                'odds_away_ml',
-                'odds_home_ml',
-                'ML Pick',
-                'Spread Pick',
-                'Total Pick'
-            ]
-            
-            todays_games['Implied Home Prob (%)'] = todays_games['Implied Home Prob (%)'].apply(lambda x: f"{x:.0f}%" if pd.notna(x) else x)
-            todays_games['Model Home Prob (%)'] = todays_games['Model Home Prob (%)'].apply(lambda x: f"{x:.0f}%" if pd.notna(x) else x)
-            todays_games['Implied Away Prob (%)'] = todays_games['Implied Away Prob (%)'].apply(lambda x: f"{x:.0f}%" if pd.notna(x) else x)
-            todays_games['Model Away Prob (%)'] = todays_games['Model Away Prob (%)'].apply(lambda x: f"{x:.0f}%" if pd.notna(x) else x)
-
-            # Filter existing cols
-            # The row-select box has no header of its own, so a labelled first column points at it
-            todays_games['Why? (tick the box at the left)'] = 'Show breakdown'
-            cols_to_show = ['Why? (tick the box at the left)'] + cols_to_show
-            final_cols = [c for c in cols_to_show if c in todays_games.columns]
-            
+            # 3. Clean Columns: one row per game, the away-side and duplicate numbers folded into combined columns
+            def pct(x):
+                return f"{x:.0f}%" if pd.notna(x) else "-"
+            def american(x):
+                return f"{x:+.0f}" if pd.notna(x) else "-"
             todays_games = todays_games.reset_index(drop=True)
-            st.caption("Click a game to see why the model likes it.")
-            event = st.dataframe(todays_games[final_cols], hide_index=True, use_container_width=True, key="todays_games_table",
-                                 on_select="rerun", selection_mode="single-row")
+            table = pd.DataFrame({
+                'Why?': False,
+                'Game': todays_games['matchup'],
+                'Home win % (model / market)': [f"{pct(m)} / {pct(i)}" for m, i in zip(todays_games['Model Home Prob (%)'], todays_games['Implied Home Prob (%)'])],
+                'Moneyline (away / home)': [f"{american(a)} / {american(h)}" for a, h in zip(todays_games['odds_away_ml'], todays_games['odds_home_ml'])],
+                'ML Pick': todays_games['ML Pick'],
+                'Spread Pick': todays_games['Spread Pick'],
+                'Total Pick': todays_games['Total Pick'],
+            })
+            st.caption(f"Games on {todays_games['game_date'].iloc[0]}. Tick **Why?** on a game to see what moves the model's number away from the line.")
+            edited = st.data_editor(table, hide_index=True, use_container_width=True, key="todays_games_table",
+                                    disabled=[c for c in table.columns if c != 'Why?'],
+                                    column_config={'Why?': st.column_config.CheckboxColumn('Why?', width='small')})
             st.metric("Total Games", len(todays_games))
-            if event.selection.rows:
-                render_explanation(load_explanation_data(), todays_games.iloc[event.selection.rows[0]])
+            for i in edited.index[edited['Why?']]:
+                render_explanation(load_explanation_data(), todays_games.iloc[i])
 
     with tab2:
         st.subheader("Model Performance: Last 14 Days")
