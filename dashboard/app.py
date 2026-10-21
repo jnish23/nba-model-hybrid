@@ -158,7 +158,7 @@ def explanation_chart(steps):
 def render_explanation(expl, game):
     """The panel under Today's Games for one game row: a Total and a Spread tab."""
     gid = str(game['game_id']).zfill(10)
-    st.markdown(f"#### Why the model likes {game['matchup']}")
+    st.markdown(f"#### Breakdown: {game['matchup']}")
     st.caption("Starts at today's betting line and ends at the model's number. Each bar is a group of related inputs: "
                "blue pushes the model's number up, orange pushes it down.")
     tabs = st.tabs(["Total", "Spread"])
@@ -168,7 +168,7 @@ def render_explanation(expl, game):
             if pieces.empty:
                 st.info("No explanation available")
                 continue
-            st.markdown(summary_sentence(pieces, market, game.get('home_team')))
+            st.markdown(summary_sentence(pieces, market, game.get('home_team'), game.get('away_team')))
             for flag in game_flags(expl, gid, market).itertuples():
                 (st.warning if flag.severity == 'warn' else st.info)(flag.label)
             st.plotly_chart(explanation_chart(chart_steps(pieces)), use_container_width=True, key=f"why_{gid}_{market}")
@@ -883,6 +883,9 @@ def main():
             todays_games['Model Away Prob (%)'] = todays_games['Model Away Prob (%)'].apply(lambda x: f"{x:.0f}%" if pd.notna(x) else x)
 
             # Filter existing cols
+            # The row-select box has no header of its own, so a labelled first column points at it
+            todays_games['Why? (tick the box at the left)'] = 'Show breakdown'
+            cols_to_show = ['Why? (tick the box at the left)'] + cols_to_show
             final_cols = [c for c in cols_to_show if c in todays_games.columns]
             
             todays_games = todays_games.reset_index(drop=True)

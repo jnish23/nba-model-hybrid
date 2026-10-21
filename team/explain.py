@@ -353,8 +353,18 @@ def chart_steps(pieces, top=5):
     return steps
 
 
-def summary_sentence(pieces, market, home_team=None):
-    """One sentence: model number vs the current line, and how much of the gap is the line moving since the open."""
+LEAN_STRONG_PTS = 3.0      # |model - line| at or above this reads "Lean", below it "Slight lean"
+
+
+def lean_text(edge):
+    return 'Lean' if abs(edge) >= LEAN_STRONG_PTS else 'Slight lean'
+
+
+def summary_sentence(pieces, market, home_team=None, away_team=None):
+    """
+    Markdown headline: the side the model likes with a lean strength, the model number vs the current line, and how much of the gap is
+    the line moving since the open. Total: 'Lean OVER'. Spread: 'Lean <team> <spread>' (the team the model has covering).
+    """
     if pieces.empty:
         return ''
     line = float(pieces.loc[pieces['feature'] == 'line', 'value'].iloc[0])
@@ -362,14 +372,16 @@ def summary_sentence(pieces, market, home_team=None):
     edge = model - line
     move = pieces.loc[pieces['feature'] == 'movement', 'contribution']
     move = float(move.iloc[0]) if len(move) else 0.0
+    home, away = home_team or 'Home team', away_team or 'Away team'
     if market == TOTAL:
-        head = f"Model {model:.1f} vs line {line:.1f} ({edge:+.1f})."
+        side = 'OVER' if edge > 0 else 'UNDER'
+        head = f"**{lean_text(edge)} {side} {line:.1f}.** Model total {model:.1f} vs line {line:.1f} ({edge:+.1f})."
     else:
-        who = home_team or 'The home team'
-        def margin_text(m):
-            return f"{who} win by {m:.1f}" if m > 0 else (f"{who} lose by {-m:.1f}" if m < 0 else f"{who} win or lose by 0")
-        head = (f"Model: {margin_text(model)}. Market: {margin_text(line)}. "
-                f"That is {abs(edge):.1f} points {'toward the home team' if edge > 0 else 'toward the away team'}.")
+        def margin_text(team, other, m):
+            return f"{team} win by {m:.1f}" if m > 0 else (f"{other} win by {-m:.1f}" if m < 0 else "a tie")
+        team, spread = (home, -line) if edge > 0 else (away, line)           # line = home margin the market implies = -home spread
+        head = (f"**{lean_text(edge)} {team} {spread:+.1f}.** Model: {margin_text(home, away, model)}. "
+                f"Market: {margin_text(home, away, line)}. That is {abs(edge):.1f} points toward {team}.")
     if abs(move) < 0.05:
         return head + " The line has not moved since the open."
     same = np.sign(move) == np.sign(edge)

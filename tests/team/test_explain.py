@@ -316,3 +316,21 @@ def test_panel_says_no_explanation_available_without_rows_and_draws_the_chart_wi
     finally:
         for k in ('GAME_ID', 'HIDE', 'NO_EXPL_ID'):
             os.environ.pop(k, None)
+
+
+def test_headline_names_the_side_and_the_lean_strength():
+    f = _frame(20)
+    b = _bundle(f)
+    e, current = _explain(f, b, move_total=-6.5, move_spread=1.0)
+    gid = f['gameId'][0]
+    for m in (ex.TOTAL, ex.SPREAD):
+        p = ex.game_pieces(e, gid, m)
+        edge = ex.edge_of(p)
+        text = ex.summary_sentence(p, m, 'Home FC', 'Away FC')
+        assert text.startswith(f"**{'Lean' if abs(edge) >= ex.LEAN_STRONG_PTS else 'Slight lean'} ")
+        if m == ex.TOTAL:
+            assert ('OVER' if edge > 0 else 'UNDER') in text.split('.')[0]
+        else:
+            line = float(p.loc[p['feature'] == 'line', 'value'].iloc[0])             # home margin the market implies
+            want = f"Home FC {-line:+.1f}" if edge > 0 else f"Away FC {line:+.1f}"    # the side's own spread
+            assert want in text.split('Model:')[0]
