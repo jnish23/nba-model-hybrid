@@ -67,3 +67,24 @@ def test_gameday_window_uses_only_earlier_dates_and_reaches_across_the_offseason
     assert (after[new_dates > '2024-11-10'] != r_with[new_dates > '2024-11-10']).any()
     # the window is 21 game dates: a bias that ended more than 21 game dates ago no longer matters
     assert abs(r_with[new_dates == '2024-11-20'].mean() - 1.0) < 0.02
+
+
+def test_game_groups_keep_regular_season_and_postseason_ratios_apart():
+    rng = np.random.default_rng(4)
+    old_dates = np.repeat(pd.date_range('2024-04-01', periods=40).strftime('%Y-%m-%d'), 400)
+    old_ids = np.where(old_dates < '2024-04-21', '0022300001', '0042300101')                       # 20 regular dates, then 20 playoff dates
+    mu_o = rng.uniform(5, 15, len(old_dates))
+    obs_o = np.where(old_ids == '0022300001', rng.poisson(mu_o * 1.0), rng.poisson(mu_o * 0.85)).astype(float)       # regular season unbiased, playoffs 15% below the forecasts
+    new_dates = np.repeat(pd.date_range('2024-10-22', periods=25).strftime('%Y-%m-%d'), 400)
+    new_ids = np.array(['0022400001'] * len(new_dates))
+    mu_n = rng.uniform(5, 15, len(new_dates))
+    obs_n = rng.poisson(mu_n).astype(float)
+    carry = (old_dates, obs_o, mu_o, rc.game_group(old_ids))
+    grouped = rc.rolling_ratio_gamedays(new_dates, obs_n, mu_n, carry, groups=rc.game_group(new_ids))
+    naive = rc.rolling_ratio_gamedays(new_dates, obs_n, mu_n, (old_dates, obs_o, mu_o))                # the old behaviour: the window is the last 21 dates = playoffs
+    first = new_dates == '2024-10-22'
+    assert naive[first].mean() < 0.95 and abs(grouped[first].mean() - 1.0) < 0.03                      # the playoff bias no longer leaks into opening night
+    # a playoff game never takes a regular-season ratio, and has no ratio before its own postseason starts
+    post = rc.rolling_ratio_gamedays(new_dates[:400], obs_n[:400], mu_n[:400], carry, groups=np.array(['post'] * 400))
+    assert np.all(post == 1.0)
+    assert set(rc.game_group(['0022300001', '0042300101', '0052300101'])) == {'regular', 'post'}

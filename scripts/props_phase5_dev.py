@@ -74,6 +74,38 @@ def decompose(q, k_by_stat, n_boot):
     return pd.concat(rows, ignore_index=True).drop(columns=['treatment'])
 
 
+PLACEBO_SEEDS = (11, 12, 13, 14)
+TRIED = 35                                                   # 24 grid rules + 8 per-stat + 3 exposure caps
+
+
+def placebo_and_caps(q, cons, k_by_stat, sel_primary, real_clv, n_boot, alpha_adj):
+    """(1) Placebo model: each market's model probability swapped for a random other market's of the same stat, same k, same selection, same prices. Its ROI and CLV are the zero point.
+    (2) Exposure caps on the primary selection: the same player-game often carries points, pr, pa and pra on one side."""
+    rows = []
+    for sd in PLACEBO_SEEDS:
+        qp = rules.add_ev(be.placebo_quotes(q, sd), k_by_stat)
+        sel = be.settle_all(rules.select(qp, PRIMARY['e'], PRIMARY['time'], PRIMARY['min_books']))
+        roi = be.roi_table(sel, f'placebo {sd}', n_boot=n_boot).query("treatment == 'stands'").iloc[0]
+        clv, counts = be.clv_table(sel, cons, n_boot=n_boot)
+        same = clv[clv['measure'].str.startswith('consensus')].iloc[0]
+        moved = clv[clv['measure'].str.startswith('line moved')].iloc[0]
+        rows.append({'run': f'placebo {sd}', 'bets': int(roi['bets']), 'roi': roi['roi'], 'roi_lo': roi['lo'], 'roi_hi': roi['hi'], 'clv_prob_pts': 100 * same['mean'], 'clv_lo': 100 * same['lo'], 'clv_hi': 100 * same['hi'],
+                     'line_move_pts': moved['mean']})
+        del qp, sel
+    pl = pd.DataFrame(rows)
+    real_same = real_clv[real_clv['measure'].str.startswith('consensus')].iloc[0]
+    real_move = real_clv[real_clv['measure'].str.startswith('line moved')].iloc[0]
+    excess = pd.DataFrame([{'measure': 'CLV, consensus fair probability to T-5, line unchanged (points)', 'real': 100 * real_same['mean'], 'real_lo': 100 * real_same['lo'], 'placebo_mean': pl['clv_prob_pts'].mean(),
+                            'placebo_max_hi': pl['clv_hi'].max(), 'excess': 100 * real_same['mean'] - pl['clv_prob_pts'].mean(), 'excess_conservative_lower': 100 * real_same['lo'] - pl['clv_hi'].max()},
+                           {'measure': 'line move in the bettor\'s favour by T-5 (points)', 'real': real_move['mean'], 'real_lo': real_move['lo'], 'placebo_mean': pl['line_move_pts'].mean(),
+                            'placebo_max_hi': np.nan, 'excess': real_move['mean'] - pl['line_move_pts'].mean(), 'excess_conservative_lower': np.nan}])
+    caps = []
+    for label, sel in (('primary, max 1 bet per player-game', rules.cap_per_player_game(sel_primary, 1)), ('primary, max 2 bets per player-game', rules.cap_per_player_game(sel_primary, 2)),
+                       ('primary, max 2 bets per game', rules.cap_per_game(sel_primary, 2))):
+        caps.append(be.roi_table(sel, label, n_boot=n_boot, alpha_adj=alpha_adj).query("treatment == 'stands'").assign(distinct_player_games=sel.groupby(['game_id', 'player_id']).ngroups))
+    return pl, excess, pd.concat(caps, ignore_index=True)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--season', required=True)
@@ -118,24 +150,26 @@ def main():
             for mbk in GRID_BOOKS:
                 sel = be.settle_all(rules.select(q, e, tm, mbk))
                 label = f'e={e}, time={tm}, min_books={mbk}'
-                r = be.roi_table(sel, label, n_boot=a.n_boot, alpha_adj=0.05 / 32)
+                r = be.roi_table(sel, label, n_boot=a.n_boot, alpha_adj=0.05 / TRIED)
                 results.append(r.query("treatment == 'stands'"))
                 if (e, tm, mbk) == (PRIMARY['e'], PRIMARY['time'], PRIMARY['min_books']):
                     sel_primary = sel
     for stat in sorted(q['stat'].unique()):
         sel = be.settle_all(rules.select(q[q['stat'] == stat], PRIMARY['e'], PRIMARY['time'], PRIMARY['min_books']))
         if len(sel):
-            results.append(be.roi_table(sel, f'primary, {stat} only', n_boot=a.n_boot, alpha_adj=0.05 / 32).query("treatment == 'stands'"))
+            results.append(be.roi_table(sel, f'primary, {stat} only', n_boot=a.n_boot, alpha_adj=0.05 / TRIED).query("treatment == 'stands'"))
     grid = pd.concat(results, ignore_index=True)
     prim_all = be.roi_table(sel_primary, 'PRIMARY', n_boot=a.n_boot)
     decomp = decompose(q, k_by_stat, a.n_boot)
     clv, clv_counts = be.clv_table(sel_primary, cons, n_boot=a.n_boot)
+    placebo, excess, caps = placebo_and_caps(q, cons, k_by_stat, sel_primary, clv, a.n_boot, 0.05 / TRIED)
+    expo = be.exposure(sel_primary)
     by_side = sel_primary.groupby('best_side').agg(bets=('best_ev', 'size'), mean_ev=('best_ev', 'mean')).reset_index()
     by_stat = sel_primary.groupby('stat').agg(bets=('best_ev', 'size'), mean_ev=('best_ev', 'mean'), profit=('profit_stands', 'sum')).reset_index()
     by_book = sel_primary.groupby('book').agg(bets=('best_ev', 'size'), profit=('profit_stands', 'sum')).reset_index()
     sel_primary.drop(columns=['snapshot_ts_utc']).to_csv(Path(a.out).with_suffix('.primary_bets.csv'), index=False)
     Path(a.out).with_suffix('.frozen_rule.json').write_text(json.dumps({'k_by_stat': k_by_stat, 'primary': PRIMARY, 'grid': {'e': GRID_E, 'time': GRID_TIME, 'min_books': GRID_BOOKS},
-                                                                       'developed_on': a.season, 'tried_rules': int(len(grid))}, indent=2), encoding='utf-8')
+                                                                       'developed_on': a.season, 'tried_rules': TRIED}, indent=2), encoding='utf-8')
 
     r = lambda d, n=4: md_table(d.round(n), n)
     md = [f'# Phase 5 development stage: {a.season} (frozen configuration + R2b, 20,000-draw simulations)\n',
@@ -148,9 +182,9 @@ def main():
           f'CLV to T-5 (bets placed at T-240 or T-60): {clv_counts}\n', r(clv) if len(clv) else 'not enough bets with a T-5 quote\n',
           '### Primary rule by side, stat and book\n', r(by_side), r(by_stat), r(by_book),
           "### Decomposition: where the primary rule's ROI comes from (settlement: bet stands)\n", r(decomp),
-          f'## 3. All {len(grid)} tried rules (settlement: bet stands). `lo_adj/hi_adj` = interval at the Bonferroni level for 32 rules\n', r(grid.drop(columns=['treatment']))]
+          f'## 3. {len(grid)} tried rules (+3 exposure caps above) (settlement: bet stands). `lo_adj/hi_adj` = interval at the Bonferroni level for {TRIED} rules\n', r(grid.drop(columns=['treatment']))]
     Path(a.out).write_text('\n'.join(md), encoding='utf-8')
-    print(score.round(4).to_string(index=False)); print(slope.round(3).to_string(index=False)); print(prim_all.round(4).to_string(index=False)); print(clv.round(4).to_string(index=False), clv_counts); print(decomp.round(4).to_string(index=False))
+    print(score.round(4).to_string(index=False)); print(slope.round(3).to_string(index=False)); print(prim_all.round(4).to_string(index=False)); print(clv.round(4).to_string(index=False), clv_counts); print(decomp.round(4).to_string(index=False)); print(placebo.round(3).to_string(index=False)); print(excess.round(3).to_string(index=False)); print(caps.round(4).to_string(index=False)); print(expo)
 
 
 if __name__ == '__main__':

@@ -52,3 +52,16 @@ def select(q, e, time_mode='earliest', min_books=3):
     first_t = q.groupby(['game_id', 'player_id', 'stat'])['minutes_before'].transform('max')            # larger minutes_before = earlier in time
     q = q[q['minutes_before'] == first_t]
     return q.drop_duplicates(['game_id', 'player_id', 'stat']).reset_index(drop=True)
+
+
+def cap_per_player_game(sel, n):
+    """At most n bets per player-game (the highest-EV ones): points, pr, pa and pra on one player are largely the same bet."""
+    s = sel.sort_values('best_ev', ascending=False)
+    s = s.groupby(['game_id', 'player_id'], sort=False).head(n)
+    return s.sort_index().reset_index(drop=True)
+
+
+def cap_per_game(sel, n):
+    """At most n bets per game (the highest-EV ones)."""
+    s = sel.sort_values('best_ev', ascending=False).groupby('game_id', sort=False).head(n)
+    return s.sort_index().reset_index(drop=True)

@@ -40,8 +40,8 @@ def main():
         carry_rows, carry_pm = ev.load_rows_light(a.r2b_carry_version, a.r2b_carry_season) if a.r2b_carry_version else (None, None)
         new = {}
         for stat in pmfs:
-            carry = None if carry_rows is None else (carry_rows['game_date'], observed(carry_rows, stat), oc.pmf_mean(carry_pm[stat]))
-            new[stat], _ = rec.apply(stat, pmfs[stat], rows['game_date'], observed(rows, stat), carry)
+            carry = None if carry_rows is None else (carry_rows['game_date'], observed(carry_rows, stat), oc.pmf_mean(carry_pm[stat]), recalibrate.game_group(carry_rows['game_id']))
+            new[stat], _ = rec.apply(stat, pmfs[stat], rows['game_date'], observed(rows, stat), carry, groups=recalibrate.game_group(rows['game_id']))
         pmfs = new
         logging.info(f'R2b applied (carry-over from {a.r2b_carry_version} {a.r2b_carry_season})')
     rows['minutes_bucket'] = pd.cut(rows['minutes_mean'], [0, 15, 28, 60], labels=['under 15', '15-28', '28+']).astype(str)

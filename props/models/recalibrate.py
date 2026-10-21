@@ -71,7 +71,28 @@ WINDOW_GAME_DAYS = 21
 PRIOR_PLAYER_GAMES_B = 1000.0
 
 
-def rolling_ratio_gamedays(dates, obs, mu, carry=None, window_game_days=WINDOW_GAME_DAYS, prior=PRIOR_PLAYER_GAMES_B, w=ROW_WEIGHT):
+def game_group(game_ids):
+    """'regular' for regular-season games (NBA game id prefix 002), 'post' for everything else (playoffs 004, play-in 005, ...). The two populations (30 teams vs 16 down to 2,
+    different minutes for starters) have different biases, so a ratio is only ever computed and applied within one group."""
+    return np.where(pd.Series(np.asarray(game_ids)).astype(str).str[:3].to_numpy() == '002', 'regular', 'post')
+
+
+def rolling_ratio_gamedays(dates, obs, mu, carry=None, window_game_days=WINDOW_GAME_DAYS, prior=PRIOR_PLAYER_GAMES_B, w=ROW_WEIGHT, groups=None):
+    """
+    With `groups` (one label per row, see game_group) the ratio of each row comes from rows of ITS group only; `carry` may then be a 4-tuple (dates, obs, mu, groups) and only
+    its 'regular' rows are used (the previous regular season's last game dates reach across the off-season; a year-old postseason is never carried into a new postseason).
+    """
+    if groups is not None:
+        groups = np.asarray(groups)
+        out = np.ones(len(groups))
+        for g in np.unique(groups):
+            m = groups == g
+            c = None
+            if carry is not None and g == 'regular':
+                cg = np.asarray(carry[3])
+                c = tuple(np.asarray(x)[cg == 'regular'] for x in carry[:3])
+            out[m] = rolling_ratio_gamedays(np.asarray(dates)[m], np.asarray(obs)[m], np.asarray(mu)[m], c, window_game_days, prior, w)
+        return out
     """
     Per-row shrunk ratio over the previous `window_game_days` distinct game dates strictly before the row's own date. `carry` = (dates, obs, mu) of earlier rows
     (the previous season's forecasts, made by that season's own models) that may enter the window; only the rows of `dates` get a ratio back.
@@ -95,6 +116,6 @@ def rolling_ratio_gamedays(dates, obs, mu, carry=None, window_game_days=WINDOW_G
 
 
 class RollingRecalibratorB:
-    def apply(self, stat, pmf, dates, obs, carry=None):
-        r = rolling_ratio_gamedays(dates, obs, oc.pmf_mean(pmf), carry)
+    def apply(self, stat, pmf, dates, obs, carry=None, groups=None):
+        r = rolling_ratio_gamedays(dates, obs, oc.pmf_mean(pmf), carry, groups=groups)
         return scale_pmf(pmf, r), r

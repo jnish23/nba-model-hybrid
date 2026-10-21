@@ -17,22 +17,26 @@ def y_of(df, stat):
 
 
 def r2b_ratio_by_date(full_rows, full_pmfs, carry=None):
-    """Per stat: {date -> R2b ratio}, from the full-season forecasts (all completed games before the date) and optional carry-over (rows, pmfs of the previous season's fold)."""
+    """Per stat: {(date, group) -> R2b ratio}, from the full-season forecasts (completed games of the same group before the date; regular-season rows also see the previous
+    regular season's last game dates via `carry` = (rows, pmfs) of the previous fold)."""
     out = {}
+    groups = recalibrate.game_group(full_rows['game_id'])
+    d = pd.to_datetime(full_rows['game_date']).dt.normalize().to_numpy()
     for stat in full_pmfs:
-        c = None if carry is None else (carry[0]['game_date'], observed(carry[0], stat), oc.pmf_mean(carry[1][stat]))
-        r = recalibrate.rolling_ratio_gamedays(full_rows['game_date'], observed(full_rows, stat), oc.pmf_mean(full_pmfs[stat]), c)
-        d = pd.to_datetime(full_rows['game_date']).dt.normalize().to_numpy()
-        out[stat] = pd.Series(r, index=d).groupby(level=0).first().to_dict()
+        c = None
+        if carry is not None:
+            c = (carry[0]['game_date'], observed(carry[0], stat), oc.pmf_mean(carry[1][stat]), recalibrate.game_group(carry[0]['game_id']))
+        r = recalibrate.rolling_ratio_gamedays(full_rows['game_date'], observed(full_rows, stat), oc.pmf_mean(full_pmfs[stat]), c, groups=groups)
+        out[stat] = pd.Series(r, index=pd.MultiIndex.from_arrays([d, groups])).groupby(level=[0, 1]).first()
     return out
 
 
 def apply_r2b(idx, pmfs, ratios):
-    """Scale the high-draw pmfs by the date's ratio (1.0 for a date with no ratio)."""
-    d = pd.to_datetime(idx['game_date']).dt.normalize()
+    """Scale the high-draw pmfs by the ratio of their date and game group (1.0 where there is none)."""
+    mi = pd.MultiIndex.from_arrays([pd.to_datetime(idx['game_date']).dt.normalize().to_numpy(), recalibrate.game_group(idx['game_id'])])
     new = {}
     for stat, pm in pmfs.items():
-        r = d.map(ratios[stat]).fillna(1.0).to_numpy(float)
+        r = ratios[stat].reindex(mi).fillna(1.0).to_numpy(float)
         new[stat] = recalibrate.scale_pmf(pm, r)
     return new
 
@@ -117,3 +121,21 @@ def clv_table(selected, cons, n_boot=ev.N_BOOT):
         p, lo, hi = ev.cluster_bootstrap(b.loc[moved, 'line_move_in_favour'].to_numpy(), b.loc[moved, 'game_id'], n_boot=n_boot)
         rows.append({'measure': 'line moved by T-5: points moved in the bettor\'s favour', 'n': int(moved.sum()), 'mean': p, 'lo': lo, 'hi': hi})
     return pd.DataFrame(rows), {'bets_before_T5': int(len(b)), 'with_T5_quote': int(has.sum()), 'line_unchanged': int(same.sum()), 'line_moved': int(moved.sum())}
+
+
+def placebo_quotes(q, seed):
+    """Placebo model: each market's (p_mod, push) is replaced by those of a random OTHER market of the same stat (a permutation within stat over markets). Same k, same selection rule,
+    same prices; the probabilities carry no information about this market. Its CLV and ROI are the zero point for the real model's."""
+    mk = ['game_id', 'player_id', 'stat', 'minutes_before']
+    m = q.groupby(mk, sort=False)[['p_mod', 'push']].first().reset_index()
+    rng = np.random.default_rng(seed)
+    for stat, g in m.groupby('stat'):
+        pos = g.index.to_numpy()
+        m.loc[pos, ['p_mod', 'push']] = m.loc[rng.permutation(pos), ['p_mod', 'push']].to_numpy()
+    return q.drop(columns=['p_mod', 'push']).merge(m[mk + ['p_mod', 'push']], on=mk, how='left', validate='many_to_one')
+
+
+def exposure(sel):
+    """How many of the bets are the same player-game: distinct player-games and the distribution of bets per player-game."""
+    per = sel.groupby(['game_id', 'player_id']).size()
+    return {'bets': int(len(sel)), 'distinct_player_games': int(len(per)), 'mean_bets_per_player_game': float(per.mean()), 'max_bets_per_player_game': int(per.max())}

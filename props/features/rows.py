@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 
 from core.season_utils import season_for_date
+from props.features import guards
 
 FIRST_HISTORY_SEASON = '2013-14'
 FIRST_DATASET_SEASON = '2019-20'
@@ -42,13 +43,14 @@ def load_games(conn):
     t['game_id'] = t['game_id'].astype(str).str.zfill(10)
     t['is_home'] = t['matchup'].str.contains(' vs. ', regex=False).astype(int)
     opp = t[['game_id', 'team_id']].rename(columns={'team_id': 'opp_team_id'})
-    t = t.merge(opp, on='game_id')
-    t = t[t['team_id'] != t['opp_team_id']].drop(columns='matchup').drop_duplicates(['game_id', 'team_id'])
+    assert t.groupby('game_id')['team_id'].nunique().max() <= 2, 'a game with more than two teams'
+    t = t.merge(opp, on='game_id')                                                  # many-to-many by construction: each game's two teams meet twice
+    t = guards.dedupe(t[t['team_id'] != t['opp_team_id']].drop(columns='matchup'), ['game_id', 'team_id'], 'team games')
     t['game_type'] = t['game_id'].str[:3]
     t['season'] = [season_for_date(d) for d in t['game_date']]
     m = _q(conn, "SELECT gameId AS game_id, teamId AS team_id, points - OPP_PTS AS lbl_team_margin FROM team_game_full")
     m['game_id'] = m['game_id'].astype(str).str.zfill(10)
-    return t.merge(m.drop_duplicates(['game_id', 'team_id']), on=['game_id', 'team_id'], how='left')
+    return t.merge(guards.dedupe(m, ['game_id', 'team_id'], 'team margins'), on=['game_id', 'team_id'], how='left', validate='one_to_one')
 
 
 def load_history(db_path, first_season=FIRST_HISTORY_SEASON, game_types=GAME_TYPES):
@@ -70,10 +72,10 @@ def load_history(db_path, first_season=FIRST_HISTORY_SEASON, game_types=GAME_TYP
     for d in (roster, basic, track, usage):
         d['game_id'] = d['game_id'].astype(str).str.zfill(10)
     keys = ['game_id', 'player_id']
-    df = roster.drop_duplicates(keys).merge(games, on=['game_id', 'team_id'], how='inner')
-    df = df.merge(basic.drop_duplicates(keys), on=keys, how='left')
-    df = df.merge(track.drop_duplicates(keys), on=keys, how='left')
-    df = df.merge(usage.drop_duplicates(keys), on=keys, how='left')
+    df = guards.dedupe(roster, keys, 'roster').merge(games, on=['game_id', 'team_id'], how='inner', validate='many_to_one')
+    df = df.merge(guards.dedupe(basic, keys, 'basic stats'), on=keys, how='left', validate='one_to_one')
+    df = df.merge(guards.dedupe(track, keys, 'tracking stats'), on=keys, how='left', validate='one_to_one')
+    df = df.merge(guards.dedupe(usage, keys, 'usage stats'), on=keys, how='left', validate='one_to_one')
     df = df[df['game_type'].isin(game_types) & (df['season'] >= first_season)].copy()
     df['lbl_played'] = (df['minutes'].fillna(0) > 0).astype(int)
     df['lbl_started'] = df['pos_flag'].fillna('').astype(str).str.len().gt(0).astype(int)

@@ -64,8 +64,8 @@ def r2bdev(base):
         prev_rows, prev_pm = ev.load_rows_light(base, PREVIOUS_SEASON[season])
         after = {}
         for stat in pm:
-            carry = (prev_rows['game_date'], observed(prev_rows, stat), oc.pmf_mean(prev_pm[stat]))
-            after[stat], _ = rec.apply(stat, pm[stat], rows['game_date'], observed(rows, stat), carry)
+            carry = (prev_rows['game_date'], observed(prev_rows, stat), oc.pmf_mean(prev_pm[stat]), recalibrate.game_group(prev_rows['game_id']))
+            after[stat], _ = rec.apply(stat, pm[stat], rows['game_date'], observed(rows, stat), carry, groups=recalibrate.game_group(rows['game_id']))
         cmp = ev.compare_versions(rows, pm, rows, after)
         print(f'\nR2b on {season} (base {base}, carry-over from the {PREVIOUS_SEASON[season]} fold): original (A) vs recalibrated (B)')
         print(cmp.round(4).to_string(index=False))

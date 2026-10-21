@@ -61,3 +61,21 @@ def test_line_move_sign_in_clv_table():
     assert counts['line_moved'] == n and abs(row['mean']) < 1e-9          # +1 for the over bettors, -1 for the under bettors: they cancel in a 50/50 mix
     over_only = be.clv_table(sel[sel['best_side'] == 'over'].reset_index(drop=True).assign(game_id=lambda d: d['game_id']), cons, n_boot=100)[0]
     assert over_only[over_only['measure'].str.startswith('line moved')]['mean'].iloc[0] > 0.99       # an over bettor gains when the line rises
+
+
+def test_caps_and_placebo():
+    import pandas as pd
+    from props.betting import evaluate as be
+    sel = pd.DataFrame({'game_id': ['g1'] * 4 + ['g2'] * 2, 'player_id': [1, 1, 1, 2, 3, 3], 'stat': list('abcdef'), 'best_ev': [0.05, 0.09, 0.04, 0.07, 0.06, 0.03]})
+    one = rules.cap_per_player_game(sel, 1)
+    assert len(one) == 3 and set(one['stat']) == {'b', 'd', 'e'}                                  # the best bet of each player-game
+    assert len(rules.cap_per_player_game(sel, 2)) == 5
+    assert set(rules.cap_per_game(sel, 2)['stat']) == {'b', 'd', 'e', 'f'}
+    assert be.exposure(sel)['distinct_player_games'] == 3
+    rng = np.random.default_rng(0)
+    q = pd.DataFrame({'game_id': np.repeat([f'g{i}' for i in range(200)], 3), 'player_id': 1, 'stat': 'points', 'minutes_before': 60, 'p_mod': np.repeat(rng.uniform(0.2, 0.8, 200), 3),
+                      'push': 0.0, 'book': list('abc') * 200})
+    pq = be.placebo_quotes(q, seed=1)
+    assert len(pq) == len(q) and abs(pq['p_mod'].mean() - q['p_mod'].mean()) < 1e-9                  # same distribution of probabilities ...
+    assert (pq.groupby('game_id')['p_mod'].nunique() == 1).all()                                       # ... constant within a market ...
+    assert np.corrcoef(pq['p_mod'], q['p_mod'])[0, 1] < 0.3                                            # ... and unrelated to the market's own probability

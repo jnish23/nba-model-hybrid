@@ -86,15 +86,15 @@ def build_at_t(base, labels, db_path, props_db, grid=GRID, reports=None):
     for x in grid:
         chosen, games = injury_at_t.latest_report_rows(reports, tips, x)
         status = injury_at_t.status_for_rows(base[['game_id', 'player_id', 'team_id']], chosen, games)
-        keyed = status.merge(base[['game_id', 'player_id', 'season', 'm_bucket']], on=['game_id', 'player_id']).merge(lab, on=['game_id', 'player_id'])
+        keyed = status.merge(base[['game_id', 'player_id', 'season', 'm_bucket']], on=['game_id', 'player_id'], validate='one_to_one').merge(lab, on=['game_id', 'player_id'], validate='one_to_one')
         table = injury_at_t.play_rate_table(keyed, x, rows_mod.FIRST_DATASET_SEASON)
         d = injury_at_t.attach_p_play(status, base, table)
-        d = d.merge(base[['game_id', 'player_id', 'opp_team_id']], on=['game_id', 'player_id'])
+        d = d.merge(base[['game_id', 'player_id', 'opp_team_id']], on=['game_id', 'player_id'], validate='one_to_one')
         av = injury_at_t.teammate_availability(d, base[feat_cols])
         env_x = market_env.team_view(base[['game_id', 'player_id', 'is_home']], env, x)
         t = d[['game_id', 'player_id', 'inj_status', 'inj_status_code', 'inj_p_play', 'inj_reason_class', 'inj_report_age_min',
-               'inj_report_missing']].merge(av.drop(columns=['team_id', 'opp_team_id']), on=['game_id', 'player_id']).merge(
-            env_x, on=['game_id', 'player_id'])
+               'inj_report_missing']].merge(av.drop(columns=['team_id', 'opp_team_id']), on=['game_id', 'player_id'], validate='one_to_one').merge(
+            env_x, on=['game_id', 'player_id'], validate='one_to_one')
         t.insert(2, 'minutes_before', x)
         out.append(t)
     return pd.concat(out, ignore_index=True)
