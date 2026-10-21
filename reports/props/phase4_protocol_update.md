@@ -26,6 +26,11 @@ Consequences for Phase 5 (decision for the user at the Phase 5 plan): betting an
   - **R3 (recency weights, half-life 730 days, new):** exponential recency weights on training rows, age relative to the end of the training window, applied to every component. Fixed now, before its result: adopt if, on 2023-24, the mean absolute bias over the core stats (points, rebounds, assists, threes, pra) shrinks by at least one third relative to the same pipeline without recency, AND no core stat's paired CRPS difference interval lies entirely above zero on 2022-23 or 2023-24.
   - R2b (21 game-dates window across the season boundary, prior 1,000): user-approved 2026-10-20; evaluated, result in `phase4_audit_response.md` (registered verdict: not adopted, one borderline non-harm condition).
 
-## 3. What this changes in the existing numbers
+## 3. Decisions taken after the audits (2026-10-20)
+
+- **R2b is not adopted** (user decision): the corrected implementation (per game type) passes the bias bar on 2023-24 (-55%) but fails the registered non-harm rule on 2022-23 assists (+0.0006 CRPS). The earlier waiver covered a different stat on a flawed window and is not carried over. R2b stays a **declared sensitivity**: the 2025-26 final run reports results with and without it, the headline is without, and the user decides on R2b afterwards.
+- The frozen headline configuration is therefore the v3 pipeline with no rolling recalibration; Phase 5 k and the rule come from the no-R2b development run.
+
+## 4. What this changes in the existing numbers
 
 Everything reported on 2024-25 in `phase4_interim_report.md` and `phase4_eval_2024-25.md` stays as a "seen" result. The go/no-go criteria are re-scored on the final frozen configuration on 2025-26 only, once.

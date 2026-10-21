@@ -1,6 +1,6 @@
 {
   "frozen_on": "2026-10-20",
-  "status": "FROZEN, with one open item: R2b adoption is under review after the second audit (see reports/props/phase5_dev_gate.md section 4); nothing else changes before 2025-26 is scored once",
+  "status": "FROZEN. R2b NOT adopted (user decision 2026-10-20: stand by the pre-registered non-harm rule). Nothing changes before 2025-26 is scored once.",
   "code_commit_at_freeze": "724bad5c87ccd3e2ccf8b05df93f29f27f64d26a",
   "branch": "props-phase4 (stacked on props-onto-main, PR #17)",
   "dataset": {
@@ -71,7 +71,7 @@
       "prior_player_games": 1000.0,
       "row_weight": 0.3333333333333333,
       "carry_over": "previous season's final game-dates, forecast by that season's own fold; no carry-over for the first test season",
-      "status": "adopted 2026-10-20 by documented deviation on a flawed window; corrected implementation (per game type) passes 2023-24 and fails the non-harm rule on assists 2022-23: DECISION PENDING",
+      "status": "NOT ADOPTED. Corrected implementation passes the bias bar on 2023-24 (-55%) but fails the registered non-harm rule on 2022-23 assists (+0.0006 CRPS). Declared SENSITIVITY: the 2025-26 final run reports results with and without R2b; the headline is without; the user decides on R2b after seeing 2025-26.",
       "window": "previous 21 game-dates of the same game group (regular 002 / postseason); regular-season rows also see the previous regular season last 21 game-dates; postseason never carries over"
     }
   },
@@ -100,5 +100,6 @@
       "refit-all"
     ]
   },
-  "how_2025-26_will_be_scored": "scripts/train_props_models.py --version v3_final_2025-26 --features-db data/props_features_v3.db --folds 2025-26 --families-from v2_base --refit-all, then R2b with carry-over from the 2024-25 fold of the SAME pipeline (v3_seen_2024-25), once, as part of the Phase 5 final run"
+  "how_2025-26_will_be_scored": "Train the 2025-26 fold of the same pipeline (version v3_final_2025-26: --features-db data/props_features_v3.db --folds 2025-26 --families-from v2_base --refit-all), predict quoted rows with 20,000 draws (scripts/props_phase5_predict.py), then scripts/props_phase5_dev.py --frozen-rule reports/props/phase5_dev_2023-24_noR2b.frozen_rule.json --no-r2b (headline) and the same without --no-r2b (R2b sensitivity, carry-over from the 2024-25 fold of the same pipeline); once.",
+  "headline_configuration": "v3 pipeline, no rolling recalibration; Phase 5 k and rule from reports/props/phase5_dev_2023-24_noR2b.frozen_rule.json"
 }

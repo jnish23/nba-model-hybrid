@@ -49,7 +49,9 @@ The previous waiver covered pra on 2022-23 at 0.026% of CRPS in a different impl
 - **Merge guards in the dataset build:** done; a rebuild is identical to the v3 dataset table for table.
 - **Tuned on one season; same-player exposure:** reported, not fixable. The validation stage reports ROI by side and the market's lean.
 
-## 6. Decisions for you
+## 6. Decisions (item 1 resolved)
+
+**Resolved 2026-10-20: R2b is not adopted (stand by the rule); the headline configuration has no recalibration, with R2b reported as a sensitivity in the 2025-26 final run.** Items 2 and 3 below are still open.
 
 1. **R2b:** (a) adopt the corrected R2b as a second documented deviation, or (b) stand by the rule: R2b is not adopted, the frozen configuration is the v3 pipeline without recalibration, the forecast bias (about -5% for points in 2023-24) is reported, and the Phase 4 bias criterion is met only through the plan's fallback. I recommend (b) for the betting validation: the verdict is the same either way (section 3), it avoids a second deviation, and live forecast centring can be revisited in Phase 6.
 2. **Gate wording for Phase 5:** replace "positive CLV" with "real minus placebo CLV above zero with a positive conservative lower bound"; and require the ROI at the median bettable price to have a non-negative point estimate, quoting the best-price ROI beside it. Tried rules are now 35 (adjusted intervals use 35).

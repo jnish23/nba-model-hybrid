@@ -4,11 +4,26 @@ Date 2026-10-20. Configuration under test: **frozen** ([frozen_config.json](froz
 
 ## 1. Verdict
 
-**Recommendation: go to Phase 5, with eyes open.** The model is a clearly better forecaster of the full outcome distribution than any rolling-average baseline, it is now close to unbiased, and it meets all four pre-registered criteria on every season scored so far. But the same evidence says it is **worse than the market** at the book's own line (section 5), so Phase 4 does not show an edge; it shows a sound base on which Phase 5 can look for the part of the model's disagreement that is real (about 20% of it on the one season examined).
+**Recommendation: go to Phase 5, with eyes open** (criteria 2 and 3 are met only through the plan's fallback; see section 2b). The model is a clearly better forecaster of the full outcome distribution than any rolling-average baseline, it is now close to unbiased, and it meets all four pre-registered criteria on every season scored so far. But the same evidence says it is **worse than the market** at the book's own line (section 5), so Phase 4 does not show an edge; it shows a sound base on which Phase 5 can look for the part of the model's disagreement that is real (about 20% of it on the one season examined).
 
 The formal criteria are re-scored once on 2025-26 together with Phase 5's final test. Until then the evidence is development and "seen" evidence, labelled as such.
 
-## 2. The four pre-registered criteria, frozen configuration
+## 2. The four pre-registered criteria
+
+**Update after the audits and the user's decision (R2b not adopted):** the table in 2b is the frozen headline configuration (no recalibration). The table in 2a, with R2b, is kept for reference only; R2b is a declared sensitivity for the 2025-26 run.
+
+### 2b. Headline configuration: v3 pipeline, no recalibration
+
+| Criterion | 2022-23 (dev) | 2023-24 (dev) | 2024-25 (seen) |
+|---|---|---|---|
+| 1. CRPS beats the best baseline, all 8 stats | **PASS** 8/8 | **PASS** 8/8 | **PASS** 8/8 |
+| 2. Mean bias within +/-2% (points / rebounds / assists) | **PASS** (-0.5 / -0.8 / +0.1) | **FAIL** (-5.0 / -2.3 / -2.4) | **FAIL** (-1.4 / -1.6 / -3.7) |
+| 3. ECE of P(over) at the ladder lines at most 0.02 | **PASS** (worst 0.011) | **FAIL** (0.038, pra) | **FAIL** (0.023, ra) |
+| 4. T-5 not significantly worse than T-240 | **PASS** | **PASS** | **PASS** |
+
+Criteria 2 and 3 fail on the two later seasons, so the plan's stated fallback applies: Phase 5 proceeds with the bias reported and the bets judged by CLV net of the placebo, not by raw model edge. Files: `phase4_frozen_noR2b_*.md`.
+
+### 2a. With R2b (superseded; computed with the pre-correction window)
 
 | Criterion | 2022-23 (dev) | 2023-24 (dev) | 2024-25 (seen) |
 |---|---|---|---|

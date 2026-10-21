@@ -116,6 +116,7 @@ def main():
     ap.add_argument('--features-db', default='data/props_features_v3.db')
     ap.add_argument('--out', required=True)
     ap.add_argument('--n-boot', type=int, default=1000)
+    ap.add_argument('--frozen-rule', default=None, help='VALIDATION mode: read k and the rule from this file (written by a development run); no grid, nothing re-estimated')
     ap.add_argument('--no-r2b', action='store_true', help='skip the rolling recalibration (sensitivity: how much do the betting results depend on R2b?)')
     a = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
@@ -139,6 +140,9 @@ def main():
     score = mb.score_table(cmp, n_boot=a.n_boot)
     slope = mb.information_slope(cmp, n_boot=a.n_boot)
     k_by_stat = {r['stat']: rules.clip_k(r['slope']) for _, r in slope.iterrows() if r['stat'] != 'all'}
+    if a.frozen_rule:
+        k_by_stat = json.loads(Path(a.frozen_rule).read_text(encoding='utf-8'))['k_by_stat']                 # validation: the development season's k, never re-estimated here
+        logging.info(f'VALIDATION: k taken from {a.frozen_rule}')
     logging.info(f'k by stat: {k_by_stat}')
     dis = mb.disagreement_table(cmp, n_boot=a.n_boot)
 
@@ -149,15 +153,15 @@ def main():
     logging.info(f'{len(q)} bettable quotes with a model probability')
 
     results, sel_primary = [], None
-    for e in GRID_E:
-        for tm in GRID_TIME:
-            for mbk in GRID_BOOKS:
-                sel = be.settle_all(rules.select(q, e, tm, mbk))
-                label = f'e={e}, time={tm}, min_books={mbk}'
-                r = be.roi_table(sel, label, n_boot=a.n_boot, alpha_adj=0.05 / TRIED)
-                results.append(r.query("treatment == 'stands'"))
-                if (e, tm, mbk) == (PRIMARY['e'], PRIMARY['time'], PRIMARY['min_books']):
-                    sel_primary = sel
+    primary_combo = (PRIMARY['e'], PRIMARY['time'], PRIMARY['min_books'])
+    combos = [primary_combo] if a.frozen_rule else [(e, tm, mbk) for e in GRID_E for tm in GRID_TIME for mbk in GRID_BOOKS]       # validation runs the frozen primary rule only
+    for e, tm, mbk in combos:
+        sel = be.settle_all(rules.select(q, e, tm, mbk))
+        label = f'e={e}, time={tm}, min_books={mbk}'
+        r = be.roi_table(sel, label, n_boot=a.n_boot, alpha_adj=0.05 / TRIED)
+        results.append(r.query("treatment == 'stands'"))
+        if (e, tm, mbk) == primary_combo:
+            sel_primary = sel
     for stat in sorted(q['stat'].unique()):
         sel = be.settle_all(rules.select(q[q['stat'] == stat], PRIMARY['e'], PRIMARY['time'], PRIMARY['min_books']))
         if len(sel):
@@ -172,13 +176,15 @@ def main():
     by_stat = sel_primary.groupby('stat').agg(bets=('best_ev', 'size'), mean_ev=('best_ev', 'mean'), profit=('profit_stands', 'sum')).reset_index()
     by_book = sel_primary.groupby('book').agg(bets=('best_ev', 'size'), profit=('profit_stands', 'sum')).reset_index()
     sel_primary.drop(columns=['snapshot_ts_utc']).to_csv(Path(a.out).with_suffix('.primary_bets.csv'), index=False)
-    Path(a.out).with_suffix('.frozen_rule.json').write_text(json.dumps({'k_by_stat': k_by_stat, 'primary': PRIMARY, 'grid': {'e': GRID_E, 'time': GRID_TIME, 'min_books': GRID_BOOKS},
-                                                                       'developed_on': a.season, 'tried_rules': TRIED}, indent=2), encoding='utf-8')
+    if not a.frozen_rule:
+        Path(a.out).with_suffix('.frozen_rule.json').write_text(json.dumps({'k_by_stat': k_by_stat, 'primary': PRIMARY, 'grid': {'e': GRID_E, 'time': GRID_TIME, 'min_books': GRID_BOOKS},
+                                                                           'developed_on': a.season, 'tried_rules': TRIED, 'recalibration': 'none' if a.no_r2b else 'R2b (per game type)'}, indent=2), encoding='utf-8')
 
     r = lambda d, n=4: md_table(d.round(n), n)
-    md = [f'# Phase 5 development stage: {a.season} (frozen configuration + R2b, 20,000-draw simulations)\n',
-          'Everything here is in-sample for k and for the choice among the tried rules: results are optimistic by construction. The validation season (2024-25) is the check, run once with the frozen file '
-          f'`{Path(a.out).with_suffix(".frozen_rule.json").name}`. Bettable books: DraftKings, FanDuel, BetMGM, Caesars, BetRivers, Unibet (Fanatics is absent before 2025). Prices are quotes stamped at or before each decision time, '
+    stage = f'VALIDATION stage: {a.season}, run once with the frozen rule file {Path(a.frozen_rule).name}; k and the rule were NOT re-estimated' if a.frozen_rule else f'development stage: {a.season}'
+    md = [f'# Phase 5 {stage} ({"no recalibration" if a.no_r2b else "R2b per game type"}, 20,000-draw simulations)\n',
+          'In the development stage everything is in-sample for k and for the choice among the tried rules, so results are optimistic by construction; in the validation stage k and the rule come from the development season. '
+          f'Bettable books: DraftKings, FanDuel, BetMGM, Caesars, BetRivers, Unibet (Fanatics is absent before 2025). Prices are quotes stamped at or before each decision time, '
           'main line on the consensus line, no stale quotes; pushes refund; the market probability is the de-vigged consensus (at least 3 agreeing books, all books counted).\n',
           '## 1. Information test (model vs market at the book line)\n', r(score), '### Information slope and k\n', r(slope),
           f'k per stat (slope floored at 0, capped at {rules.K_CAP}): {k_by_stat}\n', '### Calibration by model-minus-market gap\n', r(dis),
