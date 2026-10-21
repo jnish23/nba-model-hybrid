@@ -16,6 +16,8 @@ from team.betting import (get_ml_bet, get_spread_bet, get_total_bet, DEFAULT_SPR
                             DEFAULT_TOTAL_STD)
 from team.model_registry import DEPLOYED_SUFFIX, MODEL_DIR, load_bundle
 from team.market_models import predict_markets
+from team.explain import build_reference, explain_markets, load_oos_history, save_explanations
+from team.data_paths import latest_training_set
 from core import injury_report_features as irf
 from team.game_features_v2 import GameFeatureBuilder
 from core.update_database import NBADatabaseSync
@@ -250,6 +252,29 @@ class InferenceEngine:
         """Select the model's columns in order; missing features become NaN and are logged loudly."""
         return align_features(row_df, expected_cols, model_name)
 
+    def explain_games(self, frame, games_df):
+        """
+        Why each spread/total differs from the current line (team/explain.py), stored in prediction_explanations next to the
+        predictions. An explanation problem is logged and never stops the daily run.
+        """
+        try:
+            feats = sorted({f for cols in self.selected_features.values() for f in cols})
+            ref = None
+            try:
+                train = pd.read_csv(latest_training_set(), usecols=lambda c: c in feats or c == 'seasonYear')
+                ref = build_reference(train[train['seasonYear'].isin(sorted(train['seasonYear'].unique())[-3:])], feats)
+            except Exception as e:
+                logging.warning(f"No league-wide reference for the explanations (percentiles left empty): {e}")
+            lines = games_df.assign(gameId=games_df['gameId'].astype(str)).set_index('gameId').reindex(frame['gameId'].astype(str))
+            current = pd.DataFrame({'spread_line': pd.to_numeric(lines['curr_odds_home_spread'], errors='coerce').to_numpy(),
+                                    'total_line': pd.to_numeric(lines['curr_odds_total'], errors='coerce').to_numpy()})
+            expl = explain_markets(self.bundle, frame, current, align=self.verify_feature_alignment, reference=ref,
+                                   history=load_oos_history(), prediction_date=datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+            n = save_explanations(self.db_path, expl)
+            logging.info(f"Stored {n} explanation rows for {expl['game_id'].nunique()} games")
+        except Exception as e:
+            logging.error(f"Explanations failed (predictions are unaffected): {e}", exc_info=True)
+
     def run(self):
         logging.info("Starting Inference Run...")
         
@@ -288,6 +313,7 @@ class InferenceEngine:
         probs, pred_spreads, pred_totals = out['ml_prob'].to_numpy(), out['spread_pred'].to_numpy(), out['total_pred'].to_numpy()
         spread_stds = out['spread_std'].fillna(DEFAULT_SPREAD_STD).to_numpy()
         total_stds = out['total_std'].fillna(DEFAULT_TOTAL_STD).to_numpy()
+        self.explain_games(frame, games_df)
         preds = []
         for i, g in games_df.iterrows():
             prob, pred_spread, pred_total = float(probs[i]), float(pred_spreads[i]), float(pred_totals[i])
