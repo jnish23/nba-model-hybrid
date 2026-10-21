@@ -47,3 +47,17 @@ def test_shrinkage_and_selection_one_bet_per_market_earliest_time():
     assert len(sel5) == 1 and sel5['minutes_before'].iloc[0] == 5                                             # only the 6-book quote at T-5 qualifies
     assert len(rules.select(q, e=0.03, time_mode='60', min_books=3)) == 1
     assert rules.clip_k(-0.1) == 0.0 and rules.clip_k(0.9) == rules.K_CAP and rules.clip_k(0.2) == 0.2
+
+
+def test_line_move_sign_in_clv_table():
+    import pandas as pd
+    from props.betting import evaluate as be
+    n = 200
+    sel = pd.DataFrame({'game_id': [f'g{i}' for i in range(n)], 'player_id': 1, 'stat': 'points', 'minutes_before': 60, 'line': 20.5, 'best_side': ['over'] * (n // 2) + ['under'] * (n // 2),
+                        'consensus_fair_over': 0.5})
+    cons = pd.DataFrame({'game_id': sel['game_id'], 'player_id': 1, 'stat': 'points', 'minutes_before': 5, 'consensus_line': 21.5, 'consensus_fair_over': 0.5})      # the line rose by one point
+    t, counts = be.clv_table(sel, cons, n_boot=100)
+    row = t[t['measure'].str.startswith('line moved')].iloc[0]
+    assert counts['line_moved'] == n and abs(row['mean']) < 1e-9          # +1 for the over bettors, -1 for the under bettors: they cancel in a 50/50 mix
+    over_only = be.clv_table(sel[sel['best_side'] == 'over'].reset_index(drop=True).assign(game_id=lambda d: d['game_id']), cons, n_boot=100)[0]
+    assert over_only[over_only['measure'].str.startswith('line moved')]['mean'].iloc[0] > 0.99       # an over bettor gains when the line rises

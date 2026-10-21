@@ -33,6 +33,47 @@ def load_labels(db):
     return lab
 
 
+def market_level(q):
+    """One row per (game, player, stat, T, line): the median (average bettor) and best (line shopper) bettable price per side."""
+    g = q.groupby(['game_id', 'player_id', 'stat', 'minutes_before', 'line'])
+    return g.agg(over_med=('over_dec', 'median'), under_med=('under_dec', 'median'), over_best=('over_dec', 'max'), under_best=('under_dec', 'max'),
+                 y=('y', 'first'), played=('played', 'first'), lbl_minutes=('lbl_minutes', 'first'), expected_minutes=('expected_minutes', 'first')).reset_index()
+
+
+def naive(m, side, price, label, n_boot):
+    """A no-model strategy: one fixed side on every market at T-60, at the median or the best price."""
+    b = m[m['minutes_before'] == 60].copy()
+    b['best_side'] = side
+    b['dec_price'] = b[f'{side}_{price}']
+    b['book'] = 'avg'
+    b['best_ev'] = 0.0
+    return be.roi_table(be.settle_all(b), label, n_boot=n_boot).query("treatment == 'stands'")
+
+
+def decompose(q, k_by_stat, n_boot):
+    """Where does the primary rule's ROI come from? No-model sides, the same selection at the median price, the market-only (k = 0) rule, and by quote age."""
+    m = market_level(q)
+    rows = [naive(m, 'under', 'med', 'ALL UNDERS at T-60, median price (no model)', n_boot), naive(m, 'under', 'best', 'ALL UNDERS at T-60, best price (no model)', n_boot),
+            naive(m, 'over', 'med', 'ALL OVERS at T-60, median price (no model)', n_boot), naive(m, 'over', 'best', 'ALL OVERS at T-60, best price (no model)', n_boot)]
+    prim = be.settle_all(rules.select(q, PRIMARY['e'], PRIMARY['time'], PRIMARY['min_books']))
+    key = ['game_id', 'player_id', 'stat', 'minutes_before', 'line']
+    rep = prim.merge(m[key + ['over_med', 'under_med']], on=key, how='left')
+    rep['dec_price'] = np.where(rep['best_side'] == 'over', rep['over_med'], rep['under_med'])
+    rows.append(be.roi_table(be.settle_all(rep.drop(columns=[c for c in rep.columns if c.startswith(('profit_', 'status_'))])), 'PRIMARY bets repriced at the MEDIAN bettable price', n_boot=n_boot).query("treatment == 'stands'"))
+    q0 = rules.add_ev(q.drop(columns=['p_star', 'ev_over', 'ev_under', 'best_side', 'best_ev', 'dec_price']), {s: 0.0 for s in k_by_stat})
+    rows.append(be.roi_table(be.settle_all(rules.select(q0, PRIMARY['e'], PRIMARY['time'], PRIMARY['min_books'])), 'MARKET-ONLY rule (k = 0): best price vs consensus fair probability, no model', n_boot=n_boot).query("treatment == 'stands'"))
+    for lo_, hi_ in ((0, 5), (5, 15), (15, 30), (30, 60.1)):
+        sub = prim[(prim['quote_age_min'] >= lo_) & (prim['quote_age_min'] < hi_)]
+        if len(sub) > 200:
+            rows.append(be.roi_table(sub, f'PRIMARY bets whose quote was {lo_}-{int(hi_)} minutes old', n_boot=n_boot).query("treatment == 'stands'"))
+    for side in ('over', 'under'):
+        sub = prim[prim['best_side'] == side]
+        rows.append(be.roi_table(sub, f'PRIMARY bets, {side}s only', n_boot=n_boot).query("treatment == 'stands'"))
+    q15 = q[q['quote_age_min'] <= 15]
+    rows.append(be.roi_table(be.settle_all(rules.select(q15, PRIMARY['e'], PRIMARY['time'], PRIMARY['min_books'])), 'PRIMARY rule using only quotes at most 15 minutes old', n_boot=n_boot).query("treatment == 'stands'"))
+    return pd.concat(rows, ignore_index=True).drop(columns=['treatment'])
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--season', required=True)
@@ -87,6 +128,7 @@ def main():
             results.append(be.roi_table(sel, f'primary, {stat} only', n_boot=a.n_boot, alpha_adj=0.05 / 32).query("treatment == 'stands'"))
     grid = pd.concat(results, ignore_index=True)
     prim_all = be.roi_table(sel_primary, 'PRIMARY', n_boot=a.n_boot)
+    decomp = decompose(q, k_by_stat, a.n_boot)
     clv, clv_counts = be.clv_table(sel_primary, cons, n_boot=a.n_boot)
     by_side = sel_primary.groupby('best_side').agg(bets=('best_ev', 'size'), mean_ev=('best_ev', 'mean')).reset_index()
     by_stat = sel_primary.groupby('stat').agg(bets=('best_ev', 'size'), mean_ev=('best_ev', 'mean'), profit=('profit_stands', 'sum')).reset_index()
@@ -105,9 +147,10 @@ def main():
           '## 2. Primary rule (e = 0.03, earliest time with positive EV, at least 3 books, pooled over stats), all settlement treatments\n', r(prim_all),
           f'CLV to T-5 (bets placed at T-240 or T-60): {clv_counts}\n', r(clv) if len(clv) else 'not enough bets with a T-5 quote\n',
           '### Primary rule by side, stat and book\n', r(by_side), r(by_stat), r(by_book),
+          "### Decomposition: where the primary rule's ROI comes from (settlement: bet stands)\n", r(decomp),
           f'## 3. All {len(grid)} tried rules (settlement: bet stands). `lo_adj/hi_adj` = interval at the Bonferroni level for 32 rules\n', r(grid.drop(columns=['treatment']))]
     Path(a.out).write_text('\n'.join(md), encoding='utf-8')
-    print(score.round(4).to_string(index=False)); print(slope.round(3).to_string(index=False)); print(prim_all.round(4).to_string(index=False)); print(clv.round(4).to_string(index=False), clv_counts)
+    print(score.round(4).to_string(index=False)); print(slope.round(3).to_string(index=False)); print(prim_all.round(4).to_string(index=False)); print(clv.round(4).to_string(index=False), clv_counts); print(decomp.round(4).to_string(index=False))
 
 
 if __name__ == '__main__':

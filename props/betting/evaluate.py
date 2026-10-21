@@ -107,7 +107,7 @@ def clv_table(selected, cons, n_boot=ev.N_BOOT):
     fair_at_bet = np.where(b['best_side'] == 'over', b['consensus_fair_over'], 1.0 - b['consensus_fair_over'])
     fair_close = np.where(b['best_side'] == 'over', b['close_fair_over'], 1.0 - b['close_fair_over'])
     b['clv_prob'] = np.where(same, fair_close - fair_at_bet, np.nan)
-    b['line_move_in_favour'] = np.where(has & ~same, -side_sign * (b['close_line'] - b['line']), np.nan)       # points the line moved in the bettor's favour (over wants it lower)
+    b['line_move_in_favour'] = np.where(has & ~same, side_sign * (b['close_line'] - b['line']), np.nan)        # points the line moved in the bettor's favour: a higher closing line favours an over bet (the over at the lower bet line was the better deal), a lower one an under bet
     rows = []
     if same.sum() > 50:
         p, lo, hi = ev.cluster_bootstrap(b.loc[same, 'clv_prob'].to_numpy(), b.loc[same, 'game_id'], n_boot=n_boot)

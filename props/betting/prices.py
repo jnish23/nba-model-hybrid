@@ -55,8 +55,9 @@ def load_season(props_db, start, end, grid=GRID, min_books=MIN_BOOKS):
     b = b[b['line'] == b['consensus_line']]
     b['player_id'] = b['cons_player_id']
     b['game_id'] = b['cons_game_id']
+    b['quote_age_min'] = (pd.to_datetime(b['snapshot_ts_utc'], utc=True) - pd.to_datetime(b['book_last_update_utc'], utc=True)).dt.total_seconds() / 60.0
     b['over_dec'] = american_to_decimal(b['over_price'])
     b['under_dec'] = american_to_decimal(b['under_price'])
     bets = b[['game_id', 'player_id', 'minutes_before', 'stat', 'book', 'line', 'over_price', 'under_price', 'over_dec', 'under_dec', 'fair_over', 'consensus_fair_over',
-              'n_at_line', 'snapshot_ts_utc']].reset_index(drop=True)
+              'n_at_line', 'snapshot_ts_utc', 'quote_age_min']].reset_index(drop=True)
     return cons, bets
