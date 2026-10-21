@@ -50,8 +50,8 @@ def test_scaler_narrows_a_pmf_that_is_too_wide_down_to_the_floor():
     pm = _pmf(mu, k=4.0)                                                     # the model is wider than the truth (negative binomial with k = 4)
     obs = rng.poisson(mu)
     half = n // 2
-    sc = dispersion.DispersionScaler().fit('points', pm[:half], obs[:half], minutes[:half])
-    assert all(dispersion.MIN_C <= v < 1.0 for v in sc.c.values())
+    sc = dispersion.DispersionScaler(min_c=0.7).fit('points', pm[:half], obs[:half], minutes[:half])
+    assert all(0.7 <= v < 1.0 for v in sc.c.values())
     w = sc.transform('points', pm[half:], minutes[half:])
     assert np.all(np.abs(oc.pmf_mean(w) - oc.pmf_mean(pm[half:])) < 0.05 * np.maximum(oc.pmf_mean(pm[half:]), 1))        # the mean is preserved
     assert calibrate.pmf_sd(w).mean() < calibrate.pmf_sd(pm[half:]).mean()
@@ -64,5 +64,6 @@ def test_scaler_floor_and_cap():
     rng = np.random.default_rng(3)
     mu = rng.uniform(5, 15, 4000)
     pm = _pmf(mu, k=1.0)                                                     # absurdly wide
-    sc = dispersion.DispersionScaler().fit('points', pm, rng.poisson(mu), rng.uniform(5, 38, 4000))
-    assert all(v == dispersion.MIN_C for v in sc.c.values())
+    sc = dispersion.DispersionScaler(min_c=0.7).fit('points', pm, rng.poisson(mu), rng.uniform(5, 38, 4000))
+    assert all(v == 0.7 for v in sc.c.values())
+    assert all(v == 1.0 for v in dispersion.DispersionScaler().fit('points', pm, rng.poisson(mu), rng.uniform(5, 38, 4000)).c.values())          # the frozen default never narrows

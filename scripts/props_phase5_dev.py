@@ -116,6 +116,7 @@ def main():
     ap.add_argument('--features-db', default='data/props_features_v3.db')
     ap.add_argument('--out', required=True)
     ap.add_argument('--n-boot', type=int, default=1000)
+    ap.add_argument('--no-r2b', action='store_true', help='skip the rolling recalibration (sensitivity: how much do the betting results depend on R2b?)')
     a = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
     prices_path = a.prices or f'data/props_betting/prices_{a.season}.pkl'
@@ -125,9 +126,12 @@ def main():
     idx5, pm5 = registry.load_predictions(a.p5_version, a.season)
     full_rows, full_pm = ev.load_rows_light(a.full_version, a.season, a.features_db)
     carry = ev.load_rows_light(a.full_version, a.carry_season, a.features_db) if a.carry_season else None
-    ratios = be.r2b_ratio_by_date(full_rows, full_pm, carry)
-    pm5 = be.apply_r2b(idx5, pm5, ratios)                                   # the frozen configuration: R2b on top of the saved 20,000-draw pmfs
-    logging.info('R2b applied')
+    if not a.no_r2b:
+        ratios = be.r2b_ratio_by_date(full_rows, full_pm, carry)
+        pm5 = be.apply_r2b(idx5, pm5, ratios)                               # the frozen configuration: R2b (per game type) on top of the saved 20,000-draw pmfs
+        logging.info('R2b applied')
+    else:
+        logging.info('R2b NOT applied (sensitivity run)')
 
     # --- 1. information test at the consensus line
     rows5 = idx5.merge(labels, on=['game_id', 'player_id'], how='left', validate='many_to_one')

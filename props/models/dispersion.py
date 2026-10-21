@@ -12,7 +12,8 @@ from props.models import calibrate, outcome as oc
 
 BUCKET_EDGES = (15.0, 28.0)
 MAX_C = 1.6
-MIN_C = 0.7                                           # the maps can also NARROW a pmf: the forward-chaining minutes bank and the fit-only calibration models make raw pmfs slightly too wide
+MIN_C = 1.0                                           # the maps CAN narrow (DispersionScaler(min_c=0.7)), but on the development folds allowing it changed almost nothing and was slightly worse
+                                                      # for rebounds, so the frozen pipeline keeps the floor at 1 (reports/props/phase5_dev_gate.md)
 MIN_SCALE = 0.5
 MIN_ROWS = 300
 
@@ -50,7 +51,8 @@ def widen(pmf, scale, iterations=5):
 
 
 class DispersionScaler:
-    def __init__(self):
+    def __init__(self, min_c=None):
+        self.min_c = MIN_C if min_c is None else min_c
         self.c = {}                                                                    # (stat, bucket) -> variance inflation
 
     def fit(self, stat, pmf, obs, minutes_mean):
@@ -61,7 +63,7 @@ class DispersionScaler:
             if sel.sum() < MIN_ROWS:
                 self.c[(stat, k)] = 1.0
                 continue
-            self.c[(stat, k)] = float(np.clip(np.mean((obs[sel] - mean[sel]) ** 2) / np.mean(var[sel]), MIN_C, MAX_C))
+            self.c[(stat, k)] = float(np.clip(np.mean((obs[sel] - mean[sel]) ** 2) / np.mean(var[sel]), self.min_c, MAX_C))
         return self
 
     def scale_for(self, stat, minutes_mean):
