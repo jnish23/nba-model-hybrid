@@ -8,6 +8,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from pathlib import Path
 import sys
+from zoneinfo import ZoneInfo
 
 # Add root to sys.path to allow importing models
 root_path = Path(__file__).resolve().parent.parent
@@ -24,6 +25,16 @@ st.set_page_config(
     page_icon="🏀",
     layout="wide"
 )
+
+SLATE_TZ = ZoneInfo("America/Los_Angeles")
+SLATE_ROLLOVER_HOUR = 6  # the slate day stays "today" until 6am Pacific, so late games and the next-morning update land first
+
+
+def slate_today():
+    """The NBA slate date. Hosted servers run in UTC, where date.today() flips to tomorrow at 5pm Pacific
+    while that evening's games are still being played; this keeps the slate on the game day until 6am Pacific."""
+    return (datetime.datetime.now(SLATE_TZ) - datetime.timedelta(hours=SLATE_ROLLOVER_HOUR)).date()
+
 
 # Helper for formatted metrics
 def display_subgroup_metrics(df, subgroup_col, result_col, title, group_order=None):
@@ -679,8 +690,8 @@ def main():
         min_date = df['game_date'].min()
         max_date = df['game_date'].max()
     else:
-        min_date = datetime.date.today()
-        max_date = datetime.date.today()
+        min_date = slate_today()
+        max_date = slate_today()
     
     start_date = st.sidebar.date_input("Start Date", min_date, min_value=min_date, max_value=max_date)
     end_date = st.sidebar.date_input("End Date", max_date, min_value=min_date, max_value=max_date)
@@ -710,7 +721,7 @@ def main():
 
     with tab1:
         st.subheader("Games Schedule")
-        today = datetime.date.today()
+        today = slate_today()
         todays_games = df[df['game_date'] == today].copy()
         
         display_game_df = pd.DataFrame()
@@ -797,7 +808,7 @@ def main():
         st.subheader("Model Performance: Last 14 Days")
         
         # Filter to this week (Monday to today)
-        today = datetime.date.today()
+        today = slate_today()
         previous_two_weeks = today - datetime.timedelta(days=14)
         week_df = model_df[(model_df['game_date'] >= previous_two_weeks) & (model_df['game_date'] < today)].copy()
         week_df = week_df.sort_values('game_date', ascending=False)
