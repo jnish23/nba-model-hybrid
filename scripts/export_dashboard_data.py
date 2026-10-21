@@ -12,6 +12,7 @@ https://raw.githubusercontent.com/<repo>/dashboard-data/predictions_log.csv (and
 branch refresh the dashboard without redeploying it. Run daily by scripts/run_daily_inference.bat.
 """
 import argparse
+import json
 import logging
 import sqlite3
 import subprocess
@@ -37,6 +38,9 @@ def load_predictions(db_path=DB_PATH):
     return df.sort_values(['game_date', 'game_id', 'prediction_date']).reset_index(drop=True)
 
 
+HISTORY_DIR = 'explanations_history'             # one gzip per month of games: past months never change, so git history stays small
+HISTORY_MANIFEST = 'explanations_manifest.json'
+HISTORY_TOP_FEATURES = 15                         # feature rows kept per game and market in the history files (the breakdown pieces are kept whole)
 EXPLANATION_DAYS = 7      # the dashboard panel is for today's games; older games' rows stay in the database only
 
 
@@ -44,20 +48,42 @@ def load_explanations_table(df, db_path=DB_PATH, days=EXPLANATION_DAYS):
     """prediction_explanations rows of the games dated within `days` of the newest game in `df` (empty if none are stored yet)."""
     from team.explain import load_explanations
     expl = load_explanations(db_path)
-    if expl.empty or df.empty:
+    if days is None or expl.empty or df.empty:
         return expl
     dates = pd.to_datetime(df['game_date'])
     recent = df.loc[dates >= dates.max() - pd.Timedelta(days=days), 'game_id'].astype(str).str.zfill(10)
     return expl[expl['game_id'].isin(set(recent))].reset_index(drop=True)
 
 
-def write_files(directory, df, explanations):
-    """Write predictions_log.csv and, when there are explanations, explanations.csv into `directory`."""
+def history_shards(df, expl, top=HISTORY_TOP_FEATURES):
+    """{'YYYY-MM.csv.gz': rows}: every explained game's pieces and flags plus its `top` biggest feature rows, grouped by the month of the game."""
+    if expl is None or expl.empty or df.empty:
+        return {}
+    feat = expl[expl['kind'] == 'feature']
+    rank = feat['contribution'].abs().groupby([feat['game_id'], feat['market']]).rank(method='first', ascending=False)
+    keep = pd.concat([expl[expl['kind'] != 'feature'], feat[rank <= top]]).sort_values(['game_id', 'market', 'kind', 'feature'], kind='stable')
+    months = pd.to_datetime(df.assign(game_id=df['game_id'].astype(str).str.zfill(10)).drop_duplicates('game_id').set_index('game_id')['game_date']).dt.strftime('%Y-%m')
+    keep = keep.assign(month=keep['game_id'].map(months)).dropna(subset=['month'])
+    return {f'{m}.csv.gz': part.drop(columns='month').reset_index(drop=True) for m, part in keep.groupby('month')}
+
+
+def write_files(directory, df, explanations, history=None):
+    """
+    Write predictions_log.csv and, when there are explanations, explanations.csv (the recent games, in full) into `directory`.
+    `history` (all explanation rows) also writes explanations_history/<month>.csv.gz and a manifest listing them; the gzip header carries no
+    timestamp, so a month that did not change produces identical bytes and no git change.
+    """
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
     df.to_csv(directory / FILE_NAME, index=False)
     if explanations is not None and not explanations.empty:
         explanations.to_csv(directory / EXPLANATIONS_FILE_NAME, index=False)
+    shards = history_shards(df, history)
+    if shards:
+        (directory / HISTORY_DIR).mkdir(exist_ok=True)
+        for name, part in shards.items():
+            part.to_csv(directory / HISTORY_DIR / name, index=False, compression={'method': 'gzip', 'mtime': 0})
+        (directory / HISTORY_MANIFEST).write_text(json.dumps({'shards': [{'file': n, 'rows': len(p)} for n, p in sorted(shards.items())]}, indent=1))
 
 
 def git(*args, cwd=ROOT, check=True):
@@ -84,12 +110,12 @@ def ensure_worktree():
     logging.info(f"Worktree for {BRANCH} at {PUBLISH_DIR}")
 
 
-def publish(df, explanations=None):
+def publish(df, explanations=None, history=None):
     ensure_worktree()
     git('fetch', 'origin', BRANCH, cwd=PUBLISH_DIR, check=False)
     if git('rev-parse', '--verify', f'origin/{BRANCH}', cwd=PUBLISH_DIR, check=False).returncode == 0:
         git('reset', '--hard', f'origin/{BRANCH}', cwd=PUBLISH_DIR)  # the branch only ever holds exported data
-    write_files(PUBLISH_DIR, df, explanations)
+    write_files(PUBLISH_DIR, df, explanations, history)
     git('add', '-A', cwd=PUBLISH_DIR)
     if git('diff', '--cached', '--quiet', cwd=PUBLISH_DIR, check=False).returncode == 0:
         logging.info("Dashboard data unchanged; nothing to publish")
@@ -109,8 +135,9 @@ def main():
 
     df = load_predictions()
     explanations = load_explanations_table(df)
+    history = load_explanations_table(df, days=None)
     if args.publish:
-        publish(df, explanations)
+        publish(df, explanations, history)
     else:
         write_files(SNAPSHOT_DIR, df, explanations)
         logging.info(f"Wrote {len(df)} rows to {SNAPSHOT_PATH} and {len(explanations)} explanation rows to {SNAPSHOT_DIR / EXPLANATIONS_FILE_NAME}")
