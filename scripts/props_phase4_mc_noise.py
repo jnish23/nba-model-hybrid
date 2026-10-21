@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
-from props.models import calibrate, data, folds as folds_mod, pipeline, registry  # noqa: E402
+from props.models import calibrate, data, folds as folds_mod, outcome as oc, pipeline, registry  # noqa: E402
 
 
 def main():
@@ -37,9 +37,10 @@ def main():
     out = []
     for stat in ('points', 'threes', 'pra', 'pr', 'rebounds', 'assists'):
         r = {'stat': stat}
+        lines, _, _ = calibrate.over_prob_table(runs[(20000, 13)][stat])                                       # ONE set of lines for every run (a run's own mean would move the line)
         for n, (s1, s2) in ((4000, (11, 12)), (20000, (13, 14))):
-            _, p1, _ = calibrate.over_prob_table(runs[(n, s1)][stat])
-            _, p2, _ = calibrate.over_prob_table(runs[(n, s2)][stat])
+            p1 = np.stack([oc.prob_over(runs[(n, s1)][stat], lines[:, j]) for j in range(lines.shape[1])], axis=1)
+            p2 = np.stack([oc.prob_over(runs[(n, s2)][stat], lines[:, j]) for j in range(lines.shape[1])], axis=1)
             mid = (p1 > 0.2) & (p1 < 0.8)                                                                       # lines near the middle: where the bets are
             r[f'sd_pp_{n}'] = 100 * float(np.std((p1 - p2)[mid]) / np.sqrt(2))
         out.append(r)
