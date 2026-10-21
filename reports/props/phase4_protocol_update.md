@@ -1,6 +1,6 @@
 # Phase 4 protocol update after the props-onto-main audit (2026-10-20)
 
-Status: **binding from now on; supersedes the season roles in `phase4_plan.md` section 2.1.** The user asked for a verified assessment of the audit; the assessment is in `phase4_audit_response.md`. This note records only the protocol consequences.
+Status: **approved by the user 2026-10-20 and binding from now on; supersedes the season roles in `phase4_plan.md` section 2.1.** The user asked for a verified assessment of the audit; the assessment is in `phase4_audit_response.md`. This note records only the protocol consequences.
 
 ## 1. 2024-25 is no longer a clean validation season
 
@@ -24,7 +24,7 @@ Consequences for Phase 5 (decision for the user at the Phase 5 plan): betting an
   - R1 (drop the two season-position features): evaluated, failed (see interim report).
   - R2 (rolling 21-day ratio, prior 2,000 player-games): evaluated on the v2 pipeline, missed its bar by 3 points of bias shrink. Will be re-evaluated, with the same constants, on the corrected pipeline because its baseline changed; that second evaluation counts as one more tried rule.
   - **R3 (recency weights, half-life 730 days, new):** exponential recency weights on training rows, age relative to the end of the training window, applied to every component. Fixed now, before its result: adopt if, on 2023-24, the mean absolute bias over the core stats (points, rebounds, assists, threes, pra) shrinks by at least one third relative to the same pipeline without recency, AND no core stat's paired CRPS difference interval lies entirely above zero on 2022-23 or 2023-24.
-  - R2b (season-boundary carry-over, prior 1,000): only if the user allows it.
+  - R2b (21 game-dates window across the season boundary, prior 1,000): user-approved 2026-10-20; evaluated, result in `phase4_audit_response.md` (registered verdict: not adopted, one borderline non-harm condition).
 
 ## 3. What this changes in the existing numbers
 

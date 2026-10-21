@@ -46,3 +46,24 @@ def test_ratio_recovers_a_persistent_bias_and_shrinks_early():
     assert abs(late.mean() - (0.9 * (1 - shrink) + shrink)) < 0.004           # the bias is recovered, less the pre-registered shrinkage
     assert 0.9 < r[dates == '2025-01-05'].mean() < 1.0                         # early in the window: pulled toward 1
     assert r[dates == '2025-01-05'].mean() > late.mean()
+
+
+def test_gameday_window_uses_only_earlier_dates_and_reaches_across_the_offseason():
+    rng = np.random.default_rng(3)
+    old_dates = np.repeat(pd.date_range('2024-03-01', periods=30).strftime('%Y-%m-%d'), 600)          # the previous season's last game-days
+    new_dates = np.repeat(pd.date_range('2024-10-22', periods=30).strftime('%Y-%m-%d'), 600)
+    mu_o, mu_n = rng.uniform(5, 15, len(old_dates)), rng.uniform(5, 15, len(new_dates))
+    obs_o, obs_n = rng.poisson(mu_o * 0.85).astype(float), rng.poisson(mu_n).astype(float)
+    carry = (old_dates, obs_o, mu_o)
+    r_with = rc.rolling_ratio_gamedays(new_dates, obs_n, mu_n, carry)
+    r_without = rc.rolling_ratio_gamedays(new_dates, obs_n, mu_n, None)
+    assert r_without[0] == 1.0                                                                          # no earlier game-day at all
+    first = new_dates == '2024-10-22'
+    assert r_with[first].mean() < 0.97                                                                  # the old season's bias carries over the off-season gap
+    changed = obs_n.copy()
+    changed[new_dates == '2024-11-10'] += 50
+    after = rc.rolling_ratio_gamedays(new_dates, changed, mu_n, carry)
+    assert np.array_equal(r_with[new_dates <= '2024-11-10'], after[new_dates <= '2024-11-10'])           # outcomes of a date never move that date's or earlier ratios
+    assert (after[new_dates > '2024-11-10'] != r_with[new_dates > '2024-11-10']).any()
+    # the window is 21 game dates: a bias that ended more than 21 game dates ago no longer matters
+    assert abs(r_with[new_dates == '2024-11-20'].mean() - 1.0) < 0.02

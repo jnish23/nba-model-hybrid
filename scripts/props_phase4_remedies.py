@@ -18,7 +18,7 @@ import numpy as np
 import pandas as pd
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
-from props.models import data, evaluate as ev, recalibrate  # noqa: E402
+from props.models import data, evaluate as ev, outcome as oc, recalibrate  # noqa: E402
 from props.models.pipeline import observed  # noqa: E402
 
 CORE = ['points', 'rebounds', 'assists', 'threes', 'pra']
@@ -52,6 +52,30 @@ def r2dev(base):
     print(f'R2 ADOPTED on the dev folds (base {base}): {a and b}')
 
 
+PREVIOUS_SEASON = {'2022-23': '2021-22', '2023-24': '2022-23'}
+
+
+def r2bdev(base):
+    """R2b: 21 game-day window carried across the season boundary (the previous season's forecasts from its own fold), prior 1,000 player-games. Same adoption rule as R2."""
+    rec = recalibrate.RollingRecalibratorB()
+    res = {}
+    for season in ('2022-23', '2023-24'):
+        rows, pm = ev.load_rows_light(base, season)
+        prev_rows, prev_pm = ev.load_rows_light(base, PREVIOUS_SEASON[season])
+        after = {}
+        for stat in pm:
+            carry = (prev_rows['game_date'], observed(prev_rows, stat), oc.pmf_mean(prev_pm[stat]))
+            after[stat], _ = rec.apply(stat, pm[stat], rows['game_date'], observed(rows, stat), carry)
+        cmp = ev.compare_versions(rows, pm, rows, after)
+        print(f'\nR2b on {season} (base {base}, carry-over from the {PREVIOUS_SEASON[season]} fold): original (A) vs recalibrated (B)')
+        print(cmp.round(4).to_string(index=False))
+        res[season] = cmp
+    print('\nPre-registered R2b verdict (same rule as R2):')
+    a = verdict(res['2023-24'], 0.5, '2023-24 (bias must shrink by half, no CRPS harm)')
+    b = verdict(res['2022-23'], 0.0, '2022-23 (no harm)', check_bias=False)
+    print(f'R2b ADOPTED on the dev folds (base {base}): {a and b}')
+
+
 def r1dev(frame, r1_version):
     rows_a, pm_a = ev.load_rows('v2_base', '2023-24', frame)
     rows_b, pm_b = ev.load_rows(r1_version, '2023-24', frame)
@@ -65,11 +89,13 @@ def r1dev(frame, r1_version):
 
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
-    ap.add_argument('mode', choices=['r2dev', 'r1dev'])
+    ap.add_argument('mode', choices=['r2dev', 'r2bdev', 'r1dev'])
     ap.add_argument('--r1-version', default='r1_2023-24')
     ap.add_argument('--base-version', default='v2_base', help='saved version R2 is applied to')
     a = ap.parse_args()
     if a.mode == 'r2dev':
         r2dev(a.base_version)
+    elif a.mode == 'r2bdev':
+        r2bdev(a.base_version)
     else:
         r1dev(data.load_frame(), a.r1_version)

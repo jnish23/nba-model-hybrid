@@ -39,10 +39,21 @@ The corrections that remove optimism are adopted regardless (protocol update), a
 - Tested and not the cause (or not fixed by): season-position features (R1), the stale fit window (refit: partial), recency weighting (R3), the minutes residual bank, injury timing.
 - Still unexplained. Rolling recalibration (R2, constants fixed before any result) halves it: on the corrected pipeline it removes 49% of the 2023-24 bias (bar: 50%), improves CRPS significantly in 2023-24 (points -0.0102), and does not harm 2022-23. By the rule it is **not adopted**; the constants have not been touched. Tried rules so far: R1, R2 (twice, same constants), R3, plus design corrections that were adopted on validity grounds.
 
+**R2b (approved by the user 2026-10-20; constants fixed before any result: previous 21 game-dates window carried across the season boundary, prior 1,000 player-games, carry-over rows = the previous season's own-fold forecasts; same adoption rule as R2).** Evaluated on the corrected pipeline (`v3_dev`), dev folds only:
+
+| Fold | Mean absolute bias, core stats | CRPS vs unrecalibrated |
+|---|---|---|
+| 2023-24 | 3.57% to 1.34% = **-62%** (bar -50%): PASS | better in every stat, significantly in 8 of 8 except rebounds (interval touches 0); points -0.0107, pra -0.0126 |
+| 2022-23 | 0.68% to 0.22% = -68% | no harm in 7 of 8; **pra +0.0011 (0.026% of CRPS), interval [0.00003, 0.0021] lies just above 0: the registered non-harm condition FAILS** |
+
+Registered verdict (2,000 bootstrap draws, seed 0): **not adopted**, by one stat on one fold, by an effect of 0.026%. Sensitivity, reported and not used to change the verdict: with 4,000 draws and another seed the same interval is [-0.00002, 0.0022]. Whether to waive that condition is the user's call, as a documented deviation from a pre-registered rule.
+
+Tried rules so far: R1, R2 (twice, same constants), R2b, R3, plus design corrections that were adopted on validity grounds.
+
 ## Still open
 
-1. Decision for the user: R2b (season-boundary carry-over, prior 1,000), or stand by the rules.
-2. Decision for the user: the protocol change (2024-25 seen; 2025-26 scored once for both model and betting rules).
+1. Decision for the user: R2b missed its registered non-harm condition by 0.026% of CRPS on one stat (pra, 2022-23); waive the condition (documented deviation) or stand by the rules.
+2. ~~Decision for the user: the protocol change~~ Approved 2026-10-20: 2024-25 seen; 2025-26 scored once for both model and betting rules.
 3. Per-merge `validate=` guards in the props dataset build.
 4. Rerun the 2024-25 numbers on the final configuration, as "seen" results, once the configuration is frozen.
 5. Phase 5 plan: 20,000-sim rows, book-line metrics as gate criteria, snapshot-era-only H1/H2, joint re-simulation for portfolio risk.
