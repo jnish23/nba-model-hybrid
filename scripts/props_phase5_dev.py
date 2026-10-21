@@ -112,6 +112,7 @@ def main():
     ap.add_argument('--p5-version', required=True)
     ap.add_argument('--full-version', required=True)
     ap.add_argument('--carry-season', default=None)
+    ap.add_argument('--carry-version', default=None, help='version supplying the carry-over fold for R2b (default: --full-version)')
     ap.add_argument('--prices', default=None)
     ap.add_argument('--features-db', default='data/props_features_v3.db')
     ap.add_argument('--out', required=True)
@@ -126,7 +127,7 @@ def main():
 
     idx5, pm5 = registry.load_predictions(a.p5_version, a.season)
     full_rows, full_pm = ev.load_rows_light(a.full_version, a.season, a.features_db)
-    carry = ev.load_rows_light(a.full_version, a.carry_season, a.features_db) if a.carry_season else None
+    carry = ev.load_rows_light(a.carry_version or a.full_version, a.carry_season, a.features_db) if a.carry_season else None
     if not a.no_r2b:
         ratios = be.r2b_ratio_by_date(full_rows, full_pm, carry)
         pm5 = be.apply_r2b(idx5, pm5, ratios)                               # the frozen configuration: R2b (per game type) on top of the saved 20,000-draw pmfs
@@ -149,6 +150,12 @@ def main():
     # --- 2. quotes with model probabilities, EV, selection
     q = be.quote_table(bets, idx5, pm5)
     q = be.attach_outcomes(q, labels)
+    if a.frozen_rule:
+        frozen = json.loads(Path(a.frozen_rule).read_text(encoding='utf-8'))
+        if frozen.get('stats'):                                              # a revised rule bets only the listed stats; the information test above still covers all of them
+            q = q[q['stat'].isin(frozen['stats'])].reset_index(drop=True)
+            k_by_stat = {s: v for s, v in k_by_stat.items() if s in frozen['stats']}
+            logging.info(f"stats restricted to {frozen['stats']}")
     q = rules.add_ev(q, k_by_stat)
     logging.info(f'{len(q)} bettable quotes with a model probability')
 
