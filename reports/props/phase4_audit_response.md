@@ -43,7 +43,7 @@ The corrections that remove optimism are adopted regardless (protocol update), a
 
 | Fold | Mean absolute bias, core stats | CRPS vs unrecalibrated |
 |---|---|---|
-| 2023-24 | 3.57% to 1.34% = **-62%** (bar -50%): PASS | better in every stat, significantly in 8 of 8 except rebounds (interval touches 0); points -0.0107, pra -0.0126 |
+| 2023-24 | 3.57% to 1.34% = **-62%** (bar -50%): PASS | better in every stat, significantly in 7 of 8 (rebounds' interval touches 0); points -0.0107, pra -0.0126 |
 | 2022-23 | 0.68% to 0.22% = -68% | no harm in 7 of 8; **pra +0.0011 (0.026% of CRPS), interval [0.00003, 0.0021] lies just above 0: the registered non-harm condition FAILS** |
 
 Registered verdict (2,000 bootstrap draws, seed 0): **not adopted**, by one stat on one fold, by an effect of 0.026%. Sensitivity, reported and not used to change the verdict: with 4,000 draws and another seed the same interval is [-0.00002, 0.0022]. Whether to waive that condition is the user's call, as a documented deviation from a pre-registered rule.
