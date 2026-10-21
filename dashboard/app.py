@@ -870,7 +870,8 @@ def main():
             todays_games = todays_games.reset_index(drop=True)
             table = pd.DataFrame({
                 'Why?': False,
-                'Game': todays_games['matchup'],
+                'Away Team': todays_games['away_team'],
+                'Home Team': todays_games['home_team'],
                 'Home win % (model / market)': [f"{pct(m)} / {pct(i)}" for m, i in zip(todays_games['Model Home Prob (%)'], todays_games['Implied Home Prob (%)'])],
                 'Moneyline (away / home)': [f"{american(a)} / {american(h)}" for a, h in zip(todays_games['odds_away_ml'], todays_games['odds_home_ml'])],
                 'ML Pick': todays_games['ML Pick'],
