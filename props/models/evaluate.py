@@ -45,14 +45,14 @@ def _cluster_sums(values, clusters):
     return np.bincount(codes, weights=np.asarray(values, float), minlength=g), np.bincount(codes, minlength=g).astype(float), g
 
 
-def cluster_bootstrap(num, clusters, den=None, n_boot=N_BOOT, seed=0):
-    """Point estimate and 95% interval of sum(num)/sum(den) (den defaults to the row count, i.e. the mean) resampling whole clusters."""
+def cluster_bootstrap(num, clusters, den=None, n_boot=N_BOOT, seed=0, alpha=0.05):
+    """Point estimate and (1 - alpha) interval (95% by default) of sum(num)/sum(den) (den defaults to the row count, i.e. the mean) resampling whole clusters."""
     sn, cnt, g = _cluster_sums(num, clusters)
     sd = cnt if den is None else _cluster_sums(den, clusters)[0]
     point = sn.sum() / sd.sum()
     w = np.random.default_rng(seed).multinomial(g, np.full(g, 1.0 / g), size=n_boot).astype(np.float64)
     draws = (w @ sn) / (w @ sd)
-    return point, float(np.quantile(draws, 0.025)), float(np.quantile(draws, 0.975))
+    return point, float(np.quantile(draws, alpha / 2)), float(np.quantile(draws, 1 - alpha / 2))
 
 
 # ------------------------------------------------------------------------------------------------ baselines
