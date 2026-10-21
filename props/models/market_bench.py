@@ -7,6 +7,7 @@ and drop out, as they do from the de-vigged price). Realized outcome: over = 1, 
 
 Descriptive tools for Phase 4/5: they do not select a betting rule. Prices are those stamped at the decision time (snapshots at or before T), never the opening line.
 """
+import logging
 import sqlite3
 
 import numpy as np
@@ -41,7 +42,12 @@ def load_consensus(props_db, season_start, season_end, grid=GRID, min_books=MIN_
     cons = cons.merge(keys, on=['snapshot_ts_utc', 'event_id_vendor', 'player_name_raw'], how='inner', validate='many_to_one')
     cons['minutes_before'] = cons['mode'].str.replace('hist_T-', '', regex=False).astype(int)
     cons['player_id'] = cons['player_id'].astype(int)
-    return cons[['game_id', 'player_id', 'minutes_before', 'market', 'consensus_line', 'consensus_fair_over', 'n_at_line', 'book_spread']]
+    # books spell one player's name differently, so consensus (grouped by raw name) can return several rows for one player-market-time: keep the quote that most books agree on
+    key = ['game_id', 'player_id', 'minutes_before', 'market']
+    n_before = len(cons)
+    cons = cons.sort_values(key + ['n_at_line', 'snapshot_ts_utc'], ascending=[True] * len(key) + [False, True]).drop_duplicates(key)
+    logging.info(f'consensus rows {n_before} -> {len(cons)} after merging name variants ({n_before - len(cons)} duplicates dropped)')
+    return cons[key + ['consensus_line', 'consensus_fair_over', 'n_at_line', 'book_spread']]
 
 
 def compare(rows, pmfs, cons, stats=None):
@@ -103,3 +109,22 @@ def reliability_at_book_line(cmp, bins=10):
     """Model probability deciles at the book line against realized hit rate (and the market's own decile for reference)."""
     q = pd.qcut(cmp['p_model'], bins, duplicates='drop')
     return cmp.groupby(q, observed=True).agg(n=('hit', 'size'), mean_p_model=('p_model', 'mean'), mean_p_market=('p_market', 'mean'), hit_rate=('hit', 'mean')).reset_index(drop=True)
+
+
+def information_slope(cmp, n_boot=ev.N_BOOT, seed=0):
+    """Least-squares slope of (hit - p_market) on the gap (p_model - p_market) through the origin, game-clustered interval, overall and by stat.
+    0 = the model's disagreement with the market is noise; 1 = the model is right about the whole gap; a bias common to all rows shows up as an intercept, so it is
+    also reported (mean of hit - p_market). The slope is the quantity that decides whether any gap-based rule can pay."""
+    out = []
+    for stat, g in [('all', cmp)] + list(cmp.groupby('stat')):
+        gap = (g['p_model'] - g['p_market']).to_numpy()
+        resid = (g['hit'] - g['p_market']).to_numpy()
+        codes, uniq = pd.factorize(g['game_id'])
+        k = len(uniq)
+        sxy, sxx = np.bincount(codes, weights=gap * resid, minlength=k), np.bincount(codes, weights=gap * gap, minlength=k)
+        w = np.random.default_rng(seed).multinomial(k, np.full(k, 1.0 / k), size=n_boot).astype(float)
+        draws = (w @ sxy) / (w @ sxx)
+        mp, mlo, mhi = ev.cluster_bootstrap(resid, g['game_id'], n_boot=n_boot)
+        out.append({'stat': stat, 'n': len(g), 'slope': sxy.sum() / sxx.sum(), 'slope_lo': float(np.quantile(draws, 0.025)), 'slope_hi': float(np.quantile(draws, 0.975)),
+                    'mean hit - market': mp, 'lo': mlo, 'hi': mhi})
+    return pd.DataFrame(out)
