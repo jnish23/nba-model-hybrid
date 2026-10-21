@@ -14,7 +14,8 @@ import numpy as np
 import pandas as pd
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
-from props.models import data, evaluate as ev  # noqa: E402
+from props.models import data, evaluate as ev, outcome as oc, recalibrate  # noqa: E402
+from props.models.pipeline import observed  # noqa: E402
 from props.quality import md_table  # noqa: E402
 
 CORE = ['points', 'rebounds', 'assists', 'threes', 'pra']
@@ -27,10 +28,22 @@ def main():
     ap.add_argument('--out', required=True)
     ap.add_argument('--features-db', default=None)
     ap.add_argument('--n-boot', type=int, default=ev.N_BOOT)
+    ap.add_argument('--r2b', action='store_true', help='apply the frozen rolling recalibration R2b to the saved pmfs before evaluating')
+    ap.add_argument('--r2b-carry-version', default=None, help='version whose previous-season fold supplies the carry-over rows')
+    ap.add_argument('--r2b-carry-season', default=None)
     a = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
     frame = data.load_frame(a.features_db) if a.features_db else data.load_frame()
     rows, pmfs = ev.load_rows(a.version, a.season, frame)
+    if a.r2b:                                                       # the frozen configuration: rolling recalibration R2b on top of the saved pmfs
+        rec = recalibrate.RollingRecalibratorB()
+        carry_rows, carry_pm = ev.load_rows_light(a.r2b_carry_version, a.r2b_carry_season) if a.r2b_carry_version else (None, None)
+        new = {}
+        for stat in pmfs:
+            carry = None if carry_rows is None else (carry_rows['game_date'], observed(carry_rows, stat), oc.pmf_mean(carry_pm[stat]))
+            new[stat], _ = rec.apply(stat, pmfs[stat], rows['game_date'], observed(rows, stat), carry)
+        pmfs = new
+        logging.info(f'R2b applied (carry-over from {a.r2b_carry_version} {a.r2b_carry_season})')
     rows['minutes_bucket'] = pd.cut(rows['minutes_mean'], [0, 15, 28, 60], labels=['under 15', '15-28', '28+']).astype(str)
     rows['month'] = pd.to_datetime(rows['game_date']).dt.strftime('%Y-%m')
     logging.info(f'{len(rows)} rows loaded')
@@ -60,7 +73,7 @@ def main():
         f"4. CRPS at T-5 not significantly worse than at T-240 (interval not entirely above 0) in every stat: **{'PASS' if c4['ok'].all() else 'FAIL'}** (failing: {c4.loc[~c4['ok'], 'stat'].tolist() or 'none'})",
     ]
     r = lambda d, n=4: md_table(d.round(n), n)
-    md = [f'# Phase 4 evaluation: {a.season} ({a.version})\n',
+    md = [f'# Phase 4 evaluation: {a.season} ({a.version}{" + R2b" if a.r2b else ""})\n',
           f'{len(rows)} played player-game rows (three decision times each, pooled), {rows["game_id"].nunique()} games. Intervals: 95% bootstrap over whole games ({a.n_boot} draws); '
           'the date-clustered interval is the sensitivity check. Differences are paired (model minus best baseline; negative = model better).\n',
           '## Pre-registered go/no-go criteria\n', '\n'.join(f'- {v}' for v in verdict) + '\n',
