@@ -179,3 +179,21 @@ def test_recency_weights_halve_per_half_life_and_leave_other_columns_alone(frame
     assert out.drop(columns='weight').equals(part.drop(columns='weight'))
     bundle = pipeline.train_fold(frame, fold, SPEC, score_on_test=False, recency_half_life_days=365.0)
     assert bundle['minutes'].info['regular']['rows'] > 0
+
+
+def test_live_fold_has_no_test_part_and_calibrate_fold_matches_predict_fold(frame):
+    import pytest as _pytest
+    with _pytest.raises(ValueError):
+        folds.make_live_fold(frame, '2021-22')                                                # the frame already has that season
+    live_frame = frame[frame['season'] < '2021-22'].reset_index(drop=True)
+    lf = folds.make_live_fold(live_frame, '2021-22')
+    assert len(lf.test_idx) == 0 and live_frame['game_date'].to_numpy()[lf.fit_idx].max() < live_frame['game_date'].to_numpy()[lf.calib_idx].min()
+    # the same arithmetic as predict_fold on a real fold
+    fold = folds.make_fold(frame, '2021-22')
+    fams = {c: 'hier' for c in pipeline.COMPONENTS}
+    b1 = pipeline.train_fold(frame, fold, SPEC, score_on_test=False, refit_all=True)
+    b2 = pipeline.train_fold(frame, fold, SPEC, score_on_test=False, refit_all=True)
+    _, _, _, _, scaler_a = pipeline.predict_fold(frame, fold, b1, fams, n_sims=300, seed=1)
+    scaler_b, _ = pipeline.calibrate_fold(frame, fold, b2, fams, n_sims=300, seed=1)
+    assert scaler_a.c == scaler_b.c
+    assert b1['refit']['rates'].nb_k == b2['refit']['rates'].nb_k

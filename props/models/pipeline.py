@@ -102,3 +102,25 @@ def predict_fold(df, fold, bundle, families, n_sims=4000, seed=0):
     for stat in oc.CAPS:
         res[stat] = scaler.transform(stat, res[stat], idx['minutes_mean'].to_numpy())
     return idx, res, calibrator, played, scaler
+
+
+def calibrate_fold(df, fold, bundle, families, n_sims=4000, seed=0):
+    """
+    The calibration half of predict_fold for a fold with no test season (a live model): fits the NB dispersion and the dispersion scaler on the calibration window with the
+    fit-only models, and hands the NB dispersion to the refit models. Returns (scaler, isotonic calibrator). Same arithmetic as predict_fold (tested to give identical results).
+    """
+    rm = bundle['rates']
+    cal = df.iloc[fold.calib_idx]
+    cal = cal[(cal['lbl_played'] == 1) & (cal['lbl_minutes'] > 0)]
+    rm.fit_dispersion(cal, families)
+    cres = distributions(bundle, cal, families, n_sims, seed + 1)
+    scaler = dispersion.DispersionScaler()
+    calibrator = calibrate.ThresholdCalibrator()
+    if 'refit' in bundle:
+        bundle['refit']['rates'].nb_k = rm.nb_k
+    for stat in oc.CAPS:
+        y = observed(cal, stat)
+        ok = ~np.isnan(y)
+        scaler.fit(stat, cres[stat][ok], y[ok], cres['minutes_mean'][ok])
+        calibrator.fit(stat, scaler.transform(stat, cres[stat][ok], cres['minutes_mean'][ok]), y[ok])
+    return scaler, calibrator
