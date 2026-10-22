@@ -74,3 +74,12 @@ def test_a_player_named_for_a_new_team_is_dropped_from_his_old_teams_roster_in_o
     rows = roster.placeholder_rows(cols, games, {1: {10}, 2: {20}, 3: {30}, 4: {40}}, {'g1': {2: {30}}})        # player 30's old team is 3 (game g2); a report puts him on team 2 (game g1)
     assert not rows.duplicated('player_id').any()
     assert rows.loc[rows['player_id'] == 30, ['game_id', 'team_id']].values.tolist() == [['g1', 2]]
+
+
+def test_roster_rule_v2_on_an_opening_night_has_only_report_and_quoted_players_with_integer_ids():
+    from props.live import roster
+    hist = pd.DataFrame({'game_id': ['old'], 'team_id': [1], 'player_id': [10], 'game_date': ['2025-04-10'], 'season': ['2024-25']})
+    games = pd.DataFrame({'game_id': ['g'], 'home_team_id': [1], 'away_team_id': [2], 'season': ['2025-26'], 'game_date': ['2025-10-21']})
+    report = pd.DataFrame({'game_id': ['g'], 'player_id': [20], 'team_id': [2], 'status': ['Questionable']})
+    m = roster.rule_members('v2', games, hist, '2025-10-21', report, pd.DataFrame({'game_id': ['g'], 'player_id': [30]}))
+    assert sorted(m['player_id']) == [20, 30] and m['player_id'].dtype == 'int64'

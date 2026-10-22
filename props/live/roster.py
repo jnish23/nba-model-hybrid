@@ -74,6 +74,10 @@ def previous_game_rosters(hist, date, season):
 RULES = ('registered', 'v2')
 
 
+def _pairs(df):
+    return df.astype({'game_id': str, 'player_id': 'int64'}).drop_duplicates().reset_index(drop=True)
+
+
 def rule_members(rule, games, hist, date, report, quotes):
     """
     (game_id, player_id) pairs of the live roster of every game on `date` at one decision time. report: (game_id, player_id, team_id, status) of the usable report; quotes: (game_id, player_id).
@@ -84,14 +88,14 @@ def rule_members(rule, games, hist, date, report, quotes):
     if rule == 'registered':
         r = current_team_only(recent_rosters(h, date), last_team(h, date))
         base = [(g.game_id, p) for g in games.itertuples() for team in (int(g.home_team_id), int(g.away_team_id)) for p in r.get(team, ())]
-        return pd.concat([pd.DataFrame(base, columns=['game_id', 'player_id']), report[['game_id', 'player_id']], quotes[['game_id', 'player_id']]], ignore_index=True).drop_duplicates()
+        return _pairs(pd.concat([pd.DataFrame(base, columns=['game_id', 'player_id']), report[['game_id', 'player_id']], quotes[['game_id', 'player_id']]], ignore_index=True))
     if rule == 'v2':
         prev = previous_game_rosters(hist, date, str(games['season'].iloc[0]))
-        base = pd.DataFrame([(g.game_id, p) for g in games.itertuples() for team in (int(g.home_team_id), int(g.away_team_id)) for p in prev.get(team, ())], columns=['game_id', 'player_id'])
+        base = pd.DataFrame([(g.game_id, p) for g in games.itertuples() for team in (int(g.home_team_id), int(g.away_team_id)) for p in prev.get(team, ())], columns=['game_id', 'player_id']).astype({'game_id': str, 'player_id': 'int64'})
         out = report[report['status'] == 'Out'][['game_id', 'player_id']]
         base = base.merge(out.assign(_out=1), on=['game_id', 'player_id'], how='left')
         base = base[base['_out'].isna()][['game_id', 'player_id']]
-        return pd.concat([base, report[report['status'] != 'Out'][['game_id', 'player_id']], quotes[['game_id', 'player_id']]], ignore_index=True).drop_duplicates()
+        return _pairs(pd.concat([base, report[report['status'] != 'Out'][['game_id', 'player_id']], quotes[['game_id', 'player_id']]], ignore_index=True))
     raise ValueError(f'unknown roster rule {rule}')
 
 
