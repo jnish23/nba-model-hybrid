@@ -64,9 +64,9 @@ def encode_categoricals(df):
     return df
 
 
-def load_frame(out_db=build.OUT_DB):
+def load_frame(out_db=build.OUT_DB, game_ids=None):
     """All listed player-games x decision times with features, keys, dates and labels. Played rows have lbl_played == 1."""
-    t = build.read_tables(out_db)
+    t = build.read_tables(out_db, game_ids)
     base, labels, at_t = t['player_game_base'], t['player_game_labels'], t['player_game_at_T']
     df = at_t.merge(base, on=['game_id', 'player_id'], how='left').merge(labels, on=['game_id', 'player_id'], how='left')
     df = encode_categoricals(df)

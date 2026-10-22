@@ -48,8 +48,9 @@ def pregame_ewm(df, group, order, cols, span=SPAN, season_col='season'):
     return pd.DataFrame(out, index=df.index)
 
 
-def _zone_allowed(db_path):
-    """For each (game, team): EWM of the zone profile the team's DEFENSE has allowed in earlier games."""
+def _zone_allowed(db_path, extra=None):
+    """For each (game, team): EWM of the zone profile the team's DEFENSE has allowed in earlier games. `extra` (live use): placeholder rows [game_id, team_id, game_date, season]
+    of games not yet played, which get their pre-game EWM from the same code (their own, empty, profile never contributes)."""
     with sqlite3.connect(f'file:{db_path}?mode=ro', uri=True) as conn:
         cols = ', '.join(f'"{z} FGA" AS {k}_a, "{z} FGM" AS {k}_m' for k, z in ZONES.items())
         z = pd.read_sql(f"SELECT teamId AS team_id, substr(gameDate, 1, 10) AS game_date, season, {cols} FROM team_shot_location_boxscores", conn)
@@ -69,6 +70,8 @@ def _zone_allowed(db_path):
     allowed.columns = ['game_id', 'team_id'] + [f'{k}_{s}_allowed' for k in ZONES for s in ('share', 'pct')]
     meta = z[['game_id', 'team_id', 'game_date', 'season']]
     allowed = allowed.merge(meta, on=['game_id', 'team_id'], validate='one_to_one')
+    if extra is not None and len(extra):
+        allowed = pd.concat([allowed, extra[['game_id', 'team_id', 'game_date', 'season']]], ignore_index=True)
     cols = [c for c in allowed.columns if c.endswith('_allowed')]
     ew = pregame_ewm(allowed, 'team_id', ['game_date', 'game_id'], cols)
     res = allowed.loc[ew.index, ['game_id', 'team_id']].join(ew)
@@ -80,6 +83,14 @@ def team_context(db_path):
     tf = TeamFeatureBuilder(str(db_path)).build_entire_history()
     tf = tf.rename(columns={'gameId': 'game_id', 'teamId': 'team_id'})
     tf['game_id'] = tf['game_id'].astype(str).str.zfill(10)
+    tr = TravelFeatureBuilder(str(db_path)).build_features().rename(columns={'gameId': 'game_id', 'teamId': 'team_id'})
+    tr['game_id'] = tr['game_id'].astype(str).str.zfill(10)
+    return assemble_context(db_path, tf, tr)
+
+
+def assemble_context(db_path, tf, tr, zone_extra=None):
+    """The context table from team-form rows `tf` (game_id, team_id, the 20g/5g EWMs...) and travel rows `tr` (game_id, team_id, TRAVEL_COLS). Shared by the batch build (every historical
+    game) and the live build (upcoming games, with `zone_extra` placeholders), so one code path produces both."""
     ctx = tf[['game_id', 'team_id', 'is_playoff', 'season_game_number']].copy()
     for name, src in TEAM_COLS.items():
         ctx[name] = tf[src].to_numpy(dtype=float)
@@ -88,11 +99,9 @@ def team_context(db_path):
                          - tf['off_offensiveRebounds_20g']).to_numpy()
     ctx['misses'] = (tf['off_fieldGoalsAttempted_20g'] * (1 - tf['off_fieldGoalPercentage_20g'])).to_numpy()
     ctx['misses_allowed'] = (tf['def_OPP_FGA_20g'] * (1 - tf['def_OPP_FG_PCT_20g'])).to_numpy()
-    tr = TravelFeatureBuilder(str(db_path)).build_features().rename(columns={'gameId': 'game_id', 'teamId': 'team_id'})
-    tr['game_id'] = tr['game_id'].astype(str).str.zfill(10)
     ctx = guards.dedupe(ctx, ['game_id', 'team_id'], 'team context')
     ctx = ctx.merge(guards.dedupe(tr[['game_id', 'team_id'] + TRAVEL_COLS], ['game_id', 'team_id'], 'travel features'), on=['game_id', 'team_id'], how='left', validate='one_to_one')
-    ctx = ctx.merge(guards.dedupe(_zone_allowed(db_path), ['game_id', 'team_id'], 'zone-allowed features'), on=['game_id', 'team_id'], how='left', validate='one_to_one')
+    ctx = ctx.merge(guards.dedupe(_zone_allowed(db_path, zone_extra), ['game_id', 'team_id'], 'zone-allowed features'), on=['game_id', 'team_id'], how='left', validate='one_to_one')
     return ctx
 
 

@@ -81,20 +81,14 @@ def build_at_t(base, labels, db_path, props_db, grid=GRID, reports=None):
     proxy = market_env.sbr_proxy(load_clean_odds(Path(db_path)))
     pre_market = set(base.loc[base['season'] < MARKET_ERA_FIRST_SEASON, 'game_id'])
     env = market_env.combine(snap, proxy[proxy['game_id'].isin(pre_market)])
-    feat_cols = ['game_id', 'player_id', 'm_min_h15', 'r_usage_pct_h15', 'r_reb_chances_h15', 'r_assists_h15', 'r_secondary_ast_h15', 'r_points_h15']
     out = []
     for x in grid:
         chosen, games = injury_at_t.latest_report_rows(reports, tips, x)
         status = injury_at_t.status_for_rows(base[['game_id', 'player_id', 'team_id']], chosen, games)
         keyed = status.merge(base[['game_id', 'player_id', 'season', 'm_bucket']], on=['game_id', 'player_id'], validate='one_to_one').merge(lab, on=['game_id', 'player_id'], validate='one_to_one')
         table = injury_at_t.play_rate_table(keyed, x, rows_mod.FIRST_DATASET_SEASON)
-        d = injury_at_t.attach_p_play(status, base, table)
-        d = d.merge(base[['game_id', 'player_id', 'opp_team_id']], on=['game_id', 'player_id'], validate='one_to_one')
-        av = injury_at_t.teammate_availability(d, base[feat_cols])
         env_x = market_env.team_view(base[['game_id', 'player_id', 'is_home']], env, x)
-        t = d[['game_id', 'player_id', 'inj_status', 'inj_status_code', 'inj_p_play', 'inj_reason_class', 'inj_report_age_min',
-               'inj_report_missing']].merge(av.drop(columns=['team_id', 'opp_team_id']), on=['game_id', 'player_id'], validate='one_to_one').merge(
-            env_x, on=['game_id', 'player_id'], validate='one_to_one')
+        t = injury_at_t.at_t_block(base, status, table).merge(env_x, on=['game_id', 'player_id'], validate='one_to_one')
         t.insert(2, 'minutes_before', x)
         out.append(t)
     return pd.concat(out, ignore_index=True)
@@ -112,10 +106,16 @@ def write_tables(out_db, **tables):
             conn.execute(f'CREATE INDEX IF NOT EXISTS ix_{name} ON {name} ({", ".join(idx)})')
 
 
-def read_tables(out_db=OUT_DB):
+def read_tables(out_db=OUT_DB, game_ids=None):
+    """The three dataset tables; `game_ids` limits them to those games (the live parity test needs about 40 dates, not the whole dataset)."""
     import sqlite3
+    where = ''
+    if game_ids is not None:
+        ids = [str(g) for g in game_ids]
+        assert all(g.isdigit() for g in ids), 'game ids are digit strings'
+        where = ' WHERE game_id IN (%s)' % ','.join(f"'{g}'" for g in ids)
     with sqlite3.connect(f'file:{out_db}?mode=ro', uri=True) as conn:
-        return {n: pd.read_sql(f'SELECT * FROM {n}', conn) for n in ('player_game_base', 'player_game_labels', 'player_game_at_T')}
+        return {n: pd.read_sql(f'SELECT * FROM {n}{where}', conn) for n in ('player_game_base', 'player_game_labels', 'player_game_at_T')}
 
 
 def build_all(db_path='data/nba_stats.db', props_db='data/props_odds.db', out_db=OUT_DB, grid=GRID, max_date=None, refresh_reports=False):

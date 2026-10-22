@@ -87,13 +87,17 @@ def status_for_rows(rows, chosen_rows, games):
     return out.drop(columns=['status', 'reason'])
 
 
-def play_rate_table(history_rows, minutes_before, first_season):
+def play_rate_table(history_rows, minutes_before, first_season, extra_season=None):
     """
     history_rows: roster rows with season, inj_status, m_bucket and lbl_played for the SAME X. Returns a Series indexed (season, status, bucket):
     P(played) estimated from seasons strictly before `season`, shrunk toward SPEC_P_PLAY[status].
     """
     h = history_rows[['season', 'inj_status', 'm_bucket', 'lbl_played']]
     g = h.groupby(['season', 'inj_status', 'm_bucket'])['lbl_played'].agg(['sum', 'size'])
+    if extra_season is not None:                                # live: a season with no rows yet gets every cell with zero counts, so its table is 'all earlier seasons'
+        cells = g.index.droplevel(0).unique()
+        zero = pd.DataFrame({'sum': 0, 'size': 0}, index=pd.MultiIndex.from_tuples([(extra_season, a, b) for a, b in cells], names=g.index.names))
+        g = pd.concat([g, zero[~zero.index.isin(g.index)]])
     g = g.sort_index()
     cum = g.groupby(level=[1, 2]).cumsum()
     before = cum - g                                           # earlier seasons of the same (status, bucket) cell
@@ -161,3 +165,15 @@ def teammate_availability(d, feat, prefix='av'):
     opp_out[f'opp_{prefix}_miss_starter_minutes'] = opp['_starter_qw']
     opp_out = opp_out.reset_index().rename(columns={'team_id': 'opp_team_id'})
     return res.merge(opp_out, on=['game_id', 'opp_team_id'], how='left', validate='many_to_one')
+
+
+AT_T_FEAT_COLS = ['game_id', 'player_id', 'm_min_h15', 'r_usage_pct_h15', 'r_reb_chances_h15', 'r_assists_h15', 'r_secondary_ast_h15', 'r_points_h15']
+
+
+def at_t_block(base, status, table):
+    """The injury and availability columns for one decision time, from the base rows, their report status and the play-rate table. Shared by the batch dataset build and the live build."""
+    d = attach_p_play(status, base, table)
+    d = d.merge(base[['game_id', 'player_id', 'opp_team_id']], on=['game_id', 'player_id'], validate='one_to_one')
+    av = teammate_availability(d, base[AT_T_FEAT_COLS])
+    return d[['game_id', 'player_id', 'inj_status', 'inj_status_code', 'inj_p_play', 'inj_reason_class', 'inj_report_age_min', 'inj_report_missing']].merge(
+        av.drop(columns=['team_id', 'opp_team_id']), on=['game_id', 'player_id'], validate='one_to_one')
