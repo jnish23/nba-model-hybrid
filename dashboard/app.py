@@ -819,7 +819,7 @@ def main():
     # Season + date filter: choosing a season resets the dates to that season's span (the current season runs from its
     # opening night to today); the dates can then be narrowed further.
     game_dates = [d for d in df['game_date'] if pd.notna(d)] if 'game_date' in df.columns else []
-    today = datetime.date.today()
+    today = nba_today()
     seasons = season_options(game_dates, today)
     season = st.sidebar.selectbox("Season", seasons, index=0, help="Defaults to the current season. Picking a season sets the start and end dates below; you can then move either date into another season.")
     start_default, end_default, _, _ = season_date_range(game_dates, season, today)
@@ -866,7 +866,7 @@ def main():
 
     with tab1:
         st.subheader("Games Schedule")
-        today = datetime.date.today()
+        today = nba_today()
         todays_games = df[df['game_date'] == today].copy()
         
         display_game_df = pd.DataFrame()
@@ -951,7 +951,7 @@ def main():
         st.subheader("Model Performance: Last 14 Days")
         
         # Filter to this week (Monday to today)
-        today = datetime.date.today()
+        today = nba_today()
         previous_two_weeks = today - datetime.timedelta(days=14)
         week_df = model_df[(model_df['game_date'] >= previous_two_weeks) & (model_df['game_date'] < today)].copy()
         week_df = week_df.sort_values('game_date', ascending=False)
