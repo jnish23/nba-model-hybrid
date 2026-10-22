@@ -97,6 +97,10 @@ DATA_BASE_URL = os.environ.get("NBA_DASHBOARD_DATA_BASE", "https://raw.githubuse
 EXPLANATIONS_URL = DATA_BASE_URL + "explanations.csv"
 HISTORY_MANIFEST_URL = DATA_BASE_URL + "explanations_manifest.json"
 HISTORY_DIR_URL = DATA_BASE_URL + "explanations_history/"
+# How long loaded data is reused. GitHub's raw file CDN holds a file for about 5 minutes itself, so going lower than DATA_TTL gains nothing;
+# the sidebar's Refresh button clears these caches at once. The history files (about 3 MB) only change when a game finishes.
+DATA_TTL = 300
+HISTORY_TTL = 1800
 EXPLANATIONS_SNAPSHOT_PATH = Path(__file__).resolve().parent / "snapshot" / "explanations.csv"
 
 
@@ -149,7 +153,7 @@ def _read_explanation_history():
     return pd.DataFrame(columns=EXPLANATION_COLUMNS)
 
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=HISTORY_TTL)
 def load_explanation_history():
     """All explanation rows with canonical game ids, for settled games and the drivers tab. Never raises."""
     try:
@@ -158,7 +162,7 @@ def load_explanation_history():
         return pd.DataFrame(columns=EXPLANATION_COLUMNS)
 
 
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=DATA_TTL)
 def load_explanation_data():
     """Explanation rows with canonical game ids. Never raises: the panel just says 'No explanation available'."""
     try:
@@ -245,7 +249,7 @@ def render_explanation(expl, game, settled=False):
                         help="Where this game's value ranks among recent seasons' games (50 = typical, 95 = higher than 95% of them).", format="%d")})
 
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=DATA_TTL)
 def load_data():
     """Loads prediction data (see _read_predictions for the sources)."""
     try:
@@ -815,6 +819,12 @@ def main():
     # Sidebar Filters
     st.sidebar.header("Configuration")
     st.sidebar.caption(f"Data: {source} · {df['game_date'].min()} to {df['game_date'].max()}")
+    if 'prediction_date' in df.columns and df['prediction_date'].notna().any():
+        st.sidebar.caption(f"Latest prediction run: {df['prediction_date'].max():%Y-%m-%d %H:%M}")
+    if st.sidebar.button("🔄 Refresh data", help=f"Reload the data now instead of waiting up to {DATA_TTL // 60} minutes. GitHub itself serves the published files "
+                                                  "with a delay of up to about 5 minutes after a publish."):
+        st.cache_data.clear()
+        st.rerun()
     
     # Season + date filter: choosing a season resets the dates to that season's span (the current season runs from its
     # opening night to today); the dates can then be narrowed further.
