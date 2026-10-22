@@ -20,7 +20,7 @@ from team.betting import (calculate_implied_prob, calculate_payout, calculate_be
                             settle_bet, STANDARD_PRICE, get_spread_bet, get_total_bet, points_threshold,
                             DEFAULT_SPREAD_STD, DEFAULT_TOTAL_STD, DEFAULT_PROB_EDGE, implied_prob_edge,
                             cover_probability)
-from core.season_utils import date_bounds, season_date_range, season_for_date, season_options
+from core.season_utils import date_bounds, nba_today, season_date_range, season_for_date, season_options
 from team.explain import (COLUMNS as EXPLANATION_COLUMNS, MONEYLINE, SPREAD, TOTAL, chart_steps, driver_stats, game_features, game_flags,
                           game_pieces, load_explanations, normalize_game_ids, outcome_sentence, summary_sentence)
 
