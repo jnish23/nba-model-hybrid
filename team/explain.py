@@ -7,6 +7,7 @@ the edge shown on the dashboard:
     total   current line -> line movement since the open (open - current)
                          -> how much the model trusts the opening line (baseline + the line's own contribution - open)
                          -> one step per feature group (feature_groups.py) -> model total
+    moneyline  same steps in log-odds (starting at the win probability the current home price implies), shown as probability points
     spread  current line (as home margin = -home spread) -> line movement since the open
                          -> baseline (the residual model's average miss vs the opening line)
                          -> one step per feature group -> model spread (home margin)
@@ -25,10 +26,10 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from team.feature_groups import GROUP_ORDER, describe_feature
+from team.feature_groups import GROUP_ORDER, MARKET, describe_feature
 
-SPREAD, TOTAL = 'spread', 'total'
-MARKETS = (SPREAD, TOTAL)
+SPREAD, TOTAL, MONEYLINE = 'spread', 'total', 'moneyline'
+MARKETS = (TOTAL, SPREAD, MONEYLINE)
 TABLE = 'prediction_explanations'
 COLUMNS = ['game_id', 'prediction_date', 'market', 'kind', 'feature', 'label', 'group', 'value', 'contribution', 'pctile', 'severity']
 
@@ -38,12 +39,30 @@ EARLY_SEASON_GAMES = 5            # rolling stats mostly reflect last season up 
 OFFSEASON_REST_DAYS = 20          # days_rest this large = first game after the offseason
 TOLERANCE = 1e-6                  # pieces must add up to the model's prediction within this many points
 EDGE_BANDS = [0.0, 2.0, 4.0, 6.0, 8.0, np.inf]
+ML_EDGE_BANDS = [0.0, 0.03, 0.06, 0.10, 0.15, np.inf]      # probability points
+ML_MOVE_FLAG_PROB = 0.03           # the home win probability the price implies moved more than this since the open
 BREAK_EVEN = 0.524                # at -110
 _OOS_FILE = re.compile(r'^oos_predictions_(\d{4}-\d{2})\.csv$')
 REPORTS_DIR = Path(__file__).resolve().parent.parent / 'reports'
 
 
 # ------------------------------------------------------------------------------------------------ contributions
+
+def implied_prob(american):
+    """Win probability a moneyline price implies, vig included (what the dashboard shows as 'implied')."""
+    a = np.asarray(american, float)
+    with np.errstate(divide='ignore', invalid='ignore'):
+        return np.where(a > 0, 100.0 / (a + 100.0), np.where(a < 0, -a / (-a + 100.0), np.nan))
+
+
+def _sigmoid(x):
+    return 1.0 / (1.0 + np.exp(-np.asarray(x, float)))
+
+
+def _logit_p(p):
+    p = np.clip(np.asarray(p, float), 1e-6, 1 - 1e-6)
+    return np.log(p / (1 - p))
+
 
 def shap_contributions(model, X):
     """(contributions per feature, bias) of a fitted LightGBM sklearn model; each row sums to model.predict(X)."""
@@ -89,12 +108,22 @@ def load_oos_history(reports_dir=REPORTS_DIR):
         cover = margin + d['odds_home_spread']                           # > 0: home covers
         edge_t = d['total_pred'] - d['odds_total']                       # > 0: model likes the over
         over = total - d['odds_total']                                   # > 0: over hits
+        season = p.stem.replace('oos_predictions_', '')
         for market, edge, res in ((SPREAD, edge_s, cover), (TOTAL, edge_t, over)):
             keep = edge.notna() & res.notna() & (res != 0) & (edge != 0)
             parts.append(pd.DataFrame({'market': market, 'abs_edge': edge[keep].abs(), 'won': (np.sign(edge[keep]) == np.sign(res[keep])),
-                                       'season': p.stem.replace('oos_predictions_', '')}))
+                                       'implied': np.nan, 'season': season}))
+        if {'ml_prob', 'odds_home_ml', 'odds_away_ml'} <= set(d.columns):
+            imp_h, imp_a = implied_prob(d['odds_home_ml']), implied_prob(d['odds_away_ml'])
+            edge_h, edge_a = d['ml_prob'].to_numpy() - imp_h, (1 - d['ml_prob'].to_numpy()) - imp_a
+            home_side = edge_h >= edge_a                                    # the side with the bigger edge is the bet
+            edge = np.where(home_side, edge_h, edge_a)
+            won = np.where(home_side, (margin > 0).to_numpy(), (margin < 0).to_numpy())
+            keep = np.isfinite(edge) & (edge > 0) & (margin != 0).to_numpy()
+            parts.append(pd.DataFrame({'market': MONEYLINE, 'abs_edge': edge[keep], 'won': won[keep],
+                                       'implied': np.where(home_side, imp_h, imp_a)[keep], 'season': season}))
     if not parts:
-        return pd.DataFrame(columns=['market', 'abs_edge', 'won', 'season'])
+        return pd.DataFrame(columns=['market', 'abs_edge', 'won', 'implied', 'season'])
     return pd.concat(parts, ignore_index=True)
 
 
@@ -109,6 +138,20 @@ def history_for_edge(history, market, abs_edge):
                 return None
             label = f"{lo:g}+ pts" if np.isinf(hi) else f"{lo:g}-{hi:g} pts"
             return float(h['won'].mean()), int(len(h)), label, h['season'].min(), h['season'].max()
+    return None
+
+
+def history_for_ml_edge(history, edge):
+    """(win rate, n, band label, first season, last season, average implied win rate) of past moneyline bets with a similar edge, or None."""
+    if history is None or history.empty or 'implied' not in history.columns or not np.isfinite(edge) or edge <= 0:
+        return None
+    for lo, hi in zip(ML_EDGE_BANDS[:-1], ML_EDGE_BANDS[1:]):
+        if lo <= edge < hi:
+            h = history[(history['market'] == MONEYLINE) & (history['abs_edge'] >= lo) & (history['abs_edge'] < hi)]
+            if len(h) < 30:
+                return None
+            label = f"{100 * lo:g}+ pts" if np.isinf(hi) else f"{100 * lo:g}-{100 * hi:g} pts"
+            return float(h['won'].mean()), int(len(h)), label, h['season'].min(), h['season'].max(), float(h['implied'].mean())
     return None
 
 
@@ -170,6 +213,42 @@ def _market_rows(market, game_id, pdate, features, X, i, contrib, bias, open_lin
     return rows, running - start
 
 
+def _ml_rows(game_id, pdate, feats, values, comb, base, p_cur, p_open, p_model, reference):
+    """
+    Feature rows and pieces of one game's moneyline. Everything is exact in log-odds (the calibrator is a logistic stack, so the ML model's
+    contributions are scaled by its coefficient and the spread model's by the margin coefficient / sigma); the pieces are then shown as the
+    probability each running log-odds total implies, so the steps add up to model probability - market probability.
+    """
+    rows = []
+    for f in feats:
+        info = describe_feature(f, strict=False)
+        v = values[f]
+        rows.append(dict(game_id=game_id, prediction_date=pdate, market=MONEYLINE, kind='feature', feature=f, label=info.label, group=info.group,
+                         value=v, contribution=float(comb[f]), pctile=_pctile(reference, f, v), severity=''))
+    market_feats = [f for f in feats if describe_feature(f, strict=False).group == MARKET]
+    groups = _group_sums(feats, [comb[f] for f in feats], skip=market_feats)
+    L0, L_open = float(_logit_p(p_cur)), float(_logit_p(p_open))
+    steps = [('movement', 'Line movement since the open', L_open - L0),
+             ('trust', 'How much the model trusts the opening line', base + sum(comb[f] for f in market_feats) - L_open)]
+    running_L, prev_p = L0, float(p_cur)
+    rows.append(_piece(game_id, pdate, MONEYLINE, 'line', 'Current price', prev_p))
+    def add(code, label, delta, group=''):
+        nonlocal running_L, prev_p
+        running_L += delta
+        p = float(_sigmoid(running_L))
+        rows.append(_piece(game_id, pdate, MONEYLINE, code, label, p, p - prev_p, group=group))
+        prev_p = p
+    for code, label, delta in steps:
+        add(code, label, delta)
+    for g in [g for g in GROUP_ORDER if g in groups] + [g for g in groups if g not in GROUP_ORDER]:
+        add(f'group:{g}', g, groups[g], group=g)
+    rows.append(_piece(game_id, pdate, MONEYLINE, 'prediction', 'Model', prev_p))
+    if not np.isfinite(prev_p) or abs(prev_p - p_model) > TOLERANCE:
+        logging.error(f"Explanation for game {game_id} (moneyline) does not add up: pieces {prev_p:.6f} vs model {p_model:.6f}; dropped")
+        return []
+    return rows
+
+
 def _num(g, key):
     v = pd.to_numeric(g.get(key), errors='coerce')
     return float(v) if v is not None and pd.notna(v) else np.nan
@@ -179,8 +258,8 @@ def _teams(sides):
     return 'both teams' if len(sides) == 2 else f'the {sides[0]} team'
 
 
-def _game_flags(game_id, pdate, frame, i, edges, moves, history):
-    out = []
+def _game_flags(game_id, pdate, frame, i, edges, moves, history, ml_flags=()):
+    out = list(ml_flags)
     for market, move in moves.items():
         if np.isfinite(move) and abs(move) > LINE_MOVE_FLAG_PTS:
             what = 'total' if market == TOTAL else 'spread'
@@ -249,6 +328,32 @@ def explain_markets(bundle, frame, current_lines, align=None, reference=None, hi
     tot_pred = bundle.total.predict(X_tot)
 
     sp_feats, tot_feats = list(X_sp.columns), list(X_tot.columns)
+
+    # moneyline: only for the margin-stack calibrator (logistic on [logit(raw ML prob), spread margin / sigma]), exact in log-odds
+    ml = None
+    cal = bundle.calibrator
+    home_ml = pd.to_numeric(pd.Series(np.asarray(current_lines['home_ml']), dtype=float)).to_numpy() if 'home_ml' in getattr(current_lines, 'columns', []) else None
+    open_home_ml = frame['odds_home_ml'].to_numpy(float) if 'odds_home_ml' in frame.columns else None
+    open_away_ml = frame['odds_away_ml'].to_numpy(float) if 'odds_away_ml' in frame.columns else None
+    if home_ml is not None and open_home_ml is not None and getattr(cal, 'uses_margin', False) and getattr(cal, 'stack', None) is not None:
+        X_ml = cols('ML', 'ml')
+        ml_c, ml_bias = shap_contributions(bundle.ml, X_ml)
+        w0, w1 = (float(w) for w in cal.stack.coef_[0])
+        k = w1 / float(cal.sigma)
+        base = float(cal.stack.intercept_[0]) + w0 * ml_bias + k * (-open_spread + sp_bias)        # per game
+        ml_feats = list(X_ml.columns)
+        union = ml_feats + [f for f in sp_feats if f not in ml_feats]
+        comb = {f: np.zeros(n) for f in union}
+        for j, f in enumerate(ml_feats):
+            comb[f] = comb[f] + w0 * ml_c[:, j]
+        for j, f in enumerate(sp_feats):
+            comb[f] = comb[f] + k * sp_contrib[:, j]
+        z = base + sum(comb.values())
+        raw = bundle.ml.predict_proba(X_ml)[:, 1]
+        p_model = cal.predict(raw, margin=sp_pred)
+        vals = {f: (X_ml[f] if f in ml_feats else X_sp[f]).to_numpy(float) for f in union}
+        ml = dict(union=union, comb=comb, base=base, p_model=p_model, vals=vals, z=z)
+
     rows = []
     for i in range(n):
         edges, moves, per_game = {}, {}, []
@@ -266,8 +371,29 @@ def explain_markets(bundle, frame, current_lines, align=None, reference=None, hi
                 per_game += r
                 edges[TOTAL] = abs(tot_pred[i] - open_total[i])
                 moves[TOTAL] = total_line[i] - open_total[i]
+        ml_flags = []
+        if ml is not None and np.isfinite(home_ml[i]) and np.isfinite(open_home_ml[i]) and np.isfinite(sp_pred[i]) and np.isfinite(ml['p_model'][i]):
+            p_cur, p_open = float(implied_prob(home_ml[i])), float(implied_prob(open_home_ml[i]))
+            r = _ml_rows(ids[i], pdate, ml['union'], {f: ml['vals'][f][i] for f in ml['union']}, {f: ml['comb'][f][i] for f in ml['union']},
+                         float(ml['base'][i]), p_cur, p_open, float(ml['p_model'][i]), reference)
+            if r:
+                per_game += r
+                if abs(p_cur - p_open) > ML_MOVE_FLAG_PROB:
+                    ml_flags.append(_flag(ids[i], pdate, MONEYLINE, 'line_moved',
+                                          f"The price has moved: the home win probability it implies went from {p_open:.0%} to {p_cur:.0%} since the open. "
+                                          f"The model was built on the opening price, so part of this edge is the market moving, not the model finding something.",
+                                          abs(p_cur - p_open)))
+                if open_away_ml is not None and np.isfinite(open_away_ml[i]):
+                    pm = float(ml['p_model'][i])
+                    edge = max(pm - float(implied_prob(open_home_ml[i])), (1 - pm) - float(implied_prob(open_away_ml[i])))
+                    h = history_for_ml_edge(history, edge)
+                    if h:
+                        rate, cnt, band, first, last, imp = h
+                        ml_flags.append(_flag(ids[i], pdate, MONEYLINE, 'history',
+                                              f"Context: moneyline edges of {band} vs the opening price won {rate:.1%} of {cnt} out-of-sample bets "
+                                              f"({first} to {last}); the prices implied {imp:.1%} on average.", rate, severity='info'))
         if per_game:
-            rows += per_game + _game_flags(ids[i], pdate, frame, i, edges, moves, history)
+            rows += per_game + _game_flags(ids[i], pdate, frame, i, edges, moves, history, ml_flags)
     return pd.DataFrame(rows, columns=COLUMNS)
 
 
@@ -334,30 +460,43 @@ def edge_of(pieces):
     return float(pieces.loc[pieces['feature'] == 'prediction', 'value'].iloc[0] - pieces.loc[pieces['feature'] == 'line', 'value'].iloc[0])
 
 
-def chart_steps(pieces, top=5):
+def chart_steps(pieces, top=5, scale=1.0):
     """
     Bars of the breakdown chart from game_pieces output: [(label, amount, measure)] where measure is 'absolute' (the line, the model) or
     'relative' (a step). The `top` biggest groups are shown, the rest are summed into 'Everything else', so the steps add up to the edge.
     """
     if pieces.empty:
         return []
-    steps = [(r.label, float(r.value), 'absolute') for r in pieces[pieces['feature'] == 'line'].itertuples()]
-    steps += [(r.label, float(r.contribution), 'relative') for r in pieces[pieces['feature'].isin(['movement', 'trust', 'baseline'])].itertuples()]
+    steps = [(r.label, scale * float(r.value), 'absolute') for r in pieces[pieces['feature'] == 'line'].itertuples()]
+    steps += [(r.label, scale * float(r.contribution), 'relative') for r in pieces[pieces['feature'].isin(['movement', 'trust', 'baseline'])].itertuples()]
     groups = pieces[pieces['feature'].str.startswith('group:')]
-    steps += [(r.label, float(r.contribution), 'relative') for r in groups.head(top).itertuples()]
+    steps += [(r.label, scale * float(r.contribution), 'relative') for r in groups.head(top).itertuples()]
     rest = groups.iloc[top:]
     if len(rest):
         steps.append((f'Everything else ({len(rest)} groups)' if len(rest) > 1 else f'Everything else ({rest.iloc[0].label})',
-                      float(rest['contribution'].sum()), 'relative'))
-    steps += [(r.label, float(r.value), 'absolute') for r in pieces[pieces['feature'] == 'prediction'].itertuples()]
+                      scale * float(rest['contribution'].sum()), 'relative'))
+    steps += [(r.label, scale * float(r.value), 'absolute') for r in pieces[pieces['feature'] == 'prediction'].itertuples()]
     return steps
 
 
+LEAN_STRONG_PROB = 0.05      # moneyline: probability points, the dashboard's default bet threshold
 LEAN_STRONG_PTS = 3.0      # |model - line| at or above this reads "Lean", below it "Slight lean"
 
 
 def lean_text(edge):
     return 'Lean' if abs(edge) >= LEAN_STRONG_PTS else 'Slight lean'
+
+
+def _move_clause(move, edge, noun, unit):
+    """Sentence about how much of the gap between the model and the market is the market moving since the open."""
+    if abs(move) < 0.05:
+        return f" The {noun} has not moved since the open."
+    if np.sign(move) != np.sign(edge):
+        return f" The {noun} moving since the open works against it by {abs(move):.1f} {unit}."
+    if abs(move) <= abs(edge):
+        return f" {abs(move):.1f} of that is the {noun} moving since the open."
+    return (f" The {noun} moving since the open accounts for {abs(move):.1f} {unit}, more than the whole gap: "
+            f"the rest of the model's view works against it.")
 
 
 def summary_sentence(pieces, market, home_team=None, away_team=None):
@@ -373,6 +512,13 @@ def summary_sentence(pieces, market, home_team=None, away_team=None):
     move = pieces.loc[pieces['feature'] == 'movement', 'contribution']
     move = float(move.iloc[0]) if len(move) else 0.0
     home, away = home_team or 'Home team', away_team or 'Away team'
+    if market == MONEYLINE:
+        side = home if edge > 0 else away
+        p_side, mkt_side = (model, line) if edge > 0 else (1 - model, 1 - line)
+        strength = 'Lean' if abs(edge) >= LEAN_STRONG_PROB else 'Slight lean'
+        head = (f"**{strength} {side} moneyline.** Model gives {side} {p_side:.0%} to win; the current price implies {mkt_side:.0%} "
+                f"({100 * abs(edge):.1f} points apart).")
+        return head + _move_clause(100 * move, 100 * edge, 'price', 'points')
     if market == TOTAL:
         side = 'OVER' if edge > 0 else 'UNDER'
         head = f"**{lean_text(edge)} {side} {line:.1f}.** Model total {model:.1f} vs line {line:.1f} ({edge:+.1f})."
@@ -382,8 +528,96 @@ def summary_sentence(pieces, market, home_team=None, away_team=None):
         team, spread = (home, -line) if edge > 0 else (away, line)           # line = home margin the market implies = -home spread
         head = (f"**{lean_text(edge)} {team} {spread:+.1f}.** Model: {margin_text(home, away, model)}. "
                 f"Market: {margin_text(home, away, line)}. That is {abs(edge):.1f} points toward {team}.")
-    if abs(move) < 0.05:
-        return head + " The line has not moved since the open."
-    same = np.sign(move) == np.sign(edge)
-    return head + (f" {abs(move):.1f} of that is the line moving since the open." if same
-                   else f" The line moving since the open works against it by {abs(move):.1f}.")
+    return head + _move_clause(move, edge, 'line', 'points')
+
+
+# ------------------------------------------------------------------------------------------------ league-wide drivers
+
+MIN_ACTIVE = {SPREAD: 0.5, TOTAL: 0.5, MONEYLINE: 0.01}          # a group counts as pushing a game when it moves the number this much
+MIN_ACTIVE_FEATURE = {SPREAD: 0.25, TOTAL: 0.25, MONEYLINE: 0.05}   # per feature: points / log-odds
+
+
+def _outcome_vs_line(results, line, market):
+    """Where each game landed relative to the line the breakdown starts from: total points over the line, home margin over the market's margin,
+    or (moneyline) home win minus the market's win probability. Positive = the home side / the over did better than the line said."""
+    r = results.drop_duplicates('game_id').set_index('game_id')
+    done = r['home_score'].notna() & r['away_score'].notna()
+    r = r[done]
+    if market == TOTAL:
+        actual = r['home_score'] + r['away_score']
+    elif market == SPREAD:
+        actual = r['home_score'] - r['away_score']
+    else:
+        actual = (r['home_score'] > r['away_score']).astype(float)
+    return (actual.reindex(line.index) - line).dropna()
+
+
+def driver_stats(expl, results, market, level='group', min_active=None):
+    """
+    Which inputs move the model's number, and do they move it the right way? One row per feature group (or per feature) for `market`.
+
+    mean_abs   average size of the push over all explained games (points; probability for the moneyline; log-odds per feature there)
+    share      its share of all pushes
+    games      games where the push was at least `min_active`
+    hit_rate   of those, how often the game landed on the pushed side of the line (spread / total only; the moneyline has no 50% baseline)
+    edge       average result beyond the line, in the pushed direction (points; probability for the moneyline), with a 95% interval
+    verdict    'signal' / 'wrong way' if the interval excludes 0, else 'indistinguishable from noise' (too few games: 'too few games')
+    A group that is large but indistinguishable from noise is a candidate for pruning. This is descriptive: the model was trained on the same
+    seasons it is judged on unless the explained games are out-of-sample ones.
+    """
+    if level == 'group':
+        rows = expl[(expl['market'] == market) & (expl['kind'] == 'piece') & expl['feature'].str.startswith('group:')]
+        key, min_c = 'group', (MIN_ACTIVE[market] if min_active is None else min_active)
+    else:
+        rows = expl[(expl['market'] == market) & (expl['kind'] == 'feature') & (expl['group'] != MARKET)]      # the line itself is not a finding
+        key, min_c = 'feature', (MIN_ACTIVE_FEATURE[market] if min_active is None else min_active)
+    lines = expl[(expl['market'] == market) & (expl['kind'] == 'piece') & (expl['feature'] == 'line')].drop_duplicates('game_id').set_index('game_id')['value']
+    out = _outcome_vs_line(results, lines, market)
+    cols = ['label', 'games_explained', 'mean_abs', 'share', 'games', 'hit_rate', 'edge', 'ci_low', 'ci_high', 'verdict']
+    rows = rows[rows['game_id'].isin(out.index)]
+    if rows.empty:
+        return pd.DataFrame(columns=cols)
+    rows = rows.assign(res=rows['game_id'].map(out), c=rows['contribution'])
+    total_abs = rows['c'].abs().sum()
+    recs = []
+    for name, g in rows.groupby(key):
+        act = g[g['c'].abs() >= min_c]
+        n = len(act)
+        directed = np.sign(act['c']) * act['res']
+        mean = float(directed.mean()) if n else np.nan
+        se = float(directed.std(ddof=1) / np.sqrt(n)) if n > 1 else np.nan
+        lo, hi = mean - 1.96 * se, mean + 1.96 * se
+        nonzero = act[act['res'] != 0] if market != MONEYLINE else act.iloc[0:0]
+        hit = float((np.sign(nonzero['c']) == np.sign(nonzero['res'])).mean()) if len(nonzero) else np.nan
+        verdict = ('too few games' if n < 30 else 'signal' if lo > 0 else 'wrong way' if hi < 0 else 'indistinguishable from noise')
+        recs.append({'label': g['label'].iloc[0] if level == 'feature' else name, 'games_explained': g['game_id'].nunique(),
+                     'mean_abs': float(g['c'].abs().mean()), 'share': float(g['c'].abs().sum() / total_abs), 'games': n, 'hit_rate': hit,
+                     'edge': mean, 'ci_low': lo, 'ci_high': hi, 'verdict': verdict})
+    return pd.DataFrame(recs, columns=cols).sort_values('share', ascending=False).reset_index(drop=True)
+
+
+def outcome_sentence(pieces, market, home_team, away_team, home_score, away_score):
+    """After the game: where it landed relative to the line the breakdown started from, and whether the model's lean was right ('' if unplayed)."""
+    if pieces.empty or pd.isna(home_score) or pd.isna(away_score):
+        return ''
+    line = float(pieces.loc[pieces['feature'] == 'line', 'value'].iloc[0])
+    edge = float(pieces.loc[pieces['feature'] == 'prediction', 'value'].iloc[0]) - line
+    home, away = home_team or 'Home team', away_team or 'Away team'
+    hs, as_ = float(home_score), float(away_score)
+    if market == TOTAL:
+        total = hs + as_
+        if total == line:
+            return f"Final: {total:.0f} points, a push at {line:.1f}."
+        landed = 'OVER' if total > line else 'UNDER'
+        lean = 'OVER' if edge > 0 else 'UNDER'
+        return f"Final: {away} {as_:.0f}, {home} {hs:.0f}: {total:.0f} points, {landed} {line:.1f}. The model's lean ({lean}) was {'right' if lean == landed else 'wrong'}."
+    if market == SPREAD:
+        cover = (hs - as_) - line
+        if cover == 0:
+            return f"Final: {away} {as_:.0f}, {home} {hs:.0f}: a push on the spread."
+        covered = home if cover > 0 else away
+        lean = home if edge > 0 else away
+        return f"Final: {away} {as_:.0f}, {home} {hs:.0f}. {covered} covered. The model's lean ({lean}) was {'right' if lean == covered else 'wrong'}."
+    winner = home if hs > as_ else away
+    lean = home if edge > 0 else away
+    return f"Final: {away} {as_:.0f}, {home} {hs:.0f}. {winner} won. The model's lean ({lean}) was {'right' if lean == winner else 'wrong'}."

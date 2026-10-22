@@ -7,6 +7,7 @@ import datetime
 import plotly.express as px
 import plotly.graph_objects as go
 from pathlib import Path
+import json
 import sys
 import textwrap
 
@@ -19,9 +20,9 @@ from team.betting import (calculate_implied_prob, calculate_payout, calculate_be
                             settle_bet, STANDARD_PRICE, get_spread_bet, get_total_bet, points_threshold,
                             DEFAULT_SPREAD_STD, DEFAULT_TOTAL_STD, DEFAULT_PROB_EDGE, implied_prob_edge,
                             cover_probability)
-from core.season_utils import date_bounds, nba_today, season_date_range, season_for_date, season_options
-from team.explain import (COLUMNS as EXPLANATION_COLUMNS, SPREAD, TOTAL, chart_steps, game_features, game_flags, game_pieces,
-                          load_explanations, normalize_game_ids, summary_sentence)
+from core.season_utils import date_bounds, season_date_range, season_for_date, season_options
+from team.explain import (COLUMNS as EXPLANATION_COLUMNS, MONEYLINE, SPREAD, TOTAL, chart_steps, driver_stats, game_features, game_flags,
+                          game_pieces, load_explanations, normalize_game_ids, outcome_sentence, summary_sentence)
 
 # Set page config
 st.set_page_config(
@@ -91,7 +92,11 @@ DB_PATH = Path(os.environ.get("NBA_DASHBOARD_DB", Path(__file__).resolve().paren
 REMOTE_DATA_URL = "https://raw.githubusercontent.com/jnish23/nba-model-hybrid/dashboard-data/predictions_log.csv"
 SNAPSHOT_PATH = Path(__file__).resolve().parent / "snapshot" / "predictions_log.csv"
 # Why the model likes each game (team/explain.py), published next to the predictions
-EXPLANATIONS_URL = "https://raw.githubusercontent.com/jnish23/nba-model-hybrid/dashboard-data/explanations.csv"
+# NBA_DASHBOARD_DATA_BASE points the published files at another folder or URL (e.g. a local export, to try the hosted path)
+DATA_BASE_URL = os.environ.get("NBA_DASHBOARD_DATA_BASE", "https://raw.githubusercontent.com/jnish23/nba-model-hybrid/dashboard-data/")
+EXPLANATIONS_URL = DATA_BASE_URL + "explanations.csv"
+HISTORY_MANIFEST_URL = DATA_BASE_URL + "explanations_manifest.json"
+HISTORY_DIR_URL = DATA_BASE_URL + "explanations_history/"
 EXPLANATIONS_SNAPSHOT_PATH = Path(__file__).resolve().parent / "snapshot" / "explanations.csv"
 
 
@@ -125,6 +130,34 @@ def _read_explanations():
     return pd.DataFrame(columns=EXPLANATION_COLUMNS)
 
 
+def _read_explanation_history():
+    """Explanations of every explained game (past ones keep their biggest inputs only when published): the local DB, else the published
+    monthly files listed in the manifest; an empty frame if there are none."""
+    if DB_PATH.exists():
+        found = load_explanations(DB_PATH)
+        if not found.empty:
+            return found
+    try:
+        from urllib.request import urlopen
+        with urlopen(HISTORY_MANIFEST_URL, timeout=20) as f:
+            manifest = json.loads(f.read().decode('utf-8'))
+        parts = [pd.read_csv(HISTORY_DIR_URL + shard['file'], dtype={'game_id': str}) for shard in manifest['shards']]
+        if parts:
+            return pd.concat(parts, ignore_index=True)
+    except Exception:
+        pass
+    return pd.DataFrame(columns=EXPLANATION_COLUMNS)
+
+
+@st.cache_data(ttl=3600)
+def load_explanation_history():
+    """All explanation rows with canonical game ids, for settled games and the drivers tab. Never raises."""
+    try:
+        return normalize_game_ids(_read_explanation_history()).reindex(columns=EXPLANATION_COLUMNS)
+    except Exception:
+        return pd.DataFrame(columns=EXPLANATION_COLUMNS)
+
+
 @st.cache_data(ttl=600)
 def load_explanation_data():
     """Explanation rows with canonical game ids. Never raises: the panel just says 'No explanation available'."""
@@ -134,8 +167,8 @@ def load_explanation_data():
         return pd.DataFrame(columns=EXPLANATION_COLUMNS)
 
 
-def explanation_chart(steps):
-    """Horizontal waterfall from the current line to the model's number (team.explain.chart_steps)."""
+def explanation_chart(steps, percent=False):
+    """Horizontal waterfall from the current line to the model's number (team.explain.chart_steps). percent=True: steps are win-probability points."""
     labels = ['<br>'.join(textwrap.wrap(label, 24)) for label, _, _ in steps]     # wrapped so the bars keep room on a phone
     values = [value for _, value, _ in steps]
     measures = ['total' if m == 'absolute' and i > 0 else m for i, (_, _, m) in enumerate(steps)]
@@ -144,41 +177,69 @@ def explanation_chart(steps):
         running = value if measure != 'relative' else running + value
         levels.append(running)
     pad = max(1.0, 0.15 * (max(levels) - min(levels)))
+    unit = '%' if percent else ''
     fig = go.Figure(go.Waterfall(
         orientation='h', y=labels, x=values, measure=measures,
-        text=[f"{v:.1f}" if m != 'relative' else f"{v:+.1f}" for v, m in zip(values, measures)], textposition='outside', cliponaxis=False,
+        text=[f"{v:.1f}{unit}" if m != 'relative' else f"{v:+.1f}" for v, m in zip(values, measures)], textposition='outside', cliponaxis=False,
         increasing={'marker': {'color': '#2E86C1'}}, decreasing={'marker': {'color': '#E67E22'}},
         totals={'marker': {'color': '#7F8C8D'}}, connector={'line': {'color': '#B0B0B0'}}))
-    fig.update_xaxes(range=[min(levels) - pad, max(levels) + pad], title='points')
+    fig.update_xaxes(range=[min(levels) - pad, max(levels) + pad], title='home win probability (%)' if percent else 'points')
     fig.update_yaxes(autorange='reversed')
     fig.update_layout(height=70 + 46 * len(steps), margin=dict(l=0, r=40, t=10, b=0), showlegend=False)
     return fig
 
 
-def render_explanation(expl, game):
-    """The panel under Today's Games for one game row: a Total and a Spread tab."""
+LOGGED_TOLERANCE = {TOTAL: 0.06, SPREAD: 0.06, MONEYLINE: 0.005}          # the log rounds today's spread and total to 0.1
+
+
+def logged_number(game, market):
+    key = {TOTAL: 'total_pred', SPREAD: 'spread_pred', MONEYLINE: 'ml_prob'}[market]
+    v = game.get(key) if hasattr(game, 'get') else None
+    return float(v) if v is not None and pd.notna(v) else np.nan
+
+
+def render_explanation(expl, game, settled=False):
+    """
+    The breakdown panel for one game row (Today's Games, or a settled game from the log): a Total, Spread and Moneyline tab.
+    settled=True words the start of the breakdown as the line the game had and adds the result.
+    """
     gid = str(game['game_id']).zfill(10)
     st.markdown(f"#### Breakdown: {game['matchup']}")
-    st.caption("Starts at today's betting line and ends at the model's number. Each bar is a group of related inputs: "
-               "blue pushes the model's number up, orange pushes it down.")
-    tabs = st.tabs(["Total", "Spread"])
-    for tab, market in zip(tabs, (TOTAL, SPREAD)):
+    st.caption(("Starts at the line the game had" if settled else "Starts at today's betting line") + " and ends at the model's number. Each bar is a group of "
+               "related inputs: blue pushes the model's number up, orange pushes it down. Moneyline bars are win-probability points for the home team.")
+    tabs = st.tabs(["Total", "Spread", "Moneyline"])
+    for tab, market in zip(tabs, (TOTAL, SPREAD, MONEYLINE)):
         with tab:
             pieces = game_pieces(expl, gid, market)
             if pieces.empty:
                 st.info("No explanation available")
                 continue
             st.markdown(summary_sentence(pieces, market, game.get('home_team'), game.get('away_team')))
+            if settled:
+                result = outcome_sentence(pieces, market, game.get('home_team'), game.get('away_team'), game.get('home_score'), game.get('away_score'))
+                if result:
+                    st.markdown(result)
+            explained = float(pieces.loc[pieces['feature'] == 'prediction', 'value'].iloc[0])
+            logged = logged_number(game, market)
+            if np.isfinite(logged) and abs(logged - explained) > LOGGED_TOLERANCE[market]:
+                fmt = (lambda v: f"{100 * v:.1f}%") if market == MONEYLINE else (lambda v: f"{v:.1f}")
+                st.caption(f"Note: the prediction log has {fmt(logged)} for this game. This breakdown re-scores it with the model set that was "
+                           f"out-of-sample for its season, which gives {fmt(explained)}, and explains that number. The log is only rewritten when predictions "
+                           f"are regenerated.")
             for flag in game_flags(expl, gid, market).itertuples():
                 (st.warning if flag.severity == 'warn' else st.info)(flag.label)
-            st.plotly_chart(explanation_chart(chart_steps(pieces)), use_container_width=True, key=f"why_{gid}_{market}")
+            st.plotly_chart(explanation_chart(chart_steps(pieces, scale=100.0 if market == MONEYLINE else 1.0), percent=market == MONEYLINE),
+                            use_container_width=True, key=f"why_{gid}_{market}_{'s' if settled else 't'}")
             with st.expander("Feature detail"):
-                st.caption("Every input of the model, biggest push first. The chart sums these by group; for the total, the opening total's own push "
-                           "is shown there as 'how much the model trusts the opening line'.")
+                st.caption("Every input of the model, biggest push first. The chart sums these by group; the line's own push is shown there as "
+                           "'how much the model trusts the opening line'."
+                           + (" Moneyline contributions are in log-odds and include the part that flows through the spread forecast." if market == MONEYLINE else "")
+                           + (" Past games list the 15 biggest inputs." if settled else ""))
                 detail = game_features(expl, gid, market)
                 st.dataframe(pd.DataFrame({
                     'Factor': detail['label'], 'Group': detail['group'], 'This game': detail['value'].round(2),
-                    'League percentile': (100 * detail['pctile']).round(0), 'Contribution (pts)': detail['contribution'].round(2)}),
+                    'League percentile': (100 * detail['pctile']).round(0),
+                    ('Contribution (log-odds)' if market == MONEYLINE else 'Contribution (pts)'): detail['contribution'].round(3 if market == MONEYLINE else 2)}),
                     hide_index=True, use_container_width=True,
                     column_config={'League percentile': st.column_config.NumberColumn(
                         help="Where this game's value ranks among recent seasons' games (50 = typical, 95 = higher than 95% of them).", format="%d")})
@@ -801,7 +862,7 @@ def main():
     # Compute model accuracy & ROI (no threshold) across available data (use filtered range)
     model_metrics, model_df = compute_model_accuracy_and_roi(display_df)
 
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["📅 Today's Games", "Recent Performance", "📊 Predictions Log & Analysis", "📋 Team Breakdown", "🏆 League Summary"])
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["📅 Today's Games", "Recent Performance", "📊 Predictions Log & Analysis", "📋 Team Breakdown", "🏆 League Summary", "🔍 Model Drivers"])
 
     with tab1:
         st.subheader("Games Schedule")
@@ -1216,7 +1277,19 @@ def main():
             st.plotly_chart(fig_monthly, use_container_width=True)
             
         st.markdown("### Detailed Log")
-        st.dataframe(sim_df[['game_date', 'matchup', 'bet_outcome', 'bet_result', 'ml_prob', 'spread_pred', 'total_pred', 'odds_home_ml', 'odds_home_spread', 'odds_total', 'home_score', 'away_score']])
+        st.caption("Tick **Why?** on a game to see what moved the model's numbers away from the line, and how the game ended.")
+        log_cols = ['game_date', 'matchup', 'bet_outcome', 'bet_result', 'ml_prob', 'spread_pred', 'total_pred', 'odds_home_ml', 'odds_home_spread', 'odds_total', 'home_score', 'away_score']
+        log_table = sim_df[log_cols].copy()
+        log_table.insert(0, 'Why?', False)
+        ticked = st.data_editor(log_table, key="detailed_log_table", use_container_width=True, hide_index=True, disabled=log_cols,
+                                column_config={'Why?': st.column_config.CheckboxColumn('Why?', width='small')})
+        picked = ticked.index[ticked['Why?']]
+        if len(picked):
+            history = load_explanation_history()
+            for idx in picked[:5]:
+                render_explanation(history, sim_df.loc[idx], settled=True)
+            if len(picked) > 5:
+                st.caption(f"Showing the first 5 of {len(picked)} ticked games.")
 
     with tab4:
         st.subheader("📋 Team Performance Breakdown")
@@ -1279,6 +1352,9 @@ def main():
                     else:
                         st.write("No completed games.")
 
+    with tab6:
+        render_drivers(df, start_date, end_date)
+
     with tab5:
         st.subheader("🏆 League-Wide Summary")
         st.caption(f"Model minimum edge: **{threshold:+.1%} win-probability edge** (Applies to all model bet columns). Date Range: {start_date} → {end_date}")
@@ -1302,6 +1378,58 @@ def main():
                         'Totals ROI': st.column_config.NumberColumn("Totals ROI", format="%.1f%%", width="small"),
                     }
                 )
+
+def render_drivers(df, start_date, end_date):
+    """The Model Drivers tab: which groups of inputs move the model's numbers across the explained games, and whether they move them the right way."""
+    st.subheader("What drives the model's numbers")
+    st.caption("Across every explained game in the date range: how much each group of inputs pushes the model away from the line, and whether the game "
+               "then landed on the pushed side of the line. A group that pushes a lot but whose results are indistinguishable from noise is a "
+               "candidate for pruning. Descriptive only: with several groups tested, one 'signal' can be luck, and this is not a betting rule.")
+    history = load_explanation_history()
+    if history.empty:
+        st.info("No explanations available yet.")
+        return
+    c1, c2 = st.columns(2)
+    market_name = c1.selectbox("Market", ["Total", "Spread", "Moneyline"], key="drivers_market")
+    level_name = c2.selectbox("Level", ["Groups of inputs", "Individual inputs"], key="drivers_level")
+    market = {"Total": TOTAL, "Spread": SPREAD, "Moneyline": MONEYLINE}[market_name]
+    in_range = df[(df['game_date'] >= start_date) & (df['game_date'] <= end_date)]
+    results = in_range[['game_id', 'home_score', 'away_score']].assign(game_id=in_range['game_id'].astype(str).str.zfill(10))
+    scoped = history[history['game_id'].isin(set(results['game_id']))]
+    stats = driver_stats(scoped, results, market, level='group' if level_name.startswith('Groups') else 'feature')
+    if stats.empty:
+        st.info("No settled, explained games in the selected dates.")
+        return
+    n_games = scoped.loc[scoped['market'] == market, 'game_id'].nunique()
+    st.caption(f"{n_games} explained games between {start_date} and {end_date}. "
+               + ("Individual inputs: past games keep only their 15 biggest inputs." if not level_name.startswith('Groups') else ""))
+    unit = "prob. points" if market == MONEYLINE else "pts"
+    scale = 100.0 if market == MONEYLINE else 1.0
+    table = pd.DataFrame({
+        'Group' if level_name.startswith('Groups') else 'Input': stats['label'],
+        f'Typical push ({unit})': (scale * stats['mean_abs']).round(2 if market != MONEYLINE or level_name.startswith('Groups') else 1),
+        'Share of all pushes': (100 * stats['share']).round(1),
+        'Games pushed': stats['games'],
+        'Landed on the pushed side': (100 * stats['hit_rate']).round(1),
+        f'Result beyond the line ({unit})': (scale * stats['edge']).round(2),
+        'Verdict': stats['verdict']})
+    if market == MONEYLINE:
+        table = table.drop(columns=['Landed on the pushed side'])
+    st.dataframe(table, hide_index=True, use_container_width=True, column_config={
+        'Share of all pushes': st.column_config.NumberColumn(format="%.1f%%"),
+        'Landed on the pushed side': st.column_config.NumberColumn(format="%.1f%%", help="Of the games where this pushed the number at least a little, how often the game landed on that side of the line. 50% = a coin flip."),
+        f'Result beyond the line ({unit})': st.column_config.NumberColumn(help="Average result beyond the line, in the direction this group pushed. Positive = the push was right on average; the chart below shows the 95% interval.")})
+    chart = stats[stats['games'] >= 30].copy()
+    if not chart.empty:
+        fig = go.Figure(go.Scatter(
+            x=scale * chart['edge'], y=chart['label'], mode='markers', marker=dict(size=9, color='#2E86C1'),
+            error_x=dict(type='data', symmetric=False, array=scale * (chart['ci_high'] - chart['edge']), arrayminus=scale * (chart['edge'] - chart['ci_low']))))
+        fig.add_vline(x=0, line_dash='dash', line_color='#7F8C8D')
+        fig.update_yaxes(autorange='reversed')
+        fig.update_xaxes(title=f"Result beyond the line in the pushed direction ({unit}), 95% interval: right of 0 = the push was right")
+        fig.update_layout(height=120 + 34 * len(chart), margin=dict(l=0, r=10, t=10, b=0))
+        st.plotly_chart(fig, use_container_width=True)
+
 
 if __name__ == "__main__":
     main()

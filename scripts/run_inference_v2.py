@@ -267,7 +267,8 @@ class InferenceEngine:
                 logging.warning(f"No league-wide reference for the explanations (percentiles left empty): {e}")
             lines = games_df.assign(gameId=games_df['gameId'].astype(str)).set_index('gameId').reindex(frame['gameId'].astype(str))
             current = pd.DataFrame({'spread_line': pd.to_numeric(lines['curr_odds_home_spread'], errors='coerce').to_numpy(),
-                                    'total_line': pd.to_numeric(lines['curr_odds_total'], errors='coerce').to_numpy()})
+                                    'total_line': pd.to_numeric(lines['curr_odds_total'], errors='coerce').to_numpy(),
+                                    'home_ml': pd.to_numeric(lines['curr_odds_home_ml'], errors='coerce').to_numpy()})
             expl = explain_markets(self.bundle, frame, current, align=self.verify_feature_alignment, reference=ref,
                                    history=load_oos_history(), prediction_date=datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
             n = save_explanations(self.db_path, expl)
