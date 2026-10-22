@@ -51,3 +51,17 @@ def test_asof_reports_drops_reports_inside_the_publish_lag():
     rep = pd.DataFrame({'gameId': ['0022500001'] * 3, 'report_ts': pd.to_datetime(['2025-10-21 17:15', '2025-10-21 17:30', '2025-10-21 18:30']), 'personId': [1, 2, 3]})
     kept = at_t.asof_reports(rep, tips, 60)                       # cutoff 19:30 - 60 - 15 = 18:15
     assert list(kept['personId']) == [1, 2]
+
+
+def test_roster_rule_v2_drops_report_out_players_but_keeps_quoted_ones():
+    from props.live import roster
+    hist = pd.DataFrame({'game_id': ['p1'] * 4 + ['o1'], 'team_id': [1, 1, 1, 1, 1], 'player_id': [10, 11, 12, 13, 14],
+                         'game_date': ['2025-11-01'] * 4 + ['2025-10-30'], 'season': ['2025-26'] * 5})
+    games = pd.DataFrame({'game_id': ['g'], 'home_team_id': [1], 'away_team_id': [2], 'season': ['2025-26'], 'game_date': ['2025-11-03']})
+    report = pd.DataFrame({'game_id': ['g', 'g', 'g'], 'player_id': [11, 12, 20], 'team_id': [1, 1, 2], 'status': ['Out', 'Questionable', 'Probable']})
+    quotes = pd.DataFrame({'game_id': ['g'], 'player_id': [11]})
+    m = roster.rule_members('v2', games, hist, '2025-11-03', report, quotes)
+    got = set(m['player_id'])
+    assert got == {10, 11, 12, 13, 20}                           # 14 played only in an older game; 11 is Out on the report but quoted
+    no_quote = roster.rule_members('v2', games, hist, '2025-11-03', report, quotes.iloc[0:0])
+    assert 11 not in set(no_quote['player_id'])

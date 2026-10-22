@@ -61,6 +61,40 @@ def resolve_extra_players(extra, games, hist, date):
     return placed, unresolved
 
 
+def previous_game_rosters(hist, date, season):
+    """{team_id: set(player_id)} listed in the team's most recent game of `season` before `date` (only players whose latest team it still is). A team with no game yet this season has none."""
+    h = hist[(hist['game_date'] < date) & (hist['season'] == season)]
+    if h.empty:
+        return {}
+    last = h[['team_id', 'game_id', 'game_date']].drop_duplicates().sort_values(['team_id', 'game_date', 'game_id']).groupby('team_id').tail(1)
+    m = h[['team_id', 'game_id', 'player_id']].merge(last[['team_id', 'game_id']], on=['team_id', 'game_id'], validate='many_to_one')
+    return current_team_only({int(t): set(map(int, g['player_id'])) for t, g in m.groupby('team_id')}, last_team(h, date, season))
+
+
+RULES = ('registered', 'v2')
+
+
+def rule_members(rule, games, hist, date, report, quotes):
+    """
+    (game_id, player_id) pairs of the live roster of every game on `date` at one decision time. report: (game_id, player_id, team_id, status) of the usable report; quotes: (game_id, player_id).
+    'registered': players of the team's last LOOKBACK_GAMES games + the report + the quotes (reports/props/d1_parity_preregistration.md).
+    'v2': players listed in the team's previous game this season, minus those the report lists as Out, + report players who are not Out + the quotes (attempt-2 rule; same file, addendum 2).
+    """
+    h = hist[hist['game_date'] < date]
+    if rule == 'registered':
+        r = current_team_only(recent_rosters(h, date), last_team(h, date))
+        base = [(g.game_id, p) for g in games.itertuples() for team in (int(g.home_team_id), int(g.away_team_id)) for p in r.get(team, ())]
+        return pd.concat([pd.DataFrame(base, columns=['game_id', 'player_id']), report[['game_id', 'player_id']], quotes[['game_id', 'player_id']]], ignore_index=True).drop_duplicates()
+    if rule == 'v2':
+        prev = previous_game_rosters(hist, date, str(games['season'].iloc[0]))
+        base = pd.DataFrame([(g.game_id, p) for g in games.itertuples() for team in (int(g.home_team_id), int(g.away_team_id)) for p in prev.get(team, ())], columns=['game_id', 'player_id'])
+        out = report[report['status'] == 'Out'][['game_id', 'player_id']]
+        base = base.merge(out.assign(_out=1), on=['game_id', 'player_id'], how='left')
+        base = base[base['_out'].isna()][['game_id', 'player_id']]
+        return pd.concat([base, report[report['status'] != 'Out'][['game_id', 'player_id']], quotes[['game_id', 'player_id']]], ignore_index=True).drop_duplicates()
+    raise ValueError(f'unknown roster rule {rule}')
+
+
 def placeholder_rows(columns, games, rosters, extra_placed=None):
     """
     One placeholder per (game, team, player). games: game_id, game_date, season, home_team_id, away_team_id. rosters: {team_id: set(player)} from recent_rosters;

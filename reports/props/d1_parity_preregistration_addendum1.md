@@ -25,7 +25,7 @@ Models: `v3_final_2025-26` (trained on seasons before 2025-26, so every 2025-26 
 
 | Attempt | Date set | Roster rule | Result |
 |---|---|---|---|
-| 1 | `d1_parity_dates.json` (seed 20261022) | as registered (last 15 games + report + quotes) | see `d1_parity_report.md` |
+| 1 | `d1_parity_dates.json` (seed 20261022) | as registered (last 15 games + report + quotes) | A1 pass; A2-A6 fail (addendum 2) |
 
 Mechanics dry run (attempt 0, first two dates of the set only, 2,000 draws, not a result): found and fixed two builder defects before attempt 1, neither a change to the roster rule or a criterion. (1) A player named on an injury report for the other team than the one his last box score gives was placed on both teams; he is now placed once, on the report's team. (2) A quoted player whose only listing is last season's, with last season's team being one of the two teams in the game, was placed on that team; players with no listing this season and no report entry are now left unresolved and listed. The dry run also showed what the registered rule is expected to fail on: the 15-game look-back reaches into last season in October and November, so a player who changed teams in the offseason has no row (or the old team's), and the live roster is a superset of the box-score roster, which moves the availability columns.
 

@@ -44,8 +44,9 @@ def asof_reports(reports, tips_et, minutes_before, publish_lag_min=injury_at_t.P
 
 
 def report_players(reports_asof, tips_et, minutes_before):
-    """(game_id, player_id, team_id) of every player named on the chosen (latest usable) report of each game at T; the team is the one the report lists him under."""
+    """(game_id, player_id, team_id, status) of every player named on the chosen (latest usable) report of each game at T; the team is the one the report lists him under."""
     chosen, _ = injury_at_t.latest_report_rows(reports_asof, tips_et, minutes_before)
     c = chosen.dropna(subset=['personId'])
-    return pd.DataFrame({'game_id': c['gameId'].astype(str), 'player_id': c['personId'].astype('int64'), 'team_id': pd.to_numeric(c['teamId'], errors='coerce')}).drop_duplicates(
-        ['game_id', 'player_id']).reset_index(drop=True)
+    sev = c['status'].map(injury_at_t.STATUS_CODE).fillna(0)
+    out = pd.DataFrame({'game_id': c['gameId'].astype(str), 'player_id': c['personId'].astype('int64'), 'team_id': pd.to_numeric(c['teamId'], errors='coerce'), 'status': c['status'], '_sev': sev})
+    return out.sort_values('_sev').drop_duplicates(['game_id', 'player_id'], keep='last').drop(columns='_sev').reset_index(drop=True)
