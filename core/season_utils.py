@@ -48,19 +48,20 @@ def date_bounds(game_dates, today=None):
     return min(dates), max(max(dates), today)
 
 
-NBA_DAY_ROLLOVER_HOURS = 5
+NBA_DAY_ROLLOVER_HOURS = 6
 
 
 def nba_today(now=None):
     """
-    The NBA "today" for date filters and the Today's Games tab: the US/Eastern date, rolled over at 5 AM ET. Game dates are Eastern
-    dates and West-Coast games end around 1-2 AM ET, so a server clock in UTC (the hosted dashboard) or Pacific time must not move
-    tonight's games into "yesterday" at 7 PM Pacific. `now` is a timezone-aware datetime (default: the current time).
+    The game day for date filters and the Today's Games tab: the US/Pacific date, rolled over at 6 AM Pacific. Tonight's games stay
+    "today" until the next morning, so a server clock in UTC (the hosted dashboard flips date at 5 PM Pacific) must not move them
+    to "yesterday" while they are still being played, and the late games and the 9:15 AM database update still belong to the night
+    before. `now` is a timezone-aware datetime (default: the current time).
     """
     now = now or dt.datetime.now(dt.timezone.utc)
     try:
         from zoneinfo import ZoneInfo
-        eastern = now.astimezone(ZoneInfo('America/New_York'))
-    except Exception:                                    # no tz database: Eastern standard time, off by an hour in summer, within the rollover
-        eastern = now.astimezone(dt.timezone(dt.timedelta(hours=-5)))
-    return (eastern - dt.timedelta(hours=NBA_DAY_ROLLOVER_HOURS)).date()
+        pacific = now.astimezone(ZoneInfo('America/Los_Angeles'))
+    except Exception:                                    # no tz database: Pacific standard time, off by an hour in summer
+        pacific = now.astimezone(dt.timezone(dt.timedelta(hours=-8)))
+    return (pacific - dt.timedelta(hours=NBA_DAY_ROLLOVER_HOURS)).date()

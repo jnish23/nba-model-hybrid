@@ -44,11 +44,12 @@ def test_date_bounds_span_every_season_so_a_range_can_cross_seasons():
     assert date_bounds([], today=D(2026, 10, 20)) == (D(2026, 10, 20), D(2026, 10, 20))
 
 
-def test_nba_today_follows_eastern_time_with_a_5am_rollover_whatever_the_server_clock():
+def test_nba_today_is_the_pacific_game_day_with_a_6am_rollover_whatever_the_server_clock():
     from core.season_utils import nba_today
     utc = dt.timezone.utc
     # 7:44 PM Pacific on Oct 21 = 02:44 UTC on Oct 22: a UTC server's date.today() says Oct 22, but tonight's games are still Oct 21
     assert nba_today(dt.datetime(2026, 10, 22, 2, 44, tzinfo=utc)) == D(2026, 10, 21)
-    assert nba_today(dt.datetime(2026, 10, 22, 8, 30, tzinfo=utc)) == D(2026, 10, 21)    # 4:30 AM ET: late games are still last night
-    assert nba_today(dt.datetime(2026, 10, 22, 9, 30, tzinfo=utc)) == D(2026, 10, 22)    # 5:30 AM ET: the new day
+    assert nba_today(dt.datetime(2026, 10, 22, 8, 30, tzinfo=utc)) == D(2026, 10, 21)    # 1:30 AM Pacific: a late game is still last night
+    assert nba_today(dt.datetime(2026, 10, 22, 12, 59, tzinfo=utc)) == D(2026, 10, 21)   # 5:59 AM Pacific
+    assert nba_today(dt.datetime(2026, 10, 22, 13, 1, tzinfo=utc)) == D(2026, 10, 22)    # 6:01 AM Pacific: the new day
     assert nba_today(dt.datetime(2026, 10, 21, 16, 15, tzinfo=utc)) == D(2026, 10, 21)   # the 9:15 AM Pacific job
