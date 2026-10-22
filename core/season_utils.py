@@ -46,3 +46,21 @@ def date_bounds(game_dates, today=None):
     today = pd.Timestamp(today if today is not None else dt.date.today()).date()
     dates = list(game_dates) or [today]
     return min(dates), max(max(dates), today)
+
+
+NBA_DAY_ROLLOVER_HOURS = 5
+
+
+def nba_today(now=None):
+    """
+    The NBA "today" for date filters and the Today's Games tab: the US/Eastern date, rolled over at 5 AM ET. Game dates are Eastern
+    dates and West-Coast games end around 1-2 AM ET, so a server clock in UTC (the hosted dashboard) or Pacific time must not move
+    tonight's games into "yesterday" at 7 PM Pacific. `now` is a timezone-aware datetime (default: the current time).
+    """
+    now = now or dt.datetime.now(dt.timezone.utc)
+    try:
+        from zoneinfo import ZoneInfo
+        eastern = now.astimezone(ZoneInfo('America/New_York'))
+    except Exception:                                    # no tz database: Eastern standard time, off by an hour in summer, within the rollover
+        eastern = now.astimezone(dt.timezone(dt.timedelta(hours=-5)))
+    return (eastern - dt.timedelta(hours=NBA_DAY_ROLLOVER_HOURS)).date()
