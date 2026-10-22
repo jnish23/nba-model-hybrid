@@ -66,3 +66,7 @@ Roster mismatch (section 3) is the main one; injury reports that arrive late or 
 1. Approve D1.1 and D1.2 now, in parallel (the parity harness is the gating risk).
 2. The retrain policy in section 5.1.
 3. Confirm the paper-record definition in 5.2 and that the record starts when the job first runs (no back-fill).
+
+## 9. Status 2026-10-22
+
+D1.2 done (`v3_live_2026-27`). D1.1 built and tested; the parity test is reported in [d1_parity_report.md](d1_parity_report.md): the pre-registered criteria are not met (teammate-availability inputs cannot be reproduced before the game because the training roster is the post-game box-score list), A2 and A3 pass, rule v2 coverage is ~100% from November. D1.3-D1.5 wait on the owner's decision in section 5 of that report.
