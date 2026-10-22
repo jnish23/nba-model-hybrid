@@ -109,7 +109,12 @@ def main():
     gids = set(sched[sched['et_game_date'].isin(dates)]['game_id'])
     cons, bets = cons[cons['game_id'].isin(gids)].reset_index(drop=True), bets[bets['game_id'].isin(gids)].reset_index(drop=True)
 
-    base_live, blocks, unresolved = build_live_frames(dates, hist, pos, reports, tips, tables, sched, cons, a.roster_rule)
+    cache = out / 'live_frames.pkl'
+    if cache.exists():                                           # the build takes ~30 minutes; a later crash must not repeat it (the cache is keyed by the attempt directory, i.e. rule and dates)
+        base_live, blocks, unresolved = pickle.load(open(cache, 'rb'))
+    else:
+        base_live, blocks, unresolved = build_live_frames(dates, hist, pos, reports, tips, tables, sched, cons, a.roster_rule)
+        pickle.dump((base_live, blocks, unresolved), open(cache, 'wb'))
     live = live_frame(base_live, blocks)
     train = data.load_frame(FDB, gids)
     train['game_id'] = train['game_id'].astype(str)

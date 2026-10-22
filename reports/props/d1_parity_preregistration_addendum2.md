@@ -29,3 +29,7 @@ Dates: `d1_parity_dates_attempt2.json` (40 dates, seed 20261024, disjoint from a
 |---|---|---|---|
 | 1 | `d1_parity_dates.json` | registered | A1 pass, A2-A6 fail |
 | 2 | `d1_parity_dates_attempt2.json` | v2 | see `d1_parity_report.md` |
+
+## 6. Corrections before any attempt-2 result existed
+
+(a) The first draw of the attempt-2 dates came from the raw schedule and included three preseason dates (2025-10-02, -08, -16), which have no quotes and no training rows; the draw was discarded and repeated with the same seed over regular-season and playoff games only (`d1_parity_dates_attempt2.json` is the second draw). (b) Two harness crashes after the build (an empty-roster dtype, a failure-listing edge case) were fixed with tests; the live frames are now cached per attempt so a crash cannot repeat the build. (c) A builder defect found by attempt 1: a player who changed teams was placed on both his old team's roster and his new team's, which flipped his return-from-absence flag; he is now placed once per date (this explains the role and rest mismatches of attempt 1). None of these changes a criterion or the rule.

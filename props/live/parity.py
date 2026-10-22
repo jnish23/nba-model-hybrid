@@ -52,7 +52,8 @@ def a1_coverage(traded, live, train, columns):
     missing_cols = t[required].isna()
     complete = has & ~missing_cols.any(axis=1)
     fail = t[~complete].copy()
-    fail['reason'] = np.where(~has[~complete], 'no live row', 'incomplete: ' + missing_cols[~complete].apply(lambda r: ','.join(list(r.index[r.to_numpy()])[:3]), axis=1))
+    which = [', '.join(missing_cols.columns[row][:3]) for row in missing_cols[~complete].to_numpy()]
+    fail['reason'] = ['no live row' if not h else f'incomplete: {w}' for h, w in zip(has[~complete].to_numpy(), which)]
     share = float(complete.mean()) if len(t) else float('nan')
     return {'traded': int(len(t)), 'complete': int(complete.sum()), 'share': share, 'required_columns': len(required), 'failures': fail[KEY + ['reason']], 'pass': share >= 0.99}
 

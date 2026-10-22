@@ -83,3 +83,15 @@ def test_roster_rule_v2_on_an_opening_night_has_only_report_and_quoted_players_w
     report = pd.DataFrame({'game_id': ['g'], 'player_id': [20], 'team_id': [2], 'status': ['Questionable']})
     m = roster.rule_members('v2', games, hist, '2025-10-21', report, pd.DataFrame({'game_id': ['g'], 'player_id': [30]}))
     assert sorted(m['player_id']) == [20, 30] and m['player_id'].dtype == 'int64'
+
+
+def test_a1_lists_failures_when_every_failure_is_a_missing_row_or_an_incomplete_row():
+    live, train = _pair(10)
+    traded = train[parity.KEY].copy()
+    r = parity.a1_coverage(traded, live.iloc[:8], train, list(train.columns))
+    assert r['complete'] == 8 and list(r['failures']['reason']) == ['no live row'] * 2
+    live2 = live.copy()
+    live2.loc[0, 'm_min_h15'] = np.nan
+    r2 = parity.a1_coverage(traded, live2, train, list(train.columns))
+    assert r2['failures']['reason'].iloc[0].startswith('incomplete: m_min_h15')
+    assert parity.a1_coverage(traded, live, train, list(train.columns))['failures'].empty
