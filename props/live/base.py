@@ -10,14 +10,15 @@ from props.live import roster
 from props.live.context import live_team_context
 
 
-def build_live_base(hist, pos_by_player, games, extra_players, date, db_path, lookback=roster.LOOKBACK_GAMES):
+def build_live_base(hist, pos_by_player, games, extra_players, date, db_path, lookback=roster.LOOKBACK_GAMES, rosters=None):
     """
     hist: the box-score history (rows.load_history); only rows before `date` are used (filtered here, explicitly). games: game_id, game_date, season, home_team_id, away_team_id of
-    the games of `date`. extra_players: DataFrame (game_id, player_id) from injury reports and quotes. Returns (base rows of the live roster, unresolved players).
+    the games of `date`. rosters: {team: players} to build placeholders for (default: the registered look-back rosters). extra_players: DataFrame (game_id, player_id) from injury reports and quotes. Returns (base rows of the live roster, unresolved players).
     """
     date = str(date)[:10]
     h = hist[hist['game_date'] < date]
-    rosters = roster.current_team_only(roster.recent_rosters(h, date, lookback), roster.last_team(h, date))
+    if rosters is None:
+        rosters = roster.current_team_only(roster.recent_rosters(h, date, lookback), roster.last_team(h, date))
     placed, unresolved = roster.resolve_extra_players(extra_players, games, h, date)
     live = roster.placeholder_rows(h.columns, games, rosters, placed)
     full = pd.concat([h, live], ignore_index=True).sort_values(['player_id', 'game_date', 'game_id']).reset_index(drop=True)

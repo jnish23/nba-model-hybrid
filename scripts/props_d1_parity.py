@@ -52,7 +52,8 @@ def build_live_frames(dates, hist, pos, reports, tips, tables, sched, cons, rule
             qp = cons[(cons['minutes_before'] == T) & cons['game_id'].isin(gids)][['game_id', 'player_id']].drop_duplicates()
             per_t[T] = (rep, roster.rule_members(rule, g, hist, date, rp, qp), pd.concat([rp, qp], ignore_index=True))
         extra = pd.concat([per_t[T][2] for T in build.GRID], ignore_index=True)
-        base_all, unresolved = build_live_base(hist, pos, g, extra, date, DB)       # the superset: the registered roster plus every reported and quoted player
+        rosters = roster.previous_game_rosters(h, date, SEASON) if rule == 'v2' else None          # v2 never builds a row from last season's team
+        base_all, unresolved = build_live_base(hist, pos, g, extra, date, DB, rosters=rosters)
         unresolved_all += [(date,) + u for u in unresolved]
         for T, (rep, members, _) in per_t.items():
             base_T = base_all.merge(members, on=['game_id', 'player_id'], how='inner', validate='one_to_one')

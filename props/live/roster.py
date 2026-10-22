@@ -101,6 +101,8 @@ def placeholder_rows(columns, games, rosters, extra_placed=None):
     extra_placed: output of resolve_extra_players. `columns` = the history frame's columns, so the rows can be appended to it unchanged.
     """
     extra_placed = extra_placed or {}
+    placed_team = {p: team for by_team in extra_placed.values() for team, ps in by_team.items() for p in ps}          # a player named for a team (report, quote) is on that team on this date only
+    rosters = {team: {p for p in ps if placed_team.get(p, team) == team} for team, ps in rosters.items()}
     recs = []
     for g in games.itertuples():
         for side, team, opp in (('home', int(g.home_team_id), int(g.away_team_id)), ('away', int(g.away_team_id), int(g.home_team_id))):

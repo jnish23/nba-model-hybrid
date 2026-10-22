@@ -65,3 +65,12 @@ def test_roster_rule_v2_drops_report_out_players_but_keeps_quoted_ones():
     assert got == {10, 11, 12, 13, 20}                           # 14 played only in an older game; 11 is Out on the report but quoted
     no_quote = roster.rule_members('v2', games, hist, '2025-11-03', report, quotes.iloc[0:0])
     assert 11 not in set(no_quote['player_id'])
+
+
+def test_a_player_named_for_a_new_team_is_dropped_from_his_old_teams_roster_in_other_games():
+    from props.live import roster
+    games = pd.DataFrame({'game_id': ['g1', 'g2'], 'game_date': ['2025-11-05'] * 2, 'season': ['2025-26'] * 2, 'home_team_id': [1, 3], 'away_team_id': [2, 4]})
+    cols = ['game_id', 'player_id', 'team_id', 'opp_team_id', 'game_date', 'season', 'game_type', 'is_home', 'lbl_played', 'lbl_started']
+    rows = roster.placeholder_rows(cols, games, {1: {10}, 2: {20}, 3: {30}, 4: {40}}, {'g1': {2: {30}}})        # player 30's old team is 3 (game g2); a report puts him on team 2 (game g1)
+    assert not rows.duplicated('player_id').any()
+    assert rows.loc[rows['player_id'] == 30, ['game_id', 'team_id']].values.tolist() == [['g1', 2]]
