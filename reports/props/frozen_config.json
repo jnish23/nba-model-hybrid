@@ -1,0 +1,105 @@
+{
+  "frozen_on": "2026-10-20",
+  "status": "FROZEN. R2b NOT adopted (user decision 2026-10-20: stand by the pre-registered non-harm rule). Nothing changes before 2025-26 is scored once.",
+  "code_commit_at_freeze": "724bad5c87ccd3e2ccf8b05df93f29f27f64d26a",
+  "branch": "props-phase4 (stacked on props-onto-main, PR #17)",
+  "dataset": {
+    "path": "data/props_features_v3.db",
+    "sha256": "2d221a8d39923a300b2496395a4ea9abc9d723d0f4adc6f860746c66007cfab9",
+    "changes_vs_v2": [
+      "injury reports usable only if stamped >= 15 min before T",
+      "market-environment snapshots strictly at or before T",
+      "env_source is never a model input"
+    ],
+    "build_guards": "merge cardinality validated and duplicate drops bounded; rebuild identical to the stored dataset"
+  },
+  "features": {
+    "spec": "base (every group except market_env)",
+    "excluded_features": [],
+    "note": "R1 (drop season-position features) was NOT adopted"
+  },
+  "models": {
+    "rate_families_per_component (selected on dev folds in v2_base)": {
+      "fg2a": "hier",
+      "fg3a": "lgb",
+      "fta": "hier",
+      "reb": "hier",
+      "ast": "lgb",
+      "p2": "hier",
+      "p3": "hier",
+      "pft": "hier"
+    },
+    "lightgbm_params": {
+      "learning_rate": 0.05,
+      "num_leaves": 31,
+      "min_data_in_leaf": 300,
+      "feature_fraction": 0.7,
+      "bagging_fraction": 0.8,
+      "bagging_freq": 1,
+      "lambda_l2": 10.0,
+      "verbosity": -1,
+      "num_threads": 8,
+      "seed": 7,
+      "deterministic": true,
+      "force_row_wise": true
+    },
+    "minutes": {
+      "regimes": 2,
+      "limited_ratio": 0.5,
+      "support_points": 64,
+      "residual_bank": "forward-chaining out-of-fold, 5 blocks, out-of-sample sd"
+    },
+    "refit_on_fit_plus_calibration": true,
+    "recency_weights": null,
+    "n_sims_saved_predictions": 4000,
+    "n_sims_for_any_market_comparison": 20000,
+    "seed": 0
+  },
+  "calibration": {
+    "dispersion_widening": {
+      "buckets_by_predicted_minutes": [
+        15.0,
+        28.0
+      ],
+      "max_c": 1.6,
+      "fitted_on": "calibration window of each fold, fit-only models",
+      "note": "floor c >= 1 unchanged; a narrowing variant (min_c 0.7) was tried on the dev folds and not adopted"
+    },
+    "isotonic_layer": "fitted for reporting, NOT applied",
+    "R2b": {
+      "window_game_dates": 21,
+      "prior_player_games": 1000.0,
+      "row_weight": 0.3333333333333333,
+      "carry_over": "previous season's final game-dates, forecast by that season's own fold; no carry-over for the first test season",
+      "status": "NOT ADOPTED. Corrected implementation passes the bias bar on 2023-24 (-55%) but fails the registered non-harm rule on 2022-23 assists (+0.0006 CRPS). Declared SENSITIVITY: the 2025-26 final run reports results with and without R2b; the headline is without; the user decides on R2b after seeing 2025-26.",
+      "window": "previous 21 game-dates of the same game group (regular 002 / postseason); regular-season rows also see the previous regular season last 21 game-dates; postseason never carries over"
+    }
+  },
+  "folds": {
+    "first_season": "2019-20",
+    "calib_frac": 0.2,
+    "dev": [
+      "2021-22",
+      "2022-23",
+      "2023-24"
+    ],
+    "seen": "2024-25",
+    "final_holdout": "2025-26"
+  },
+  "protocol": "reports/props/phase4_protocol_update.md",
+  "tried_rules_for_multiple_testing": {
+    "R1": "failed",
+    "R2 (prior 2000, twice)": "missed bar (47%, 49% vs 50%)",
+    "R2b": "adopted by documented deviation",
+    "R3 recency 730d": "failed",
+    "design corrections adopted on validity grounds": [
+      "publish lag",
+      "strict env timing",
+      "forward-chaining bank",
+      "env_source out",
+      "refit-all"
+    ]
+  },
+  "how_2025-26_will_be_scored": "Train the 2025-26 fold of the same pipeline (version v3_final_2025-26: --features-db data/props_features_v3.db --folds 2025-26 --families-from v2_base --refit-all), predict quoted rows with 20,000 draws (scripts/props_phase5_predict.py), then scripts/props_phase5_dev.py --frozen-rule reports/props/phase5_dev_2023-24_noR2b.frozen_rule.json --no-r2b (headline) and the same without --no-r2b (R2b sensitivity, carry-over from the 2024-25 fold of the same pipeline); once.",
+  "headline_configuration": "v3 pipeline, no rolling recalibration; Phase 5 k and rule from reports/props/phase5_dev_2023-24_noR2b.frozen_rule.json"
+}

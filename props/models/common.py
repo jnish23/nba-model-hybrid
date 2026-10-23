@@ -79,3 +79,24 @@ def logloss(y, p, w=None, eps=1e-6):
     y = np.asarray(y, dtype=float)
     ll = -(y * np.log(p) + (1 - y) * np.log(1 - p))
     return float(np.average(ll, weights=w))
+
+
+def forward_oof(objective, X, y, w, dates, n_rounds, n_blocks=5, params=None, extra=None, usable=None, min_train=100):
+    """
+    Forward-chaining out-of-fold predictions inside one training window: rows are cut into n_blocks contiguous date blocks and block k (k >= 1) is predicted
+    by a model trained ONLY on earlier blocks (rows flagged `usable`). Block 0 is never predicted. Unlike blocked_oof nothing in the future helps predict the past,
+    which is what makes the residuals honest for a forecaster; use it for the spread of an error as well (train it on the earlier blocks' residuals).
+    """
+    d = np.asarray(dates)
+    u = np.unique(d)
+    edges = [u[int(len(u) * k / n_blocks)] for k in range(n_blocks)] + [u[-1] + 'z']
+    usable = np.ones(len(d), bool) if usable is None else np.asarray(usable, bool)
+    out = np.full(len(d), np.nan)
+    for k in range(1, n_blocks):
+        te = np.flatnonzero((d >= edges[k]) & (d < edges[k + 1]))
+        tr = np.flatnonzero((d < edges[k]) & usable)
+        if len(te) == 0 or len(tr) < min_train:
+            continue
+        m = refit(objective, X.iloc[tr], y[tr], w[tr], n_rounds, params, extra)
+        out[te] = m.predict(X.iloc[te])
+    return out

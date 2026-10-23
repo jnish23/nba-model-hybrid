@@ -70,7 +70,7 @@ def consensus(flagged, min_books=3, exclude_stale=True, exclude_flagged=True):
     ranked = m.assign(_cnt=cnt, _dist=(m['line'] - med).abs()).sort_values(
         GROUP + ['_cnt', '_dist', 'line'], ascending=[True] * len(GROUP) + [False, True, True], kind='mergesort')
     pick = ranked.drop_duplicates(subset=GROUP)[GROUP + ['line']].rename(columns={'line': 'consensus_line'})
-    m = m.merge(pick, on=GROUP)
+    m = m.merge(pick, on=GROUP, validate='many_to_one')
     at = m[m['line'] == m['consensus_line']]
     g = m.groupby(GROUP)
     res = pick.set_index(GROUP)

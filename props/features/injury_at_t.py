@@ -42,17 +42,22 @@ def reason_class(reason):
     return 'other'
 
 
-def latest_report_rows(reports, tip_ref_et, minutes_before):
+PUBLISH_LAG_MIN = 15          # a report is stamped with its scheduled slot, not the time it was posted: it counts as known only this many minutes after its stamp
+
+
+def latest_report_rows(reports, tip_ref_et, minutes_before, publish_lag_min=PUBLISH_LAG_MIN):
     """
     reports: linked report rows (gameId, teamId, personId, report_ts [ET], status, reason, not_submitted).
     tip_ref_et: Series game_id -> naive ET reference tip. Returns (rows of the chosen report per game, per-game table with report_ts, age).
+    A report is usable at the decision time T only if its stamp is at least publish_lag_min before T (the stamp is the scheduled slot; the PDF can appear minutes
+    later). The age is still measured from T.
     """
     r = reports.dropna(subset=['gameId']).copy()
     r['gameId'] = r['gameId'].astype(str).str.zfill(10)
     r['report_ts'] = pd.to_datetime(r['report_ts'])
     cutoff = tip_ref_et - pd.Timedelta(minutes=minutes_before)
     r['cutoff'] = r['gameId'].map(cutoff)
-    r = r[r['cutoff'].notna() & (r['report_ts'] <= r['cutoff'])]
+    r = r[r['cutoff'].notna() & (r['report_ts'] <= r['cutoff'] - pd.Timedelta(minutes=publish_lag_min))]
     r['chosen_ts'] = r['gameId'].map(r.groupby('gameId')['report_ts'].max())
     r = r[r['report_ts'] == r['chosen_ts']]
     games = r.groupby('gameId').agg(report_ts=('report_ts', 'first'), cutoff=('cutoff', 'first'))
@@ -73,7 +78,7 @@ def status_for_rows(rows, chosen_rows, games):
     # one status per player per game: the most severe if a player appears twice on the same report
     c['sev'] = c['status'].map(STATUS_CODE).fillna(0)
     c = c.sort_values('sev').drop_duplicates(['game_id', 'player_id'], keep='last')
-    out = out.merge(c[['game_id', 'player_id', 'status', 'reason']], on=['game_id', 'player_id'], how='left')
+    out = out.merge(c[['game_id', 'player_id', 'status', 'reason']], on=['game_id', 'player_id'], how='left', validate='many_to_one')
     has_report = out['game_id'].isin(games.index)
     out['inj_status'] = np.where(~has_report, 'no_report', out['status'].fillna('None'))
     out['inj_reason_class'] = np.where(out['reason'].notna(), out['reason'].map(reason_class), 'none')
@@ -82,13 +87,17 @@ def status_for_rows(rows, chosen_rows, games):
     return out.drop(columns=['status', 'reason'])
 
 
-def play_rate_table(history_rows, minutes_before, first_season):
+def play_rate_table(history_rows, minutes_before, first_season, extra_season=None):
     """
     history_rows: roster rows with season, inj_status, m_bucket and lbl_played for the SAME X. Returns a Series indexed (season, status, bucket):
     P(played) estimated from seasons strictly before `season`, shrunk toward SPEC_P_PLAY[status].
     """
     h = history_rows[['season', 'inj_status', 'm_bucket', 'lbl_played']]
     g = h.groupby(['season', 'inj_status', 'm_bucket'])['lbl_played'].agg(['sum', 'size'])
+    if extra_season is not None:                                # live: a season with no rows yet gets every cell with zero counts, so its table is 'all earlier seasons'
+        cells = g.index.droplevel(0).unique()
+        zero = pd.DataFrame({'sum': 0, 'size': 0}, index=pd.MultiIndex.from_tuples([(extra_season, a, b) for a, b in cells], names=g.index.names))
+        g = pd.concat([g, zero[~zero.index.isin(g.index)]])
     g = g.sort_index()
     cum = g.groupby(level=[1, 2]).cumsum()
     before = cum - g                                           # earlier seasons of the same (status, bucket) cell
@@ -100,7 +109,7 @@ def play_rate_table(history_rows, minutes_before, first_season):
 
 def attach_p_play(status_df, rows_feat, table):
     """Adds inj_p_play and inj_status_code to the status frame, using the table for the row's season, status and minutes bucket."""
-    d = status_df.merge(rows_feat[['game_id', 'player_id', 'season', 'm_bucket']], on=['game_id', 'player_id'], how='left')
+    d = status_df.merge(rows_feat[['game_id', 'player_id', 'season', 'm_bucket']], on=['game_id', 'player_id'], how='left', validate='many_to_one')
     idx = pd.MultiIndex.from_frame(d[['season', 'inj_status', 'm_bucket']])
     p = table.reindex(idx).to_numpy()
     spec = d['inj_status'].map(SPEC_P_PLAY).to_numpy()
@@ -125,7 +134,7 @@ def teammate_availability(d, feat, prefix='av'):
     opp_{prefix}_* (the opponent's whole roster) columns.
     """
     x = d[['game_id', 'player_id', 'team_id', 'opp_team_id', 'inj_p_play', 'inj_status_code']].merge(
-        feat, on=['game_id', 'player_id'], how='left', suffixes=('', '_f'))
+        feat, on=['game_id', 'player_id'], how='left', suffixes=('', '_f'), validate='many_to_one')
     q = 1.0 - x['inj_p_play'].to_numpy()
     cols = {}
     for name, fn in WEIGHTS.items():
@@ -155,4 +164,16 @@ def teammate_availability(d, feat, prefix='av'):
     opp_out[f'opp_{prefix}_n_out'] = opp['_out']
     opp_out[f'opp_{prefix}_miss_starter_minutes'] = opp['_starter_qw']
     opp_out = opp_out.reset_index().rename(columns={'team_id': 'opp_team_id'})
-    return res.merge(opp_out, on=['game_id', 'opp_team_id'], how='left')
+    return res.merge(opp_out, on=['game_id', 'opp_team_id'], how='left', validate='many_to_one')
+
+
+AT_T_FEAT_COLS = ['game_id', 'player_id', 'm_min_h15', 'r_usage_pct_h15', 'r_reb_chances_h15', 'r_assists_h15', 'r_secondary_ast_h15', 'r_points_h15']
+
+
+def at_t_block(base, status, table):
+    """The injury and availability columns for one decision time, from the base rows, their report status and the play-rate table. Shared by the batch dataset build and the live build."""
+    d = attach_p_play(status, base, table)
+    d = d.merge(base[['game_id', 'player_id', 'opp_team_id']], on=['game_id', 'player_id'], validate='one_to_one')
+    av = teammate_availability(d, base[AT_T_FEAT_COLS])
+    return d[['game_id', 'player_id', 'inj_status', 'inj_status_code', 'inj_p_play', 'inj_reason_class', 'inj_report_age_min', 'inj_report_missing']].merge(
+        av.drop(columns=['team_id', 'opp_team_id']), on=['game_id', 'player_id'], validate='one_to_one')

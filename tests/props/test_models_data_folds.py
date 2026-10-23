@@ -67,3 +67,44 @@ def test_real_frame_folds_and_feature_spec():
     data.FeatureSpec().check(cols)
     assert not [c for c in cols if c.startswith('env_')] and len(cols) > 150
     assert str(df['pos_group'].dtype) == 'category'
+
+
+def test_exclude_features_drops_only_the_named_columns():
+    cols = ['m_min_h15', 'ctx_team_game_number', 'rest_games_played_season', 'r_points_h15', 'minutes_before']
+    full = data.FeatureSpec('base').columns(cols)
+    r1 = data.FeatureSpec('base', exclude_features=frozenset({'ctx_team_game_number', 'rest_games_played_season'})).columns(cols)
+    assert set(full) - set(r1) == {'ctx_team_game_number', 'rest_games_played_season'} and set(r1) <= set(full)
+    assert 'minutes_before' in r1                                              # the decision time is not a "feature" that R1 touches
+
+
+def test_live_roster_places_a_traded_player_on_one_team_only():
+    import pandas as pd
+    from props.live import roster
+    hist = pd.DataFrame({'game_id': ['g1', 'g2', 'g3', 'g4'], 'player_id': [7, 7, 7, 8], 'team_id': [1, 1, 2, 1],
+                         'game_date': ['2026-01-01', '2026-01-03', '2026-01-05', '2026-01-03']})
+    rosters = roster.recent_rosters(hist, '2026-01-10')
+    assert 7 in rosters[1] and 7 in rosters[2]                                           # the raw rule puts him on both teams
+    one = roster.current_team_only(rosters, roster.last_team(hist, '2026-01-10'))
+    assert 7 not in one[1] and 7 in one[2] and 8 in one[1]
+
+
+def test_live_team_resolution_never_uses_last_seasons_team_or_guesses():
+    import pandas as pd
+    from props.live import roster
+    hist = pd.DataFrame({'game_id': ['a', 'b', 'c'], 'player_id': [5, 6, 6], 'team_id': [1, 1, 3],
+                         'game_date': ['2025-04-01', '2025-11-01', '2025-11-02'], 'season': ['2024-25', '2025-26', '2025-26']})
+    games = pd.DataFrame({'game_id': ['g'], 'home_team_id': [1], 'away_team_id': [2], 'season': ['2025-26'], 'game_date': ['2025-11-10']})
+    extra = pd.DataFrame({'game_id': ['g'] * 4, 'player_id': [5, 6, 7, 8], 'team_id': [2, None, None, None]})
+    placed, unresolved = roster.resolve_extra_players(extra, games, hist, '2025-11-10')
+    assert 5 in placed['g'][2]                                    # the injury report's team wins over last season's team
+    assert sorted(p for _, p in unresolved) == [6, 7, 8]          # 6: this season's team is not in the game; 7 and 8 have no listing at all
+
+
+def test_live_placeholder_rows_put_a_player_on_one_team_per_game():
+    import pandas as pd
+    from props.live import roster
+    games = pd.DataFrame({'game_id': ['g'], 'game_date': ['2025-11-10'], 'season': ['2025-26'], 'home_team_id': [1], 'away_team_id': [2]})
+    rows = roster.placeholder_rows(['game_id', 'player_id', 'team_id', 'opp_team_id', 'game_date', 'season', 'game_type', 'is_home', 'lbl_played', 'lbl_started'],
+                                   games, {1: {10, 11}, 2: {20}}, {'g': {2: {11}}})
+    assert not rows.duplicated(['game_id', 'player_id']).any()
+    assert rows.loc[rows['player_id'] == 11, 'team_id'].tolist() == [2]

@@ -42,10 +42,28 @@ def test_scaler_repairs_underdispersion_out_of_sample():
     assert oc.crps(w, obs[half:]).mean() < oc.crps(pm[half:], obs[half:]).mean()
 
 
-def test_scaler_never_narrows():
+def test_scaler_narrows_a_pmf_that_is_too_wide_down_to_the_floor():
     rng = np.random.default_rng(2)
-    mu = rng.uniform(3, 20, 4000)
-    pm = _pmf(mu, k=4.0)
-    obs = rng.poisson(mu)                                                    # the model is wider than the truth
-    sc = dispersion.DispersionScaler().fit('points', pm, obs, rng.uniform(5, 38, 4000))
-    assert all(v == 1.0 for v in sc.c.values())
+    n = 6000
+    mu = rng.uniform(3, 20, n)
+    minutes = rng.uniform(5, 38, n)
+    pm = _pmf(mu, k=4.0)                                                     # the model is wider than the truth (negative binomial with k = 4)
+    obs = rng.poisson(mu)
+    half = n // 2
+    sc = dispersion.DispersionScaler(min_c=0.7).fit('points', pm[:half], obs[:half], minutes[:half])
+    assert all(0.7 <= v < 1.0 for v in sc.c.values())
+    w = sc.transform('points', pm[half:], minutes[half:])
+    assert np.all(np.abs(oc.pmf_mean(w) - oc.pmf_mean(pm[half:])) < 0.05 * np.maximum(oc.pmf_mean(pm[half:]), 1))        # the mean is preserved
+    assert calibrate.pmf_sd(w).mean() < calibrate.pmf_sd(pm[half:]).mean()
+    assert oc.crps(w, obs[half:]).mean() < oc.crps(pm[half:], obs[half:]).mean()
+    ratio = lambda p: np.mean((obs[half:] - oc.pmf_mean(p)) ** 2) / np.mean(calibrate.pmf_sd(p) ** 2)
+    assert abs(ratio(w) - 1) < abs(ratio(pm[half:]) - 1)
+
+
+def test_scaler_floor_and_cap():
+    rng = np.random.default_rng(3)
+    mu = rng.uniform(5, 15, 4000)
+    pm = _pmf(mu, k=1.0)                                                     # absurdly wide
+    sc = dispersion.DispersionScaler(min_c=0.7).fit('points', pm, rng.poisson(mu), rng.uniform(5, 38, 4000))
+    assert all(v == 0.7 for v in sc.c.values())
+    assert all(v == 1.0 for v in dispersion.DispersionScaler().fit('points', pm, rng.poisson(mu), rng.uniform(5, 38, 4000)).c.values())          # the frozen default never narrows

@@ -30,14 +30,18 @@ def test_reason_class():
     assert inj.reason_class('-') == 'other'
 
 
-def test_latest_report_is_the_last_one_at_or_before_T_and_never_a_later_one():
+def test_latest_report_is_the_last_one_stamped_at_least_the_publish_lag_before_T():
     tip = pd.Series({'0022400001': TIP})
-    # cutoffs: T-240 = 15:10, T-60 = 18:10, T-5 = 19:05
-    for x, ts in ((240, '2025-01-15 15:00'), (60, '2025-01-15 15:00'), (5, '2025-01-15 19:00')):
+    # cutoffs: T-240 = 15:10, T-60 = 18:10, T-5 = 19:05; a report must be stamped at least PUBLISH_LAG_MIN (15) before them
+    for x, ts in ((240, '2025-01-15 11:00'), (60, '2025-01-15 15:00'), (5, '2025-01-15 18:30')):
         rows, games = inj.latest_report_rows(reports(), tip, x)
         assert games.loc['0022400001', 'report_ts'] == pd.Timestamp(ts)
-        assert (rows['report_ts'] <= TIP - pd.Timedelta(minutes=x)).all()
-        assert games.loc['0022400001', 'report_age_min'] == pytest.approx((TIP - pd.Timedelta(minutes=x) - pd.Timestamp(ts)).total_seconds() / 60)
+        assert (rows['report_ts'] <= TIP - pd.Timedelta(minutes=x + inj.PUBLISH_LAG_MIN)).all()
+        assert games.loc['0022400001', 'report_age_min'] == pytest.approx((TIP - pd.Timedelta(minutes=x) - pd.Timestamp(ts)).total_seconds() / 60)    # age is still measured from T
+    # without the buffer the report stamped 10 or 5 minutes before T would count (the old, optimistic behaviour)
+    for x, ts in ((240, '2025-01-15 15:00'), (60, '2025-01-15 15:00'), (5, '2025-01-15 19:00')):
+        _, games = inj.latest_report_rows(reports(), tip, x, publish_lag_min=0)
+        assert games.loc['0022400001', 'report_ts'] == pd.Timestamp(ts)
     # the 19:30 report (after the reference tip) is invisible even at T-0
     rows, _ = inj.latest_report_rows(reports(), tip, 0)
     assert (rows['report_ts'] <= TIP).all()
