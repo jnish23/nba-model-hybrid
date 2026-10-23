@@ -273,9 +273,18 @@ def _game_flags(game_id, pdate, frame, i, edges, moves, history, ml_flags=()):
                          f"Early season: a team is in its game {int(min(played))}, so the rolling stats mostly reflect last season's roster.",
                          min(played)))
     missing = [s for s in ('home', 'away') if _num(g, f'inj_missing_{s}') == 1]
-    if missing:
+    first_game = [s for s in missing if _num(g, f'season_game_number_{s}') <= 1]
+    other = [s for s in missing if s not in first_game]
+    if first_game:
+        # the model's injury inputs are built from players who have appeared for the team THIS season, so a team's first game has none to
+        # work with (training does the same); the injury report itself may well list players out
+        out.append(_flag(game_id, pdate, 'all', 'injury_first_game',
+                         f"First game of the season for {_teams(first_game)}: the model has no roster history for it yet, so it ignores injuries here, "
+                         f"even if the injury report lists players out.", len(first_game)))
+    if other:
         out.append(_flag(game_id, pdate, 'all', 'injury_missing',
-                         f"No injury report found for {_teams(missing)}: the model assumed nobody is out.", len(missing)))
+                         f"No usable injury report for {_teams(other)} at the model's noon snapshot (not submitted yet): the model assumed nobody is out.",
+                         len(other)))
     long_rest = [s for s in ('home', 'away') if _num(g, f'days_rest_{s}') >= OFFSEASON_REST_DAYS]
     if long_rest:
         out.append(_flag(game_id, pdate, 'all', 'offseason_rest',

@@ -580,3 +580,17 @@ def test_settled_panel_shows_the_result_and_the_logged_number_note(tmp_path):
         assert len([c for c in at.caption if 'the prediction log has' in c.value]) == 3         # the logged numbers are far from the explained ones
     finally:
         os.environ.pop('GAME_ID', None)
+
+
+def test_first_game_of_the_season_is_flagged_as_a_roster_history_gap_not_a_missing_report():
+    f = _frame(6)
+    f.loc[0, ['season_game_number_home', 'inj_missing_home']] = [1, 1.0]            # first game: no roster history this season
+    f.loc[0, ['season_game_number_away', 'inj_missing_away']] = [30, 1.0]           # report not submitted
+    f.loc[1, ['season_game_number_home', 'season_game_number_away']] = [40, 40]
+    f.loc[1, 'inj_missing_home'] = 1.0
+    e, _ = _explain(f, _bundle(f))
+    flags = ex.game_flags(e, f['gameId'][0], ex.TOTAL).set_index('feature')['label']
+    assert 'First game of the season for the home team' in flags['injury_first_game'] and 'ignores injuries' in flags['injury_first_game']
+    assert 'the away team' in flags['injury_missing'] and 'not submitted' in flags['injury_missing']
+    only = set(ex.game_flags(e, f['gameId'][1], ex.TOTAL)['feature'])
+    assert 'injury_missing' in only and 'injury_first_game' not in only
