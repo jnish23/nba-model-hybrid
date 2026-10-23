@@ -37,6 +37,14 @@ def load_season(props_db, start, end, grid=GRID, min_books=MIN_BOOKS):
     with sqlite3.connect(f'file:{props_db}?mode=ro', uri=True, timeout=120) as conn:
         d = pd.read_sql(q, conn, params=modes + [start, end])
     d['minutes_before'] = d['mode'].str.replace('hist_T-', '', regex=False).astype(int)
+    return quotes_from_snapshots(d, min_books)
+
+
+def quotes_from_snapshots(d, min_books=MIN_BOOKS):
+    """
+    The consensus and the bettable quotes from snapshot rows `d` (the columns of load_season's query plus minutes_before, the decision slot each row serves). Shared by the backtest and the
+    live job so both build quotes with the same code. One slot per call when a snapshot can serve several slots.
+    """
     flagged = analysis.flag_main_lines(analysis.add_devig(d, stale_after_minutes=STALE_MINUTES))
     cons = analysis.consensus(flagged, min_books=min_books).dropna(subset=['consensus_fair_over'])
     keys = d[['snapshot_ts_utc', 'event_id_vendor', 'player_name_raw', 'game_id', 'player_id', 'minutes_before']].dropna(subset=['player_id']).drop_duplicates(

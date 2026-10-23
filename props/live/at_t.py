@@ -26,9 +26,13 @@ def play_tables(features_db, grid, live_season=None):
     return tables
 
 
-def live_at_t(base_live, reports, tips_et, minutes_before, table):
-    """T-dependent columns for every row of the live base at one decision time (same column set as the stored at-T table, minus the market environment)."""
-    chosen, games = injury_at_t.latest_report_rows(reports, tips_et, minutes_before)
+def live_at_t(base_live, reports, tips_et, minutes_before, table, asof_minutes=None):
+    """
+    T-dependent columns for every row of the live base at one decision time (same column set as the stored at-T table, minus the market environment). `minutes_before` is the slot's
+    nominal time (it labels the rows and picks the play-rate table); `asof_minutes`, when given, is the actual time of the information (a live slot may use a snapshot a few minutes
+    after its nominal time) and sets which injury reports count as published.
+    """
+    chosen, games = injury_at_t.latest_report_rows(reports, tips_et, minutes_before if asof_minutes is None else asof_minutes)
     status = injury_at_t.status_for_rows(base_live[['game_id', 'player_id', 'team_id']], chosen, games)
     t = injury_at_t.at_t_block(base_live, status, table)
     t.insert(2, 'minutes_before', minutes_before)
