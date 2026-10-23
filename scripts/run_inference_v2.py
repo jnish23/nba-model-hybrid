@@ -10,7 +10,9 @@ from pathlib import Path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.prediction_logger import PredictionLogger
-from team.live_odds import split_open_and_current
+from core.odds_rerun import unpriced_games
+from core.odds_fallback import SOURCE, fetch_team_odds, find_game
+from team.live_odds import MARKETS, split_open_and_current
 from team.live_features import align_features, build_live_game_frame
 from team.betting import (get_ml_bet, get_spread_bet, get_total_bet, DEFAULT_SPREAD_STD,
                             DEFAULT_TOTAL_STD)
@@ -46,14 +48,15 @@ def get_nba_schedule(game_date=None):
         games['away_team_abbr'] = games['gameCode'].str[-6:-3]
         games['home_team_abbr'] = games['gameCode'].str[-3:]
 
-        return games[['gameId', 'gameDate', 'home_team_abbr', 'away_team_abbr']]
+        return games[['gameId', 'gameDate', 'gameStatus', 'gameTimeUTC', 'home_team_abbr', 'away_team_abbr']]
     except Exception as e:
         logging.error(f"Failed to fetch NBA schedule: {e}")
         return pd.DataFrame()
 
 class InferenceEngine:
-    def __init__(self, db_path, suffix=DEPLOYED_SUFFIX, model_dir=MODEL_DIR, target_date=None):
+    def __init__(self, db_path, suffix=DEPLOYED_SUFFIX, model_dir=MODEL_DIR, target_date=None, only_unpriced=False):
         self.db_path = db_path
+        self.only_unpriced = only_unpriced  # re-run: predict only the games that have not started and still lack a line
         self.target_date = target_date  # Optional: override datetime.now() for backfilling
 
         # One explicit, validated model set (team/model_registry.py): all pickles, calibrator and
@@ -105,10 +108,25 @@ class InferenceEngine:
                 for g in sb_open.games:
                     open_map[f"{g.get('away_team')} @ {g.get('home_team')}"] = g
 
+            # Games SBR lists without a usable line are filled from The Odds API (core/odds_fallback.py); one bulk call covers them all
+            api_games = None
             games = []
             for g in sb_curr.games:
                 key = f"{g.get('away_team')} @ {g.get('home_team')}"
-                if key not in open_map:
+                lines = split_open_and_current(g, open_map.get(key))
+                source = 'sbr'
+                if not any(pd.notna(lines[f'{prefix}{m}']) for m in MARKETS for prefix in ('odds_', 'curr_odds_')):
+                    # SBR has nothing usable for the game (no books, or none passing the cross-book checks): ask the API
+                    if api_games is None:
+                        api_games = fetch_team_odds()
+                    backup = find_game(api_games, g.get('away_team'), g.get('home_team'))
+                    if backup is not None:
+                        lines = split_open_and_current(backup, backup)    # the API only has the current line: it stands in for the open too
+                        source = SOURCE
+                        logging.info(f"No usable SBR lines for {key}; using The Odds API")
+                    else:
+                        source = 'none'
+                elif key not in open_map:
                     logging.warning(f"No opening line on SBR for {key}; the game is skipped (the current line is not a model input)")
                 row = {
                     'gameDate': today,
@@ -116,7 +134,8 @@ class InferenceEngine:
                     'home_team': g.get('home_team'),
                     'away_team_abbr': g.get('away_team_abbr'),
                     'home_team_abbr': g.get('home_team_abbr'),
-                    **split_open_and_current(g, open_map.get(key)),
+                    'odds_source': source,
+                    **lines,
                 }
                 games.append(row)
 
@@ -190,6 +209,7 @@ class InferenceEngine:
             )
             
             merged = merged.drop(columns=['gameDate_x'])
+            self.log_odds_sources(merged)
             
             return merged
             
@@ -276,6 +296,33 @@ class InferenceEngine:
         except Exception as e:
             logging.error(f"Explanations failed (predictions are unaffected): {e}", exc_info=True)
 
+    def log_odds_sources(self, games):
+        """Which source priced each game today (sbr / theoddsapi / none), kept in odds_source_log so the backup's use can be reviewed."""
+        try:
+            rows = [(str(r.gameId), str(r.gameDate), r.odds_source, datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'))
+                    for r in games.itertuples() if isinstance(getattr(r, 'odds_source', None), str)]
+            with sqlite3.connect(self.db_path) as conn:
+                conn.execute("CREATE TABLE IF NOT EXISTS odds_source_log (game_id TEXT, game_date TEXT, source TEXT, ts_utc TEXT, "
+                             "PRIMARY KEY (game_id, ts_utc))")
+                conn.executemany("INSERT OR IGNORE INTO odds_source_log VALUES (?,?,?,?)", rows)
+            used = [r[0] for r in rows if r[2] == SOURCE]
+            if used:
+                logging.info(f"{len(used)} game(s) priced by The Odds API instead of SBR")
+        except Exception as e:                       # bookkeeping only: never stops the run
+            logging.warning(f"Could not log the odds sources: {e}")
+
+    def keep_unpriced(self, games_df):
+        """
+        Games not yet started (gameStatus 1) whose LOGGED prediction lacks the moneyline, spread or total: the ones a re-run can improve.
+        It goes by the log, not the lines fetched now: a game the backup priced a minute ago still has its old no-odds row to replace.
+        """
+        logged = set(unpriced_games(self.db_path, games_df['gameDate'].iloc[0])['game_id'])
+        not_started = pd.to_numeric(games_df['gameStatus'], errors='coerce') == 1
+        keep = games_df[games_df['gameId'].astype(str).isin(logged) & not_started].reset_index(drop=True)
+        logging.info(f"Re-run: {len(keep)} of {len(games_df)} games were logged without a line and have not started: "
+                     + ", ".join(f"{a} @ {h}" for a, h in zip(keep['away_team'], keep['home_team'])))
+        return keep
+
     def run(self):
         logging.info("Starting Inference Run...")
         
@@ -291,6 +338,11 @@ class InferenceEngine:
         if games_df.empty:
             logging.info("No games with resolvable teams today.")
             return
+        if self.only_unpriced:
+            games_df = self.keep_unpriced(games_df)
+            if games_df.empty:
+                logging.info("Re-run: every game that has not started already has its lines; nothing to predict.")
+                return
 
         # 2. Build the model inputs with the same code as the training set (team/live_features.py):
         #    team form, travel, roster BPM, injury report, differences and matchups
@@ -397,6 +449,10 @@ class InferenceEngine:
         res = pd.DataFrame(preds)
         print("\n--- PREDICTIONS ---")
         print(res.to_string(index=False))
+        if self.only_unpriced and Path('todays_picks.csv').exists():
+            # a re-run covers a few games: refresh their rows and keep the rest of the day's file
+            earlier = pd.read_csv('todays_picks.csv', dtype={'game_id': str})
+            res = pd.concat([earlier[~earlier['game_id'].isin(res['game_id'].astype(str))], res], ignore_index=True)
         res.to_csv('todays_picks.csv', index=False)
 
 
@@ -406,23 +462,26 @@ def main():
     parser.add_argument('--suffix', default=DEPLOYED_SUFFIX,
                         help=f"model set suffix in models/saved (default: deployed set {DEPLOYED_SUFFIX})")
     parser.add_argument('--date', default=None, help='YYYY-MM-DD to backfill instead of today (ET)')
+    parser.add_argument('--only-unpriced', action='store_true',
+                        help="re-run: skip the database sync and predict only today's not-yet-started games that still lack a line "
+                             "(scripts/run_odds_rerun.bat, scheduled by scripts/schedule_odds_rerun.py)")
     args = parser.parse_args()
 
     seasons_to_check = [current_season]
     db_path = Path.cwd() / 'data' / 'nba_stats.db'
-    
-    syncer = NBADatabaseSync(db_path)
 
-    try:
-        syncer.sync_database(seasons_to_check)
-    except Exception as e:
-        # Predict anyway, but make the staleness visible in the log
-        with sqlite3.connect(db_path) as conn:
-            last = conn.execute("SELECT MAX(gameDate) FROM team_game_full").fetchone()[0]
-        logging.error(f"DATABASE SYNC FAILED ({e}). Predicting with data through {last}; "
-                      f"features may be stale.")
+    if not args.only_unpriced:                 # a re-run uses the morning's sync
+        syncer = NBADatabaseSync(db_path)
+        try:
+            syncer.sync_database(seasons_to_check)
+        except Exception as e:
+            # Predict anyway, but make the staleness visible in the log
+            with sqlite3.connect(db_path) as conn:
+                last = conn.execute("SELECT MAX(gameDate) FROM team_game_full").fetchone()[0]
+            logging.error(f"DATABASE SYNC FAILED ({e}). Predicting with data through {last}; "
+                          f"features may be stale.")
 
-    engine = InferenceEngine(db_path, suffix=args.suffix, target_date=args.date)
+    engine = InferenceEngine(db_path, suffix=args.suffix, target_date=args.date, only_unpriced=args.only_unpriced)
 
     engine.run()
 

@@ -20,6 +20,7 @@ from team.betting import (calculate_implied_prob, calculate_payout, calculate_be
                             settle_bet, STANDARD_PRICE, get_spread_bet, get_total_bet, points_threshold,
                             DEFAULT_SPREAD_STD, DEFAULT_TOTAL_STD, DEFAULT_PROB_EDGE, implied_prob_edge,
                             cover_probability)
+from core.odds_rerun import STATUS_FILE_NAME, read_status, rerun_message
 from core.season_utils import date_bounds, nba_today, season_date_range, season_for_date, season_options
 from team.explain import (COLUMNS as EXPLANATION_COLUMNS, MONEYLINE, SPREAD, TOTAL, chart_steps, driver_stats, game_features, game_flags,
                           game_pieces, load_explanations, normalize_game_ids, outcome_sentence, summary_sentence)
@@ -113,6 +114,29 @@ def _read_predictions():
     if SNAPSHOT_PATH.exists():
         return pd.read_csv(SNAPSHOT_PATH, dtype={'game_id': str}), "bundled snapshot"
     raise FileNotFoundError(f"No data: {DB_PATH}, {REMOTE_DATA_URL} and {SNAPSHOT_PATH} are all unavailable")
+
+
+NO_ODDS = "No odds found"
+
+
+def _read_rerun_status():
+    """status.json (core/odds_rerun.py): which games still lack lines and when the next re-run is. From the local data folder, else the
+    published data branch; None if there is none."""
+    if DB_PATH.exists():
+        return read_status(DB_PATH.parent / 'rerun_status.json')
+    try:
+        from urllib.request import urlopen
+        with urlopen(DATA_BASE_URL + STATUS_FILE_NAME, timeout=10) as f:
+            return json.loads(f.read().decode('utf-8'))
+    except Exception:
+        return None
+
+
+def render_rerun_status(status, game_date, now=None):
+    """A line above the table when some of the day's games have no betting lines yet (nothing when all have them)."""
+    message = rerun_message(status, game_date, now)
+    if message:
+        st.info(message)
 
 
 def _read_explanations():
@@ -892,6 +916,7 @@ def main():
             todays_games['Model Away Prob (%)'] = (100.0 * (1 - todays_games['ml_prob'])).round(2)
             # 2. Picks
             def get_ml_pick_display(row):
+                if pd.isna(row['odds_home_ml']) and pd.isna(row['odds_away_ml']): return NO_ODDS
                 # Using 5% threshold as default for "ML Pick" display recommendation.
                 # get_ml_bet prices each side with its own moneyline (odds_home_ml / odds_away_ml).
                 pick, edge = get_ml_bet(row, threshold=0.05)
@@ -905,7 +930,8 @@ def main():
                      return ""
             
             def get_spread_pick(row):
-                if pd.isna(row['spread_pred']) or pd.isna(row['odds_home_spread']): return ""
+                if pd.isna(row['odds_home_spread']): return NO_ODDS
+                if pd.isna(row['spread_pred']): return ""
                 # Pred Margin (Home - Away) vs Line
                 # cover_margin = spread_pred + line
                 # If > 0, Home Covers.
@@ -914,7 +940,8 @@ def main():
                 else: return f"Away {-1 * row['odds_home_spread']} (Margin: {abs(margin):.1f})"
 
             def get_total_pick(row):
-                if pd.isna(row['total_pred']) or pd.isna(row['odds_total']): return ""
+                if pd.isna(row['odds_total']): return NO_ODDS
+                if pd.isna(row['total_pred']): return ""
                 diff = row['total_pred'] - row['odds_total']
                 if diff > 0: return f"Over {row['odds_total']} (+{diff:.1f})"
                 else: return f"Under {row['odds_total']} ({diff:.1f})"
@@ -928,17 +955,20 @@ def main():
                 return f"{x:.0f}%" if pd.notna(x) else "-"
             def american(x):
                 return f"{x:+.0f}" if pd.notna(x) else "-"
+            def moneyline(a, h):
+                return NO_ODDS if pd.isna(a) and pd.isna(h) else f"{american(a)} / {american(h)}"
             todays_games = todays_games.reset_index(drop=True)
             table = pd.DataFrame({
                 'Why?': False,
                 'Away Team': todays_games['away_team'],
                 'Home Team': todays_games['home_team'],
                 'Home win % (model / market)': [f"{pct(m)} / {pct(i)}" for m, i in zip(todays_games['Model Home Prob (%)'], todays_games['Implied Home Prob (%)'])],
-                'Moneyline (away / home)': [f"{american(a)} / {american(h)}" for a, h in zip(todays_games['odds_away_ml'], todays_games['odds_home_ml'])],
+                'Moneyline (away / home)': [moneyline(a, h) for a, h in zip(todays_games['odds_away_ml'], todays_games['odds_home_ml'])],
                 'ML Pick': todays_games['ML Pick'],
                 'Spread Pick': todays_games['Spread Pick'],
                 'Total Pick': todays_games['Total Pick'],
             })
+            render_rerun_status(_read_rerun_status(), todays_games['game_date'].iloc[0])
             st.caption(f"Games on {todays_games['game_date'].iloc[0]}. Tick **Why?** on a game to see what moves the model's number away from the line.")
             edited = st.data_editor(table, hide_index=True, use_container_width=True, key="todays_games_table",
                                     disabled=[c for c in table.columns if c != 'Why?'],
