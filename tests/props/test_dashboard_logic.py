@@ -87,10 +87,36 @@ def test_streamlit_app_boots_on_synthetic_data(tmp_path, monkeypatch):
     (tmp_path / 'pmf.json').write_text(json.dumps({b: [0.1, 0.2, 0.3, 0.2, 0.1, 0.05, 0.03, 0.02] for b in d['bet_id']}))
     (tmp_path / 'books.json').write_text(json.dumps({b: {'draftkings': 2.05, 'fanduel': 1.91, 'betmgm': 1.87} for b in d['bet_id']}))
     monkeypatch.setenv('PROPS_DASH_DATA', str(tmp_path))
+    monkeypatch.setenv('PROPS_DASH_LIVE', str(tmp_path / 'no_live_here'))
     from pathlib import Path
     app = at_mod.AppTest.from_file(str(Path(__file__).resolve().parents[2] / 'dashboard_props' / 'app.py'), default_timeout=60)
     app.run()
     assert not app.exception, [e.value for e in app.exception]
     assert any('BACKTEST' in w.value for w in app.warning)
-    app.sidebar.radio[0].set_value('best').run()                                   # switching the pricing mode must not break any page
+    app.sidebar.radio[1].set_value('best').run()                                   # switching the pricing mode must not break any page
+    assert not app.exception, [e.value for e in app.exception]
+    [c for c in app.checkbox if 'Reveal' in c.label][0].set_value(True).run()      # showing results must not break the bet detail
+    assert not app.exception, [e.value for e in app.exception]
+
+
+def test_streamlit_app_boots_on_the_live_export(tmp_path, monkeypatch):
+    at_mod = pytest.importorskip('streamlit.testing.v1')
+    pytest.importorskip('pdfplumber')                      # the exporter lives in the full environment; the app itself only needs streamlit
+    import importlib.util
+    from pathlib import Path
+    spec = importlib.util.spec_from_file_location('live_export_helpers', Path(__file__).with_name('test_live_export.py'))
+    helpers = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(helpers)
+    CONFIG, _bet = helpers.CONFIG, helpers._bet
+    from props.live import export, store
+    conn = store.connect(tmp_path / 'live.db')
+    store.write_slot(conn, 'g1', 60, 'done', '2026-10-23T00:42:00Z', 'r1', bets=pd.concat([_bet(1), _bet(2)]))
+    export.export_live(tmp_path / 'live.db', tmp_path / 'live_out', CONFIG, n_boot=20)
+    monkeypatch.setenv('PROPS_DASH_LIVE', str(tmp_path / 'live_out'))
+    monkeypatch.setenv('PROPS_DASH_DATA', str(tmp_path / 'no_backtest_here'))
+    app = at_mod.AppTest.from_file(str(Path(__file__).resolve().parents[2] / 'dashboard_props' / 'app.py'), default_timeout=60)
+    app.run()
+    assert not app.exception, [e.value for e in app.exception]
+    assert any('LIVE PAPER RECORD' in w.value for w in app.warning)
+    app.sidebar.radio[1].set_value('best').run()
     assert not app.exception, [e.value for e in app.exception]

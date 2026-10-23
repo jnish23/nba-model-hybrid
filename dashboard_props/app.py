@@ -138,7 +138,13 @@ def detail(D, r, mode, treatment, reveal):
     st.dataframe(hist, hide_index=True, use_container_width=False)
     if reveal:
         w = L.with_profit(pd.DataFrame([r]), mode, treatment).iloc[0]
-        st.success(f"Result: {r[f'status_{treatment}'].upper()} · actual {r['y']:g} · {w['profit']:+.2f} units at {L.PRICE_MODES[mode].lower()}") if w['stake'] else st.info(f"Result: {r[f'status_{treatment}']} · actual {r['y']} (no stake)")
+        status = r[f'status_{treatment}']
+        if not isinstance(status, str):
+            st.info('Pending: the game has not been settled yet.')
+        elif w['stake']:
+            st.success(f"Result: {status.upper()} · actual {r['y']:g} · {w['profit']:+.2f} units at {L.PRICE_MODES[mode].lower()}")
+        else:
+            st.info(f"Result: {status} · actual {r['y']} (no stake)")
 
 
 def page_tracker(D, mode, treatment):
