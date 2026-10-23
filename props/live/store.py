@@ -77,10 +77,18 @@ def existing_bet_keys(conn, game_ids):
 
 
 def write_slot(conn, game_id, slot, status, now_utc, run_id, signals=None, bets=None, detail=None):
-    """One transaction: signals, new bets and the slot-log row. A bet that already exists for the (game, player, stat) is never rewritten (INSERT OR IGNORE on the unique key)."""
+    """
+    One transaction: signals, new bets and the slot-log row. Bets are inserted WITHOUT ignore-on-error (a constraint violation aborts the whole slot, which is then retried); a bet whose
+    (game, player, stat) already exists is dropped before the insert, never rewritten. The writer stamps created_utc and run_id, and the written count must equal the new bets.
+    """
+    if bets is not None and len(bets):
+        have = existing_bet_keys(conn, list(bets['game_id'].unique()))
+        bets = bets[[(g, int(p), s) not in have for g, p, s in zip(bets['game_id'], bets['player_id'], bets['stat'])]].assign(created_utc=now_utc, run_id=run_id)
     with conn:
         n_sig = _insert(conn, 'prop_signals', signals, ignore=True)
-        n_bet = _insert(conn, 'prop_bets', bets, ignore=True)
+        n_bet = _insert(conn, 'prop_bets', bets)
+        if bets is not None and n_bet != len(bets):
+            raise RuntimeError(f'{len(bets)} bets to record but {n_bet} written')
         conn.execute('INSERT OR REPLACE INTO slot_log (game_id, slot_minutes, status, detail, run_id, written_utc) VALUES (?,?,?,?,?,?)',
                      (game_id, int(slot), status, json.dumps(detail, default=str) if detail is not None else None, run_id, now_utc))
     return n_sig, n_bet

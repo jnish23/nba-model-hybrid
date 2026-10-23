@@ -69,3 +69,18 @@ def test_the_guard_refuses_a_changed_rule_bundle_or_features_file(tmp_path, monk
     feat.write_bytes(b'x' * 11)
     with pytest.raises(config.ConfigRefused, match='features database'):
         config.verify(cfg)
+
+
+def test_a_bet_that_violates_a_constraint_aborts_the_slot_instead_of_vanishing(tmp_path):
+    conn = store.connect(tmp_path / 'live.db')
+    bad = bet(side=None)                                                  # NOT NULL side missing
+    with pytest.raises(sqlite3.IntegrityError):
+        store.write_slot(conn, 'g1', 60, 'done', 'now', 'r1', bets=bad)
+    assert store.slot_done(conn, 'g1', 60) is None and conn.execute('SELECT count(*) FROM prop_bets').fetchone()[0] == 0
+
+
+def test_the_writer_stamps_created_utc_and_run_id(tmp_path):
+    conn = store.connect(tmp_path / 'live.db')
+    b = bet().drop(columns=['created_utc'])
+    store.write_slot(conn, 'g1', 60, 'done', '2026-10-23T00:42:52Z', 'r9', bets=b)
+    assert conn.execute('SELECT created_utc, run_id FROM prop_bets').fetchone() == ('2026-10-23T00:42:52Z', 'r9')
