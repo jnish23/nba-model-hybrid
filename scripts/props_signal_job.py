@@ -24,11 +24,10 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 from props import schedule as S  # noqa: E402
 from props.features import build, history, rows as rows_mod  # noqa: E402
 from props.live import at_t as A, config, quotes, reports as live_reports_mod, signal, store  # noqa: E402
+from props.live.freshness import GAME_PREFIXES, HISTORY_LAG_HOURS, stale_history  # noqa: E402
 from props.models import registry  # noqa: E402
 
 SLOTS = (240, 60, 5)
-HISTORY_LAG_HOURS = 5.0            # games that began more than this long ago must be in the box-score tables
-GAME_PREFIXES = ('002', '004')
 
 
 def utc_now():
@@ -50,13 +49,6 @@ def events_in_window(odds_db, now, hours_back=1.0, hours_ahead=7.0):
     ev = ev.merge(first, on='event_id_vendor', how='left')
     ev['commence_time_utc'] = ev['first_tip'].fillna(ev['commence_time_utc'])      # the reference clock uses the vendor's earliest estimate, as in the backtest
     return ev.drop(columns='first_tip')
-
-
-def stale_history(hist, sched, now):
-    """Games that began more than HISTORY_LAG_HOURS ago and are missing from the box-score history: the features of later games would be wrong."""
-    s = sched[sched['game_id'].str[:3].isin(GAME_PREFIXES)]
-    due = s[pd.to_datetime(s['nba_tip_utc'], utc=True) < now - pd.Timedelta(hours=HISTORY_LAG_HOURS)]
-    return sorted(set(due['game_id']) - set(hist['game_id'].astype(str)))
 
 
 def play_tables_cached(features_db, season):
@@ -137,7 +129,7 @@ def main():
             t0 = time.time()
             hist = rows_mod.load_history(a.nba_db)
             hist['game_id'] = hist['game_id'].astype(str)
-            missing = stale_history(hist, sched, now)
+            missing = stale_history(hist, sched, now, min(i.game['game_date'] for i in items))
             if missing:
                 msg = f'{len(missing)} games that began more than {HISTORY_LAG_HOURS:.0f} hours ago are not in the box-score history (first: {missing[:3]}); slots are not worked'
                 logging.error(msg)

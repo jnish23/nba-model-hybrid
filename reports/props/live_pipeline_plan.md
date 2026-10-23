@@ -70,3 +70,22 @@ Roster mismatch (section 3) is the main one; injury reports that arrive late or 
 ## 9. Status 2026-10-22
 
 D1.2 done (`v3_live_2026-27`). D1.1 built and tested; the parity test is reported in [d1_parity_report.md](d1_parity_report.md): the pre-registered criteria are not met (teammate-availability inputs cannot be reproduced before the game because the training roster is the post-game box-score list), A2 and A3 pass, rule v2 coverage is ~100% from November. D1.3-D1.5 wait on the owner's decision in section 5 of that report.
+
+## 10. D1.3-D1.5 as built (2026-10-23)
+
+**Decision (owner, 2026-10-22):** start the live pipeline with the frozen model, the frozen rule and roster rule v2, and waive A1/A4/A5/A6 as preconditions; the gap is disclosed in every report ([d1_parity_report.md](d1_parity_report.md); the dashboard banner and `meta.json` carry the text).
+
+| Piece | Where | Notes |
+|---|---|---|
+| Pinned configuration | `reports/props/live_config.json`, `props/live/config.py` | rule file hash, model bundle hash, features database size; the job exits 2 and writes a `refused` health row on any mismatch. A monthly refit is a new version and a reviewed edit of this file. |
+| Signal job | `scripts/props_signal_job.py`, `props/live/{quotes,signal,store,reports,freshness}.py` | every 10 minutes; one transaction per slot (signals, new bets, slot log); idempotent; `--dry-run`, `--now` for testing. |
+| Store | `data/props_live.db` | `prop_bets` is immutable (triggers abort UPDATE and DELETE; unique per game-player-stat); `prop_signals`, `prop_results`, `slot_log`, `pipeline_health`. |
+| Settlement | `scripts/props_settle_job.py`, `props/live/settle.py` | box scores -> outcome, three early-exit treatments, profit at best / median / flat -110, CLV to T-5 from the recorded signals. |
+| Export and dashboard | `scripts/export_props_dashboard_data.py --live` -> `data/props_dashboard_live/`; sidebar source switch in `dashboard_props/app.py` | same schema as the backtest export; pending bets have blank results. |
+| Health | `props/live/health.py`, dashboard Model-health tab | collector age, injury-report age, signal-job age, missed slots, unsettled bets. |
+
+**Slot rule (live differs from the backtest here).** The collector snapshots every 30 minutes plus a closing snapshot, not at exactly T-240/T-60/T-5. A slot with nominal time T uses the snapshot taken up to 10 minutes after T if one exists (the job waits for it), else the freshest snapshot before T if it is at most 40 minutes old, else the slot is missed; a slot is never worked more than 25 minutes after its nominal time; the T-5 slot does not wait. Every other input is limited to what was stamped at or before the snapshot used. The age of the snapshot (`snapshot_minutes`) is stored with every signal and bet.
+
+**Known live limits, all disclosed:** (1) the box-score sync (task "NBA Daily Inference", 09:15 local) runs after the earliest slots of afternoon games, so on days with afternoon tips the T-240 slot of those games is refused (history stale) and missed; moving that task earlier would fix it (not done: it is the team pipeline's task). (2) A quoted player with no listing this season and no report entry is left without a row, so October coverage is low. (3) The record starts when the job first writes a bet; nothing earlier is back-filled. (4) The job runs from this worktree (`C:\Users\jorda\nba-props-integrate`, branch `props-phase4`, not merged to main); the scheduled tasks break if the worktree moves.
+
+**Verification before start.** 9 + 7 + 4 + 3 + 2 unit tests for the slot rule, store, guard, settlement, export, health and freshness; replay of four historical slates through the job's evaluation code reproduced the parity harness's bets (Jaccard 0.978, EV correlation 0.997); one dry run on the live feeds.

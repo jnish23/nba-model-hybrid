@@ -3,8 +3,8 @@ NBA player props dashboard (paper-trading view). Separate from the team dashboar
 
     streamlit run dashboard_props/app.py
 
-D0 shows BACKTEST data (the frozen rule replayed on 2023-24 to 2025-26) built by scripts/export_props_dashboard_data.py into data/props_dashboard/. The same pages will read live
-paper-trading tables once the live pipeline exists (reports/props/dashboard_plan.md, reports/props/live_pipeline_plan.md).
+Two data sources, chosen in the sidebar: the LIVE paper record (scripts/export_props_dashboard_data.py --live -> data/props_dashboard_live/) and the BACKTEST replay of the frozen rule on
+2023-24 to 2025-26 (scripts/export_props_dashboard_data.py -> data/props_dashboard/). Plans: reports/props/dashboard_plan.md, reports/props/live_pipeline_plan.md.
 """
 import json
 import os
@@ -21,7 +21,8 @@ except ImportError:                                   # `streamlit run dashboard
     import logic as L
 
 ROOT = Path(__file__).resolve().parent.parent
-DATA_DIR = Path(os.environ.get('PROPS_DASH_DATA', ROOT / 'data' / 'props_dashboard'))
+BACKTEST_DIR = Path(os.environ.get('PROPS_DASH_DATA', ROOT / 'data' / 'props_dashboard'))
+LIVE_DIR = Path(os.environ.get('PROPS_DASH_LIVE', ROOT / 'data' / 'props_dashboard_live'))
 STAT_CHOICES = ['rebounds', 'assists', 'threes', 'ra']
 T_LABEL = {240: 'T-4h', 60: 'T-1h', 5: 'T-5m'}
 
@@ -32,11 +33,13 @@ st.set_page_config(page_title='NBA Props', page_icon='🏀', layout='wide')
 def load(data_dir):
     d = Path(data_dir)
     bets = pd.read_csv(d / 'bets.csv', dtype={'game_id': str})
-    bets['played'] = bets['played'].astype(bool)
+    bets['played'] = bets['played'].fillna(0).astype(bool)
     bets['tip_et'] = pd.to_datetime(bets['tip_ref_utc'], utc=True).dt.tz_convert('America/New_York')
     out = {'bets': bets, 'summary': pd.read_csv(d / 'season_summary.csv'), 'reliability': pd.read_csv(d / 'reliability.csv'), 'bias': pd.read_csv(d / 'bias_monthly.csv'),
            'meta': json.loads((d / 'meta.json').read_text(encoding='utf-8')), 'pmf': json.loads((d / 'pmf.json').read_text(encoding='utf-8')),
            'books': json.loads((d / 'books.json').read_text(encoding='utf-8'))}
+    for name in ('pipeline_health', 'slot_log', 'checks'):
+        out[name] = pd.read_csv(d / f'{name}.csv') if (d / f'{name}.csv').exists() else pd.DataFrame()
     return out
 
 
@@ -72,13 +75,14 @@ def board_table(d, mode, treatment, reveal):
 def page_board(D, mode, treatment):
     bets = D['bets']
     c1, c2, c3 = st.columns([1, 1, 2])
+    live = D['meta']['mode'] == 'live'
     season = c1.selectbox('Season', sorted(bets['season'].unique(), reverse=True))
     in_season = bets[bets['season'] == season]
     dates = sorted(in_season['game_date'].unique(), reverse=True)
     games_per_day = in_season.groupby('game_date')['game_id'].nunique()
-    default_idx = next((i for i, dd in enumerate(dates) if games_per_day[dd] >= 6), 0)            # open on the latest typical slate, not a one-game Finals night
-    day = c2.selectbox('Replay date', dates, index=default_idx)
-    reveal = c3.checkbox('Reveal results (replay)', value=False, help='Off: see the slate as it looked before the games. On: add actual results.')
+    default_idx = 0 if live else next((i for i, dd in enumerate(dates) if games_per_day[dd] >= 6), 0)       # live: the latest slate; replay: the latest typical slate, not a one-game Finals night
+    day = c2.selectbox('Date' if live else 'Replay date', dates, index=default_idx)
+    reveal = c3.checkbox('Show results (settled bets)' if live else 'Reveal results (replay)', value=live, help='Off: see the slate as it looked before the games. On: add actual results where settled.')
     f1, f2, f3, f4 = st.columns(4)
     stats = f1.multiselect('Stat', STAT_CHOICES, default=STAT_CHOICES, format_func=lambda s: L.STAT_LABEL[s])
     sides = f2.multiselect('Side', ['over', 'under'], default=['over', 'under'])
@@ -144,6 +148,13 @@ def page_tracker(D, mode, treatment):
     if d.empty:
         st.info('Select at least one season.')
         return
+    if D['meta']['mode'] == 'live':
+        pending = int(d[f'status_{treatment}'].isna().sum())
+        d = d[d[f'status_{treatment}'].notna()]
+        st.caption(f'{pending} bets are placed and not yet settled; only settled bets count below.')
+        if d.empty:
+            st.info('No settled bets yet.')
+            return
     s = L.roi_summary(d, mode, treatment)
     other = {m: L.roi_summary(d, m, treatment, n_boot=200)['roi'] for m in L.PRICE_MODES}
     t1, t2, t3, t4, t5 = st.columns(5)
@@ -170,7 +181,7 @@ def page_tracker(D, mode, treatment):
     b3.markdown('**By book (best-price quote)**'); b3.dataframe(L.breakdown(d, 'book', mode, treatment).style.format(fmt), hide_index=True, use_container_width=True)
     dd = d.assign(decision=d['minutes_before'].map(T_LABEL))
     b4.markdown('**By decision time**'); b4.dataframe(L.breakdown(dd, 'decision', mode, treatment).style.format(fmt), hide_index=True, use_container_width=True)
-    st.subheader('Season summary')
+    st.subheader('Season summary' if D['meta']['mode'] != 'live' else 'Live record summary (placebo CLV and the information slope need a longer record)')
     sm = D['summary'].copy()
     show = sm[['season', 'kind', 'bets', 'player_games', 'roi_best_stands', 'roi_median_stands', 'roi_flat_stands', 'clv_real_pts', 'clv_placebo_mean_pts', 'clv_excess_pts', 'clv_excess_lower_pts', 'placebo_roi',
                'slope4', 'slope4_lo', 'slope4_hi']]
@@ -181,6 +192,17 @@ def page_tracker(D, mode, treatment):
 
 
 def page_health(D):
+    if D['meta']['mode'] == 'live':
+        st.warning(D['meta']['disclosure'], icon='⚠️')
+        if len(D['checks']):
+            st.markdown('**Checks at export time**')
+            st.dataframe(D['checks'], hide_index=True, use_container_width=True)
+        st.markdown('**Pipeline runs (latest first)**')
+        st.dataframe(D['pipeline_health'].head(40), hide_index=True, use_container_width=True)
+        st.markdown('**Decision slots (done, missed, no quotes)**')
+        st.dataframe(D['slot_log'].head(60), hide_index=True, use_container_width=True)
+        st.caption('Forecast-bias and reliability charts need a few hundred settled forecasts; they appear in the backtest view meanwhile.')
+        return
     st.caption('Is the forecast still centred, and is it calibrated at the book line? Backtest values here; the live page will use rolling windows.')
     bias = D['bias']
     stat = st.selectbox('Stat', sorted(bias['stat'].unique()), index=0, format_func=lambda s: L.STAT_LABEL.get(s, s))
@@ -204,7 +226,7 @@ def page_about(D):
     meta, rule = D['meta'], D['meta']['rule']
     st.markdown(f"""
 ### What this is
-A **paper-trading** view of one frozen rule. No real money, no bet placement. Mode: **{meta['mode']}** (historical replay), built {meta['built_at_utc']}.
+A **paper-trading** view of one frozen rule. No real money, no bet placement. Mode: **{meta['mode']}** ({'the live paper record, one row per rule-qualified bet at first qualification, flat 1 unit' if meta['mode'] == 'live' else 'historical replay'}), built {meta['built_at_utc']}.
 
 ### The frozen rule
 - Stats: {', '.join(L.STAT_LABEL[s] for s in rule['stats'])}; edge threshold {rule['primary']['e']:.0%} expected value at the best price; earliest decision time (T-4h, T-1h, T-5m) at which a market qualifies;
@@ -228,11 +250,18 @@ Quotes can move or disappear before placement; prop limits are small; winning ac
 
 def main():
     st.title('🏀 NBA Player Props · paper-trading dashboard')
-    if not (DATA_DIR / 'bets.csv').exists():
-        st.error(f'No data in {DATA_DIR}. Build it with: python scripts/export_props_dashboard_data.py')
+    sources = {name: p for name, p in (('Live paper record', LIVE_DIR), ('Backtest replay', BACKTEST_DIR)) if (p / 'bets.csv').exists()}
+    if not sources:
+        st.error(f'No data. Build it with: python scripts/export_props_dashboard_data.py --live   (or without --live for the backtest). Looked in {LIVE_DIR} and {BACKTEST_DIR}.')
         return
-    D = load(str(DATA_DIR))
-    st.warning('BACKTEST MODE: historical replays of the frozen rule, not live bets. 2023-24 and 2024-25 are in-sample for k and the rule; 2025-26 is the final holdout.', icon='⚠️')
+    st.sidebar.header('Data')
+    source = st.sidebar.radio('Source', list(sources), index=0)
+    D = load(str(sources[source]))
+    if D['meta']['mode'] == 'live':
+        st.warning('LIVE PAPER RECORD: frozen rule, no real money. ' + D['meta']['disclosure'], icon='⚠️')
+        st.sidebar.caption(f"Record started {D['meta'].get('record_started_utc') or 'not yet'} · model {D['meta']['model_version']} · built {D['meta']['built_at_utc']}")
+    else:
+        st.warning('BACKTEST MODE: historical replays of the frozen rule, not live bets. 2023-24 and 2024-25 are in-sample for k and the rule; 2025-26 is the final holdout.', icon='⚠️')
     st.sidebar.header('Pricing')
     mode = st.sidebar.radio('Price used for EV and profit', list(L.PRICE_MODES), format_func=lambda m: L.PRICE_MODES[m], index=0)
     treatment = st.sidebar.selectbox('Early-exit settlement', list(L.TREATMENTS), format_func=lambda t: L.TREATMENTS[t], index=0)
