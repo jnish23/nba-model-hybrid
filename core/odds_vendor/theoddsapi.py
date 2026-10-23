@@ -3,6 +3,7 @@ The Odds API (v4) adapter.
 
 Credit rules (https://the-odds-api.com/liveapi/guides/v4/), used for the pre-flight estimate:
   /sports/{sport}/events                        free
+  /sports/{sport}/odds                          markets returned x regions        (every game's team lines in one call)
   /sports/{sport}/events/{id}/odds              markets returned x regions        (props; the estimate is the worst case)
   /historical/sports/{sport}/events             1
   /historical/sports/{sport}/events/{id}/odds   10 x markets returned x regions
@@ -62,6 +63,14 @@ class TheOddsApi:
     def events(self, commence_from=None, commence_to=None):
         params = {k: v for k, v in (('commenceTimeFrom', commence_from), ('commenceTimeTo', commence_to)) if v}
         return self._get(f'/sports/{self.sport}/events', params, estimate=0.0, tag='events')
+
+    def team_odds(self, markets=('h2h', 'spreads', 'totals'), regions='us', bookmakers=None):
+        """Moneyline / spread / total of EVERY upcoming game in one call (the bulk endpoint): cost = markets x regions."""
+        markets = _as_list(markets)
+        params = {'markets': ','.join(markets), 'oddsFormat': 'american', 'dateFormat': 'iso'}
+        params.update({'bookmakers': ','.join(_as_list(bookmakers))} if bookmakers else {'regions': ','.join(_as_list(regions))})
+        est = len(markets) * _n_regions(regions, bookmakers)
+        return self._get(f'/sports/{self.sport}/odds', params, estimate=est, tag='team_odds')
 
     def event_odds(self, event_id, markets, regions='us', bookmakers=None):
         markets = _as_list(markets)

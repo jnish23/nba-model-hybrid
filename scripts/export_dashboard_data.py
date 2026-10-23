@@ -23,10 +23,12 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+from core.odds_rerun import STATUS_FILE_NAME, read_status, write_status
 DB_PATH = ROOT / 'data' / 'nba_stats.db'
 SNAPSHOT_DIR = ROOT / 'dashboard' / 'snapshot'
 SNAPSHOT_PATH = SNAPSHOT_DIR / 'predictions_log.csv'
 PUBLISH_DIR = ROOT / 'data' / 'dashboard_publish'
+RERUN_STATUS_PATH = ROOT / 'data' / 'rerun_status.json'     # written by scripts/schedule_odds_rerun.py
 BRANCH = 'dashboard-data'
 FILE_NAME = 'predictions_log.csv'
 EXPLANATIONS_FILE_NAME = 'explanations.csv'      # why the model likes each game (team/explain.py), written next to the predictions
@@ -67,7 +69,7 @@ def history_shards(df, expl, top=HISTORY_TOP_FEATURES):
     return {f'{m}.csv.gz': part.drop(columns='month').reset_index(drop=True) for m, part in keep.groupby('month')}
 
 
-def write_files(directory, df, explanations, history=None):
+def write_files(directory, df, explanations, history=None, status=None):
     """
     Write predictions_log.csv and, when there are explanations, explanations.csv (the recent games, in full) into `directory`.
     `history` (all explanation rows) also writes explanations_history/<month>.csv.gz and a manifest listing them; the gzip header carries no
@@ -76,6 +78,10 @@ def write_files(directory, df, explanations, history=None):
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
     df.to_csv(directory / FILE_NAME, index=False)
+    if status is not None:                       # which of today's games still wait for lines, and when the next re-run is (core/odds_rerun.py)
+        write_status(directory / STATUS_FILE_NAME, status)
+    else:
+        (directory / STATUS_FILE_NAME).unlink(missing_ok=True)
     if explanations is not None and not explanations.empty:
         explanations.to_csv(directory / EXPLANATIONS_FILE_NAME, index=False)
     shards = history_shards(df, history)
@@ -110,12 +116,12 @@ def ensure_worktree():
     logging.info(f"Worktree for {BRANCH} at {PUBLISH_DIR}")
 
 
-def publish(df, explanations=None, history=None):
+def publish(df, explanations=None, history=None, status=None):
     ensure_worktree()
     git('fetch', 'origin', BRANCH, cwd=PUBLISH_DIR, check=False)
     if git('rev-parse', '--verify', f'origin/{BRANCH}', cwd=PUBLISH_DIR, check=False).returncode == 0:
         git('reset', '--hard', f'origin/{BRANCH}', cwd=PUBLISH_DIR)  # the branch only ever holds exported data
-    write_files(PUBLISH_DIR, df, explanations, history)
+    write_files(PUBLISH_DIR, df, explanations, history, status)
     git('add', '-A', cwd=PUBLISH_DIR)
     if git('diff', '--cached', '--quiet', cwd=PUBLISH_DIR, check=False).returncode == 0:
         logging.info("Dashboard data unchanged; nothing to publish")
@@ -136,8 +142,9 @@ def main():
     df = load_predictions()
     explanations = load_explanations_table(df)
     history = load_explanations_table(df, days=None)
+    status = read_status(RERUN_STATUS_PATH)
     if args.publish:
-        publish(df, explanations, history)
+        publish(df, explanations, history, status)
     else:
         write_files(SNAPSHOT_DIR, df, explanations)
         logging.info(f"Wrote {len(df)} rows to {SNAPSHOT_PATH} and {len(explanations)} explanation rows to {SNAPSHOT_DIR / EXPLANATIONS_FILE_NAME}")
