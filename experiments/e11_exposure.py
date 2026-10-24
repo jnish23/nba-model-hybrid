@@ -12,7 +12,6 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
-from scipy.stats import norm
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from experiments import metrics as M                                                  # noqa: E402
@@ -24,18 +23,9 @@ CAP = 0.25            # cap on the sum of FULL-Kelly fractions per game in the j
 
 
 def with_probs(base):
+    """The 5%-edge bets with the win probability each was selected on (make_bets p_win: push-aware on whole-number lines)."""
     bets = M.make_bets(base, thr=0.05)
-    d = base.set_index('gameId')
-    p = []
-    for r in bets.itertuples():
-        row = d.loc[r.gameId]
-        if r.market == 'ml':
-            p.append(row['ml_prob'] if r.side == 'home' else 1 - row['ml_prob'])
-        elif r.market == 'spread':
-            p.append(norm.cdf(abs(row['spread_pred'] + row['odds_home_spread']) / row['sigma_spread']))
-        else:
-            p.append(norm.cdf(abs(row['total_pred'] - row['odds_total']) / row['sigma_total']))
-    bets['p'] = p
+    bets['p'] = bets['p_win']
     bets['b'] = np.where(bets['price'] < 0, 100.0 / -bets['price'], bets['price'] / 100.0)
     bets['kelly'] = np.clip((bets['p'] * bets['b'] - (1 - bets['p'])) / bets['b'], 0, None)
     bets['ev'] = bets['p'] * bets['b'] - (1 - bets['p'])

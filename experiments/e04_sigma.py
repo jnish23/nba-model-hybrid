@@ -8,9 +8,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import lightgbm as lgb
-from scipy.stats import norm
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from team import betting as bt                                                          # noqa: E402
 from experiments import decide, metrics as M                                             # noqa: E402
 from experiments.lib import GRID, OUT, SEED, TEST_SEASONS, label_calib_folds, load_games, load_run, make_est, run_split_params, split_fold   # noqa: E402
 
@@ -45,7 +45,7 @@ def cover_frame(df, market, sigma):
     else:
         line, tot = df['odds_total'].to_numpy(float), df['target_total_pts'].to_numpy(float)
         pe, res = pred - line, tot - line
-    p = np.clip(norm.cdf(pe / sigma), 1e-6, 1 - 1e-6)
+    p = np.clip(bt.cover_probabilities(pe, sigma, lines=line), 1e-6, 1 - 1e-6)      # P(over / home covers | no push), as the bets use
     y = (res > 0).astype(float)
     ok = np.isfinite(p) & np.isfinite(res) & (res != 0)
     return pd.DataFrame({'p': p, 'y': y, 'ok': ok})

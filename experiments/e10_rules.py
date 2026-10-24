@@ -5,7 +5,6 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from scipy.stats import norm
 from sklearn.isotonic import IsotonicRegression
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -44,19 +43,10 @@ def pick_threshold(calib, market):
     return best, table
 
 
-def predicted_win(bets, df):
-    """Average model probability that the selected side wins (for the calibration-of-selected-bets check)."""
-    d = df.set_index('gameId')
-    ps = []
-    for r in bets.itertuples():
-        row = d.loc[r.gameId]
-        if r.market == 'ml':
-            ps.append(row['ml_prob'] if r.side == 'home' else 1 - row['ml_prob'])
-        else:
-            sig = row['sigma_spread'] if r.market == 'spread' else row['sigma_total']
-            pe = abs(row['spread_pred'] + row['odds_home_spread']) if r.market == 'spread' else abs(row['total_pred'] - row['odds_total'])
-            ps.append(norm.cdf(pe / sig))
-    return float(np.mean(ps)) if ps else np.nan
+def predicted_win(bets, df=None):
+    """Average model probability that the selected side wins (for the calibration-of-selected-bets check). Read from the bet table
+    (make_bets p_win), which is conditional on no push on whole-number lines like the non-push hit rate it is compared with."""
+    return float(bets['p_win'].mean()) if len(bets) else np.nan
 
 
 def main():

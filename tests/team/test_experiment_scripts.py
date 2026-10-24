@@ -123,3 +123,65 @@ def test_total_decision_is_judged_against_the_total_control():
     from experiments import e12_shopping
     src = inspect.getsource(e12_shopping.main)
     assert "('total', tot_roi)" in src and "('spread', sp_roi)" in src
+
+
+# ------------------------------------------------------------------ cover probabilities: one definition everywhere (make_bets p_win)
+
+def _lattice_games(n=60000, seed=0, line=-3.0, sigma=12.0, push_aware_pred=2.0):
+    """Margins that really are round(Normal(pred, sigma)) on a whole-number line, so a calibrated model's P(win | no push) is exact."""
+    rng = np.random.default_rng(seed)
+    pred = rng.uniform(-6, 6, n) + push_aware_pred
+    margin = np.round(rng.normal(pred, sigma))
+    total_pred = rng.uniform(210, 230, n)
+    total_line = np.round(total_pred + rng.normal(0, 3, n))                 # whole-number totals
+    total = np.round(rng.normal(total_pred, 17.0))
+    return pd.DataFrame({
+        'gameId': [f'{i:010d}' for i in range(n)], 'gameDate': pd.Timestamp('2024-01-01') + pd.to_timedelta(np.arange(n) // 8, unit='D'),
+        'seasonYear': '2023-24', 'ml_prob': 0.5, 'odds_home_ml': -110.0, 'odds_away_ml': -110.0, 'target_home_win': 1,
+        'spread_pred': pred, 'odds_home_spread': line, 'target_point_diff': margin, 'sigma_spread': sigma,
+        'total_pred': total_pred, 'odds_total': total_line, 'target_total_pts': total, 'sigma_total': 17.0})
+
+
+def test_make_bets_p_win_is_the_probability_behind_the_edge():
+    from experiments import metrics as M
+    b = M.make_bets(_lattice_games(4000), thr=0.0, markets=('spread', 'total'))
+    assert np.allclose(b['p_win'], b['edge'] + M.BREAK_EVEN_110) and b['p_win'].between(0, 1).all()
+    ml = M.make_bets(pd.DataFrame({'gameId': ['a', 'b'], 'gameDate': pd.Timestamp('2024-01-01'), 'seasonYear': 's', 'ml_prob': [0.7, 0.3],
+                                   'odds_home_ml': [-110.0, -110.0], 'odds_away_ml': [-110.0, -110.0], 'target_home_win': [1, 0]}), thr=0.0, markets=('ml',))
+    assert sorted(ml['p_win'].round(3)) == [0.7, 0.7] and set(ml['side']) == {'home', 'away'}
+
+
+def test_hit_rate_of_non_push_bets_matches_mean_p_win_on_whole_number_lines():
+    from experiments import metrics as M
+    b = M.make_bets(_lattice_games(), thr=0.02, markets=('spread', 'total'))
+    for mk in ('spread', 'total'):
+        d = b[b['market'] == mk]
+        assert len(d) > 2000 and not d['push'].any()
+        assert abs(d['won'].mean() - d['p_win'].mean()) < 0.006, (mk, d['won'].mean(), d['p_win'].mean())
+
+
+def test_e11_stakes_and_e10_check_use_the_probability_the_bet_was_selected_on():
+    from experiments import e10_rules, e11_exposure, metrics as M
+    g = _lattice_games(3000)
+    bets = e11_exposure.with_probs(g)
+    assert np.allclose(bets['p'], bets['p_win'])
+    f = (bets['p'] * bets['b'] - (1 - bets['p'])) / bets['b']
+    assert np.allclose(bets['kelly'], np.clip(f, 0, None)) and np.allclose(bets['ev'], bets['p'] * bets['b'] - (1 - bets['p']))
+    sp = M.make_bets(g, thr=0.05, markets=('spread',))
+    assert e10_rules.predicted_win(sp, g) == pytest.approx(sp['p_win'].mean())
+    assert np.isnan(e10_rules.predicted_win(sp.iloc[0:0], g))
+
+
+def test_e04_cover_frame_is_push_aware_like_the_bets():
+    from scipy.stats import norm
+    from experiments.e04_sigma import cover_frame
+    df = pd.DataFrame({'spread_pred': [4.0, 4.0], 'odds_home_spread': [-3.0, -3.5], 'target_point_diff': [5.0, 5.0],
+                       'total_pred': [220.0, 220.0], 'odds_total': [218.0, 218.5], 'target_total_pts': [225.0, 225.0]})
+    sig = np.array([12.0, 12.0])
+    sp = cover_frame(df, 'spread', sig)
+    assert sp['p'][1] == pytest.approx(norm.cdf(0.5 / 12))                            # half-point line: no push, plain Phi
+    win, loss = norm.cdf((1.0 - 0.5) / 12), norm.cdf((-1.0 - 0.5) / 12)
+    assert sp['p'][0] == pytest.approx(win / (win + loss)) and sp['p'][0] != pytest.approx(norm.cdf(1.0 / 12))
+    tot = cover_frame(df, 'total', sig)
+    win, loss = norm.cdf((2.0 - 0.5) / 12), norm.cdf((-2.0 - 0.5) / 12)
+    assert tot['p'][0] == pytest.approx(win / (win + loss)) and tot['p'][1] == pytest.approx(norm.cdf(1.5 / 12))
