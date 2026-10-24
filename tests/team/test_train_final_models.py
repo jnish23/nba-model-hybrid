@@ -47,7 +47,10 @@ def test_default_total_model_predicts_the_level_as_validated_in_e1(trained_defau
     b = mr.load_bundle('_t', d / 'saved')
     assert not isinstance(b.total, mm.ResidualTotalModel) and isinstance(b.spread, mm.ResidualSpreadModel)
     assert b.calib_meta['total_target'] == 'total'
-    assert seen == ['target_home_win', SPREAD_GAP_COL, 'target_total_pts']       # spread selected on its gap, total on the level
+    # team features are ranked against what the market misses, even for a total that is fitted on the level, and the lines come back after
+    assert seen == [SPREAD_GAP_COL, TOTAL_GAP_COL]
+    for k in ('ml', 'spread', 'total'):
+        assert {'odds_home_spread', 'odds_total'} <= set(b.features[k])
 
 
 def test_residual_total_is_opt_in_and_its_sigma_follows(trained):
@@ -60,7 +63,7 @@ def test_residual_total_is_opt_in_and_its_sigma_follows(trained):
 
 def test_feature_selection_ranks_the_gap_the_models_are_fit_on(trained):
     *_, seen = trained
-    assert seen == ['target_home_win', SPREAD_GAP_COL, TOTAL_GAP_COL]
+    assert seen == [SPREAD_GAP_COL, TOTAL_GAP_COL]
 
 
 def test_residual_total_forecast_tracks_a_drifting_scoring_level(trained):
