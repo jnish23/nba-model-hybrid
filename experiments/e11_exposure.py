@@ -1,6 +1,7 @@
 """E11 - same-game exposure (see PREREGISTRATION.md). Bets = the baseline 5%-edge rule; only the stake sizing differs.
 (i) independent quarter-Kelly per bet [baseline], (ii) one best-EV market per game (quarter-Kelly), (iii) joint Kelly over the
-game's bets with an ML/spread dependence estimated in-fold (Gaussian copula; totals independent), scaled by 1/4.
+game's bets with the exact ML/spread dependence (both are thresholds on the one game margin, so the events are nested or
+complementary - joint_probs; totals independent), scaled by 1/4.
 Bankroll simulation: bets settled by game day, fractions applied to the start-of-day bankroll; 1000 day-bootstrap resamples.
 python -m experiments.e11_exposure"""
 import itertools
@@ -11,11 +12,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
-from scipy.stats import multivariate_normal, norm
+from scipy.stats import norm
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from experiments import metrics as M                                                  # noqa: E402
-from experiments.lib import OUT, TEST_SEASONS, label_calib_folds, load_games, load_run   # noqa: E402
+from experiments.lib import OUT, load_run   # noqa: E402
 
 NAME = 'E11_exposure'
 KELLY_SCALE = 0.25
@@ -41,19 +42,29 @@ def with_probs(base):
     return bets
 
 
-def fold_rho(df_fold_calib):
-    """Latent correlation between 'home wins' and 'home covers' from the fold's calibration games."""
-    d = df_fold_calib.dropna(subset=['odds_home_spread'])
-    w = (d['target_point_diff'] > 0).astype(float)
-    c = ((d['target_point_diff'] + d['odds_home_spread']) > 0).astype(float)
-    phi = np.corrcoef(w, c)[0, 1]
-    return float(np.clip(np.sin(np.pi * phi / 2), 0, 0.99))
+def joint_probs(p1, p2, same_side):
+    """
+    Exact joint distribution of two bet outcomes on the SAME game: {(1, 1): both win, (1, 0): only the first wins, (0, 1): only the
+    second wins, (0, 0): neither}. A moneyline and a spread bet are thresholds on one random variable, the final margin M, so there is
+    no copula to fit: the events are comonotonic.
+      same side (both home or both away): both are upper (or both lower) tails of M, so one event contains the other and
+        P(both) = min(p1, p2) - the favourite cannot cover -5.5 and lose the game;
+      opposite sides (home ML with away spread, ...): an upper tail and a lower tail, so P(both) = max(0, p1 + p2 - 1), the 'middle'.
+    (The earlier version used a bivariate normal with rho = sin(pi * phi / 2) < 1, which is only the median-split identity and gave
+    positive probability to impossible outcomes.)
+    """
+    if same_side:
+        p11 = min(p1, p2)
+    else:
+        p11 = max(0.0, p1 + p2 - 1.0)
+    p10, p01 = p1 - p11, p2 - p11
+    return {(1, 1): p11, (1, 0): p10, (0, 1): p01, (0, 0): 1.0 - (p11 + p10 + p01)}
 
 
-def joint_fractions(g, rho):
-    """Full-Kelly fractions maximising expected log growth over the joint outcomes of one game's bets."""
+def outcome_probs(g):
+    """(all 0/1 outcome vectors of one game's bets, their joint probabilities)."""
     k = len(g)
-    p, b = g['p'].to_numpy(), g['b'].to_numpy()
+    p = g['p'].to_numpy()
     side_team = np.where(g['market'] == 'total', 'x', np.where(g['side'] == 'home', 'H', 'A'))
     outcomes = np.array(list(itertools.product([0, 1], repeat=k)))
     probs = np.ones(len(outcomes))
@@ -68,14 +79,17 @@ def joint_fractions(g, rho):
         probs[oi] = pr
     if dependent:
         i, j = ml_i[0], sp_i[0]
-        r = rho if side_team[i] == side_team[j] else -rho            # same team -> positively related events
-        z = np.array([norm.ppf(np.clip(p[i], 1e-6, 1 - 1e-6)), norm.ppf(np.clip(p[j], 1e-6, 1 - 1e-6))])
-        both = multivariate_normal(mean=[0, 0], cov=[[1, r], [r, 1]]).cdf(z)
-        pj = {(1, 1): both, (1, 0): p[i] - both, (0, 1): p[j] - both, (0, 0): 1 - p[i] - p[j] + both}
-        pj = {key: max(v, 0.0) for key, v in pj.items()}
-        tot = sum(pj.values())
+        pj = joint_probs(p[i], p[j], same_side=side_team[i] == side_team[j])
         for oi, o in enumerate(outcomes):
-            probs[oi] = probs[oi] * pj[(o[i], o[j])] / tot
+            probs[oi] = probs[oi] * pj[(o[i], o[j])]
+    return outcomes, probs
+
+
+def joint_fractions(g):
+    """Full-Kelly fractions maximising expected log growth over the joint outcomes of one game's bets."""
+    k = len(g)
+    b = g['b'].to_numpy()
+    outcomes, probs = outcome_probs(g)
     returns = np.where(outcomes == 1, b, -1.0)
 
     def neg(f):
@@ -86,7 +100,7 @@ def joint_fractions(g, rho):
     return np.clip(res.x, 0, None)
 
 
-def stakes(bets, rho_by_season):
+def stakes(bets):
     bets = bets.copy()
     bets['f_ind'] = KELLY_SCALE * bets['kelly']
     best = bets.groupby('gameId')['ev'].transform('max') == bets['ev']
@@ -96,18 +110,15 @@ def stakes(bets, rho_by_season):
         if len(g) == 1:
             bets.loc[g.index, 'f_joint'] = KELLY_SCALE * g['kelly'].iloc[0]
             continue
-        f = joint_fractions(g, rho_by_season[g['seasonYear'].iloc[0]])
+        f = joint_fractions(g)
         bets.loc[g.index, 'f_joint'] = KELLY_SCALE * f
     return bets
 
 
 def main():
-    base, cal = load_run('baseline')
-    _, df = load_games()
-    cal['fold'] = label_calib_folds(df, cal)
-    rho = {s: fold_rho(cal[cal['fold'] == s]) for s in TEST_SEASONS}
+    base, _ = load_run('baseline')
     bets = with_probs(base)
-    bets = stakes(bets, rho)
+    bets = stakes(bets)
     cols = {'(i) independent 1/4 Kelly [baseline]': 'f_ind', '(ii) best-EV market per game': 'f_best', '(iii) joint Kelly (1/4)': 'f_joint'}
     n_boot = 1000
     nd = bets['gameDate'].nunique()
@@ -145,14 +156,14 @@ def main():
         decisions[k] = bool(ok)
         rows[list(cols).index(k)].update({'paired growth diff vs (i)': round(float(np.median(d)), 4), 'diff 95% CI': f'[{np.quantile(d, .025):.3f}, {np.quantile(d, .975):.3f}]', 'KEEP': bool(ok)})
     lines = [f'# {NAME}\n', f'Bets: {len(bets)} (5% edge rule) on {bets["gameId"].nunique()} games, {int((bets.groupby("gameId").size() > 1).sum())} games with more than one bet.',
-             f'Latent ML/spread dependence rho by fold: {json.dumps({k: round(v, 3) for k, v in rho.items()})}', '',
+             'ML/spread dependence: exact (one margin, nested or complementary events); totals independent.', '',
              pd.DataFrame(rows).to_markdown(index=False), '', '## Decision (pre-registered)\n'] + \
         [f'- {k}: **{"KEEP" if v else "REJECT"}**' for k, v in decisions.items()]
     avg = bets.groupby('gameId').size().value_counts().sort_index().to_dict()
     lines += ['', f'Bets per game: {avg}']
     (OUT / NAME).mkdir(parents=True, exist_ok=True)
     (OUT / NAME / 'RESULT.md').write_text('\n'.join(lines), encoding='utf-8')
-    (OUT / NAME / 'decision.json').write_text(json.dumps({'decision': decisions, 'rho': rho}, indent=1))
+    (OUT / NAME / 'decision.json').write_text(json.dumps({'decision': decisions}, indent=1))
     print('\n'.join(lines))
 
 
