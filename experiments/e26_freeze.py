@@ -84,7 +84,8 @@ def main():
     train = df[df['seasonYear'] <= TEST_SEASONS[-1]].sort_values('gameDate', kind='stable').reset_index(drop=True)
     mt = train.iloc[:int(len(train) * 0.8)].reset_index(drop=True)
     n_fl = int(len(mt) * FLAML_TRAIN_FRAC)
-    feats = m._select_features_from_subset(mt.iloc[:n_fl], 'target_total_pts', seed=42)
+    # legacy=True: the frozen model of the registered E26 forward test was built with the pre-audit selection; re-running this must not change it
+    feats = m._select_features_from_subset(mt.iloc[:n_fl], 'target_total_pts', seed=42, legacy=True)
     _, info = fit_tuned('reg', mt[feats], mt['target_total_pts'], n_fl)
     model = make_est('reg', GRID[info['cfg']]).fit(train[feats], train['target_total_pts'])
     joblib.dump(model, FROZEN / 'no_odds_total.joblib')
