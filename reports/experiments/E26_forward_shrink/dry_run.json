@@ -1,0 +1,130 @@
+{
+ "dry_run": true,
+ "start": "2026-10-20",
+ "counts": {
+  "games_with_result_and_entry": 16,
+  "no_logged_prediction": 0,
+  "other_model_set": 0,
+  "predicted_after_entry": 0,
+  "eligible_a": 16
+ },
+ "frozen_beta": {
+  "spread": 0.47422132474910234,
+  "total": 0.2227203618308048,
+  "ml": 0.31956866397965233
+ },
+ "A-total": {
+  "primary": {
+   "n": 16,
+   "note": "too few games",
+   "frozen_beta_inside_ci": false,
+   "supported_if_decisive": false,
+   "status": "too few games"
+  },
+  "loss_frozen_all_seasons": {
+   "n": 16
+  },
+  "loss_frozen_discovery": {
+   "n": 16
+  },
+  "vs_close": {
+   "n": 16,
+   "note": "too few games"
+  },
+  "regular_season_only": {
+   "n": 16,
+   "note": "too few games"
+  }
+ },
+ "A-spread": {
+  "primary": {
+   "n": 16,
+   "note": "too few games",
+   "frozen_beta_inside_ci": false,
+   "supported_if_decisive": false,
+   "status": "too few games"
+  },
+  "loss_frozen_all_seasons": {
+   "n": 16
+  },
+  "loss_frozen_discovery": {
+   "n": 16
+  },
+  "vs_close": {
+   "n": 16,
+   "note": "too few games"
+  },
+  "regular_season_only": {
+   "n": 16,
+   "note": "too few games"
+  }
+ },
+ "A-ml": {
+  "primary": {
+   "n": 16,
+   "note": "too few games",
+   "frozen_beta_inside_ci": false,
+   "supported_if_decisive": false,
+   "status": "too few games"
+  },
+  "loss_frozen_all_seasons": {
+   "n": 16
+  },
+  "loss_frozen_discovery": {
+   "n": 16
+  },
+  "vs_close": {
+   "n": 16,
+   "note": "too few games"
+  },
+  "regular_season_only": {
+   "n": 16,
+   "note": "too few games"
+  }
+ },
+ "betting_readout": {
+  "ml": {
+   "bets": 1,
+   "hit_rate": 100.0,
+   "hit_ci": [
+    100.0,
+    100.0
+   ],
+   "roi": 126.0,
+   "roi_ci": [
+    126.0,
+    126.0
+   ],
+   "max_drawdown": 0.0,
+   "dd_ci": [
+    0.0,
+    0.0
+   ]
+  },
+  "spread": {
+   "bets": 1,
+   "hit_rate": 100.0,
+   "hit_ci": [
+    100.0,
+    100.0
+   ],
+   "roi": 90.9090909090909,
+   "roi_ci": [
+    90.9090909090909,
+    90.9090909090909
+   ],
+   "max_drawdown": 0.0,
+   "dd_ci": [
+    0.0,
+    0.0
+   ]
+  },
+  "total": {
+   "bets": 0
+  }
+ },
+ "B-total": {
+  "note": "not scored: pass --features (a training set rebuilt after the games)"
+ },
+ "holm": {}
+}

@@ -392,3 +392,102 @@ Steps:
 The report states the actual standard errors.
 
 **Reading rule.** Supported / not supported against the rules above; no criterion changes after the run; anything else is exploratory. A "supported" label on the historical test is evidence about the scraped close, subject to the contamination caveat; only the forward test says what could be acted on.
+
+## E25 - decorrelation from the market: edge slope and blend (registered 2026-10-24, before any E25 run)
+
+### Why the existing no-odds artifacts are not used (checked first)
+
+- `models/saved/backtest_predictions_no_odds_v2.csv` (2026-01-21, 5,790 games, 2021-22..2025-26 partial): its attached lines are corrupt - 230 games with a moneyline beyond +-2000,
+  355 with both moneylines of the same sign, 553 where the listed spread has the opposite sign of `odds_home_spread_open`. It predates the audit-fixes and team-audit-2 odds pipeline (one-book opening odds, merge guards).
+- `models/saved/backtest_predictions_no_odds.csv` (2026-03-17): one season only (2025-26, 1,014 games); its feature config contains `roster_bpm_ewma_x` and `roster_bpm_ewma_y`, a duplicated-merge artifact that team-audit-2's merge guards now prevent.
+- Both were made by older code than every other experiment here, so they are not comparable with the E1-E24 baseline. The `_no_odds_2026-03-18` model files are final models (no out-of-sample predictions) and are left untouched.
+- The E-series baseline itself was built on `training_set_v1_reduced_2026-10-16.csv`; the current set is `..._2026-10-19.csv`. To compare like with like, all three runs below are regenerated on the 10-19 set with `experiments.lib.run_walk_forward` (same folds, per-fold tuning, seed 42).
+
+### Runs (regenerated, written to reports/experiments/E25_*/)
+
+- `E25_with_odds`: the baseline - opening odds in the feature pools (market as a feature; the deployed total model's form).
+- `E25_residual`: E1's hooks on `E25_with_odds`'s feature sets (market as an offset: spread = -line + f(X), total = line + f(X), ML init score = logit of the de-vigged opening probability; the deployed spread model's form).
+- `E25_no_odds`: `BaselineModel.load_data(use_odds=False)` pools, features selected afresh per fold (no market information at all).
+
+**No-odds validity checks (must all pass before the diagnostic is read):** (1) no selected feature contains `odds` or `close`; (2) the same games as `E25_with_odds`; (3) in every fold the latest training date precedes the first test date;
+(4) per-season spread MAE, total MAE and ML log loss within 0.5 points / 0.5 points / 0.03 of the audit's post-fix no-odds walk-forward (`reports/audit_fixes/walk_forward_no_odds.md`, "new: neutral params") - a larger gap is investigated, not ignored;
+(5) reported only: per fold, the largest absolute correlation (on the model-training rows) between a selected feature and the opening total, opening spread and opening log-odds - a value above 0.9 is a market proxy and is named.
+
+### Quantities (all against the OPENING line; the closing line is a secondary readout)
+
+- Market expectation: total `L = odds_total`; spread `L = -odds_home_spread` (home margin); ML `L = logit(de-vigged opening home probability)` (E1's `devig_open_prob`; games without a moneyline dropped from ML).
+- Edge `e = model - L` (ML on the log-odds scale, using `ml_prob_raw`, before isotonic calibration). Market residual `r = actual - L` (ML: the outcome).
+- **Edge slope beta:** OLS `r ~ 1 + e` (ML: logistic regression of the home win on `e` with offset `L`, plus intercept). beta = 1: the edges are real and full-sized; 0: noise; between: overstated by a factor 1/beta.
+- Error correlation `corr(actual - model, actual - L)` (spread, total).
+- **Blend:** `B = L + k e`, k fitted by least squares without intercept on the discovery seasons (ML: logistic, offset `L`, no intercept), applied unchanged to confirmation. Loss: squared error (spread, total), log loss (ML).
+  Secondary: k walk-forward (k for season s fitted on test seasons before s), 2020-21..2025-26.
+- Day-cluster bootstrap, 1,000 draws (`metrics.RNG_SEED`). Discovery 2019-20..2021-22, confirmation 2022-23..2025-26. Regular season and playoffs both kept (as in the baseline); a regular-season-only rerun is reported.
+
+### Decision rules (fixed now), per market
+
+1. **Edges informative:** confirmation beta's 95% lower bound > 0. **Overstated:** confirmation beta's 95% upper bound < 1.
+2. **Decorrelation adds information (H_DECOR):** in confirmation, beta(no-odds) - beta(with-odds) has a paired bootstrap interval above 0 **and** the no-odds blend's loss is below the opening line's with the paired interval excluding 0.
+   Holm across the three markets on the blend-vs-line p-values.
+3. Reported, no decision: blend(no-odds) vs blend(with-odds) and vs blend(residual); the same against the closing line; decile plots of r against e.
+4. Anything not listed is exploratory. A supported H_DECOR makes the blend a **candidate** (forward test, or the feature route), not a deployment.
+
+## E26 - forward test of edge shrinkage and the totals no-odds blend against ENTRY lines (registered 2026-10-24, before any forward game is scored)
+
+Follows E25. Nothing in the deployed model or the live pipeline changes; this test only reads what the live pipeline already logs.
+Frozen inputs (computed from history only, 2026-10-24T07:58, `experiments/e26_freeze.py`, refuses to overwrite): `reports/experiments/E26_forward_shrink/frozen/params.json` and `no_odds_total.joblib`.
+
+### Frozen quantities
+
+- **Shrink factors beta** (edge slope vs the opening line) for the deployed model's form, estimated on E13's out-of-sample predictions (E1 residual spread, E3 margin-stack ML, baseline total), **all seven seasons 2019-20..2025-26**:
+  spread 0.474 [0.201, 0.780], total 0.223 [0.099, 0.347], ML 0.320 [0.061, 0.581] (log-odds scale).
+  Why all seasons and not discovery only: for a forward test every historical season is "find" data. The discovery-only values are reported but are unstable: spread 0.044 [-0.425, 0.481], total 0.226 [0.053, 0.400], ML 0.134 [-0.280, 0.504].
+- **Totals blend weight** k = 0.166 (E25_no_odds, all seasons; discovery-only 0.133).
+- **No-odds totals model:** LightGBM with 37 features, selected by the harness on the first part of 2013-14..2025-26; grid config 7; refit on all 16,795 games through 2026-06-13. Training set and model SHA-256 recorded.
+  The SHA-256 of the feature-building code (`team/game_features_v2.py`, `core/travel_builder.py`, `core/injury_report_features.py`, `team/train_baseline.py`, `scripts/generate_training_set.py`, `core/odds_clean.py`) is also recorded.
+- **Deployed set:** `_with_odds_cand_20261019`, model_set_hash `0165d3361e4228ad2551a787c66e1cd82ce11bd5b9a4a258b7e79467e7cd02e0`.
+- Residual SDs for the betting readout only: spread 13.66, total 18.46 (shrunk), 18.44 (blend).
+
+### Forward sample
+
+- NBA games (regular season, play-in and playoffs) on or after **2026-10-25** with a final result and an entry line from `core.odds_clean.load_entry_odds` (consensus at noon ET on game day, or 30 minutes before tip if earlier, from `odds_snapshots`). The 2026-10-20..10-24 games are excluded: they were visible before registration.
+- **(a) uses the deployed model's logged prediction** (`predictions_log_v2`). A game is eligible only if its model_set_hash equals the frozen hash **and** its prediction_date is at or before the entry line's fetched_at time, so the prediction existed when the price was available.
+  Games predicted by another model set (after a retrain) are excluded from the primary analysis and reported separately, because beta belongs to this model. The number excluded under each rule is reported.
+- **(b) uses the frozen no-odds model** on point-in-time feature rows rebuilt after the fact (`scripts/generate_training_set.py`). The scorer refuses to run if any of the hashed feature-code files changed, unless it is run from a checkout of the registration commit.
+  Caveat stated now: the rebuilt rows can differ from what a live build would have produced, because of data revisions or a missed injury snapshot; the number of rows with missing injury data is reported.
+
+### Definitions (as in E25, with the entry line in place of the open)
+
+L = `entry_total`; `-entry_home_spread` (home margin); logit(`entry_home_prob`) for ML. Edge e = model - L. Residual r = actual - L; for ML, the outcome.
+Forward edge slope beta_f: OLS `r ~ 1 + e`; for ML, logistic regression with offset L and an intercept. Shrunk prediction L + beta e; blend L + k e_no-odds. Intervals from a day-cluster bootstrap (1,000 draws, `metrics.RNG_SEED`).
+
+### Hypotheses (one-sided) and decisive sample sizes
+
+Power (stated now, from history vs the open; entry lines are sharper, so this is optimistic): comparing the *loss* of shrunk or blended predictions with the line needs 11,000-48,000 games, except shrunk vs unshrunk totals (about 1,400). So the primary tests use the slope, the quantity the loss comparison depends on.
+
+| id | claim | supported iff | decisive at |
+|---|---|---|---|
+| A-total | deployed total edges are overstated vs entry lines (shrinking helps) | 95% upper bound of beta_f < 1 | 1,300 eligible games |
+| A-spread | the same for the deployed spread | 95% upper bound of beta_f < 1 | 2,500 |
+| A-ml | the same for the deployed ML (log-odds) | 95% upper bound of beta_f < 1 | 2,500 |
+| B-total | no-odds total edges carry information vs entry lines (a blend with k > 0 helps) | 95% lower bound of beta_f(no-odds) > 0 | 2,500 |
+
+- Decision at the single decisive look per hypothesis, with Holm across the four (the one-sided bootstrap p is the share of draws on the wrong side of 1, or of 0).
+  Looks at 500 and 1,000 games (and 1,300 for the 2,500-game tests) are reported and **decide nothing**. 1,300 games is about one season; 2,500 is about two.
+- Reported, no decision:
+  - whether each frozen beta lies inside the forward 95% interval (the frozen factor is about right);
+  - per-game loss of shrunk vs unshrunk vs line, and blend vs line vs the shrunk deployed total (paired, day bootstrap);
+  - beta_f against the closing line;
+  - regular season only;
+  - discovery-only factors in place of all-season ones;
+  - a betting readout: unified 5% probability-edge rule on shrunk probabilities (Normal with the frozen SDs for spread and total, -110 because entry prices for those markets are not stored; ML at entry moneyline prices), with bets, hit rate and return with day-bootstrap intervals.
+- **Reading rule.** Supported A-* means the shrink should be applied to the bet rule as a candidate change, with the forward beta reported next to the frozen one. Supported B-total makes the blend a candidate (the feature route or a deployment proposal, which needs the owner's go-ahead).
+  Not supported means not shown at that sample size; with power this low that is not evidence of no effect. No criterion changes after the first look.
+- The scorer, `experiments/e26_score.py`, must be committed together with this section and the frozen folder before the first look at any forward game.
+
+**Power of the registered slope tests** (stated before any forward data). Historical bootstrap standard errors are scaled to the decisive n and assume the true forward beta equals the frozen value; entry lines are sharper than the open, so the true power is likely lower:
+- A-total: SE 0.17 at 1,300 games, power about 1.00;
+- A-spread: SE 0.28 at 2,500, power about 0.60 (the deployed spread's edges are small, SD 0.92 points);
+- A-ml: SE 0.25 at 2,500, power about 0.86;
+- B-total: SE 0.07 at 2,500, power about 0.77.
+
+**Expected thin betting readout** (from a smoke test on history, with the opening line standing in for the entry line): with the frozen shrink factors the 5% probability-edge rule fires about 35 times on totals, 6 on ML and 0 on spread over 2019-20..2025-26. The forward readout will therefore have very few bets and is descriptive only. The smoke test reproduced every frozen beta exactly.
