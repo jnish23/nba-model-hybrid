@@ -1,0 +1,116 @@
+<main>
+<header style="display:flex;flex-direction:column;gap:12px">
+  <div class="eyebrow">Experiment E21 · totals · angle 6 of 8 · run 2026-10-23</div>
+  <h1>Pace Mismatch Test</h1>
+  <p class="lede">When a fast team plays a slow one, does the game come in slower than the average of the two paces, so totals built that way go under? Registered in <code>PREREGISTRATION.md</code> before the run; regular-season games only.</p>
+  <nav class="toc" aria-label="Sections"><a href="#verdict">Verdict</a><a href="#mech">1 · Mechanism</a><a href="#market">2 · Market</a><a href="#model">3 · Model</a><a href="#lead">Exploratory lead</a><a href="#bets">Betting</a><a href="#limits">Limits</a></nav>
+</header>
+
+<section id="verdict">
+  <div class="verdict">
+    <span class="tag">H_PACE NOT SUPPORTED · MECHANISM ABSENT</span>
+    <p class="lede">The mechanism is not there. After controlling for the average pace, a bigger gap between the two teams' paces does not change how many possessions the game has: the coefficient is <b class="num"><span data-b="D.gc.coef|s3"></span></b> possessions per pace point in confirmation and <b class="num"><span data-b="D.gd.coef|s3"></span></b> in discovery. Because the mechanism fails, the market and model tests are not gated passes, and the feature test was not run.</p>
+    <div class="facts">
+      <div class="fact"><b class="num"><span data-b="D.all.coef|s3"></span></b><span>gap coefficient on possessions over all 13 seasons with 20-game paces (interval <span data-b="D.all.lo|s3"></span> to <span data-b="D.all.hi|s3"></span>, <span data-b="D.all.n|int"></span> games). In the direction the theory needs, the interval allows at most −0.005 per pace point, under 0.03 possessions for a gap of 5.</span></div>
+      <div class="fact"><b class="num"><span data-b="D.mc.coef|s2"></span></b><span>gap coefficient on r in confirmation, points of total per pace point (interval <span data-b="D.mc.lo|s2"></span> to <span data-b="D.mc.hi|s2"></span>); discovery <span data-b="D.md.coef|s2"></span>. Nothing to bet on.</span></div>
+      <div class="fact"><b class="num"><span data-b="D.mp.coef|s2"></span></b><span>unregistered lead: coefficient on the <i>average</i> pace for r in confirmation (interval <span data-b="D.mp.lo|s2"></span> to <span data-b="D.mp.hi|s2"></span>). Fast matchups go over.</span></div>
+    </div>
+  </div>
+  <div class="note"><b>Data used.</b> Possessions = FGA + 0.44 FTA − OREB + TOV, scaled to 48 minutes. The correlation of my game pace with the box-score <code>pace</code> column is <span data-b="formula_sanity.corr_game_pace_vs_box_pace|3"></span>. Each team's rolling pace is the mean of its previous 20 regular-season games, within the season, with at least 10 prior games, so every team's first 10 games drop out (about 1,070 games per full season remain). The mean gap is <span data-b="formula_sanity.mean_gap_20|1"></span> pace points (standard deviation <span data-b="formula_sanity.sd_gap_20|1"></span>).</div>
+</section>
+
+<section id="mech">
+  <h2>1 · Mechanism: possessions, no line involved</h2>
+  <p>Regression of the game's actual pace on the average of the two rolling paces and the absolute gap. The idea needs a negative gap coefficient; the registered rule needs it negative in both periods and significant in confirmation.</p>
+  <div class="chartbox">
+    <h3>Gap coefficient on possessions, by sample</h3>
+    <div class="sub">Possessions per 48 minutes per pace point of gap, 95% intervals from resampling game days. Below zero would support the idea.</div>
+    <div id="c-mech"></div>
+  </div>
+  <div class="scroll"><table id="t-mech"></table></div>
+  <p>The coefficient is zero in every cut: with season dummies, regulation-only games, 10- and 30-game windows, and the six earlier seasons (which need no odds). The confirmation interval (<span data-b="D.gc.lo|s3"></span> to <span data-b="D.gc.hi|s3"></span>) rules out a gap effect more negative than <span data-b="D.gc.lo|s3"></span> possessions per pace point, about −0.14 points of total per point of gap at roughly 2.2 points per possession. The smallest effect this sample could detect at 80% power is <span data-b="D.mdetect|3"></span> possessions per pace point.</p>
+  <p>The average-pace coefficient is above 1 (<span data-b="D.mpace.coef|2"></span> in confirmation). That is what you get when each team's style adds to the game: a matchup of two fast teams is faster than the average of their paces implies, and two slow teams slower. It is my reading of the number, not a registered test.</p>
+</section>
+
+<section id="market">
+  <h2>2 · Market: r on the gap (ungated, exploratory)</h2>
+  <p>Because step 1 failed, the registration labels this step exploratory and ungated, and gives the angle a Holm input of 1.0. r on the gap, the average pace and the opening total.</p>
+  <div class="scroll"><table id="t-mkt"></table></div>
+  <p>Gap coefficients are zero in both periods. The smallest effect detectable at 80% power in confirmation is about <span data-b="step2_reading.min_detectable_gap_coef_confirmation|2"></span> points of total per pace point, so this step is much weaker than the possession test.</p>
+</section>
+
+<section id="model">
+  <h2>3 · Does the deployed model use the gap?</h2>
+  <div class="chartbox">
+    <h3>Mean miss by quintile of the pace gap, 2021-22 to 2025-26</h3>
+    <div class="sub">Points. Model = actual − model prediction; market = actual − opening total. A downward slope would mean a high gap goes under.</div>
+    <div id="c-quint"></div>
+  </div>
+  <div class="scroll"><table id="t-model"></table></div>
+  <p>The model's residual is flat across gap quintiles and the gap coefficient is <span data-b="step3_reading.confirmation_coef|s2"></span> (one-sided p = <span data-b="step3_reading.p_one_sided|2"></span>). There is nothing to absorb or fix.</p>
+</section>
+
+<section id="lead">
+  <h2>Exploratory lead: average pace level</h2>
+  <p>In the same regressions, the <i>average</i> pace of the two teams predicts r positively and the model's residual too (confirmation: r <span data-b="D.mp.coef|s2"></span>, model residual <span data-b="D.mr.coef|s2"></span>, interval <span data-b="D.mr.lo|s2"></span> to <span data-b="D.mr.hi|s2"></span>), which means both the market total and the model under-weight how fast the two teams play. It is positive with season dummies and without, but it is positive only weakly in discovery (<span data-b="D.mpd.coef|s2"></span>, interval <span data-b="D.mpd.lo|s2"></span> to <span data-b="D.mpd.hi|s2"></span>), and nobody registered it, so it is a lead to test rather than a finding. E05 tested pace-normalised team statistics and rejected them; a pace-level feature in the totals model was not part of that.</p>
+</section>
+
+<section id="bets">
+  <h2>4 · Betting test</h2>
+  <p>Under at -110 when the gap is at or above a discovery quantile cutoff in {0.5 to 0.9}, chosen on discovery (at least 200 bets): q = <span data-b="bet.q_chosen|raw"></span>, gap ≥ <span data-b="bet.cutoff|2"></span>.</p>
+  <div class="scroll"><table id="t-bet"></table></div>
+  <p>Unders on large gaps do slightly better than unders on all games, but they still lose; the best-book line brings them close to break-even, not above it, and the over mirror loses as well.</p>
+</section>
+
+<section id="limits">
+  <h2>Limits</h2>
+  <ul class="plain">
+    <li>The gap is measured from 20-game averages, which are noisy; the window checks (10 and 30 games) give the same null, and the interval is tight enough that a real effect of the size the theory suggests would have shown.</li>
+    <li>Games with fewer than 10 prior games for either team are excluded, so early-season matchups are not tested.</li>
+    <li>The market and model tests are weaker than the mechanism test (the market total carries about 18 points of noise per game).</li>
+    <li>Holm across the 8 angles is pending; this angle's input is 1.0. The feature test was not run because the gate failed.</li>
+    <li>Script: <code>experiments/e21_pace.py</code>; numbers: <code>reports/experiments/E21_pace/results.json</code>.</li>
+  </ul>
+</section>
+<footer>Day-cluster bootstrap, 1,000 draws, seed 20261017. One-sided p = share of draws on the wrong side of the claimed negative sign.</footer>
+</main>
+
+<script>
+const R = __R__;
+const fmt = {
+  '1': v => v.toFixed(1), '2': v => v.toFixed(2), '3': v => v.toFixed(3), 's2': v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(2), 's3': v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(3),
+  'int': v => Math.round(v).toLocaleString('en-US'), 'roi': v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1) + '%', 'raw': v => String(v)
+};
+const path = (o, p) => p.split('.').reduce((a, k) => (a == null ? a : a[k]), o);
+const CONFL = 'confirmation 2022-23..2025-26';
+const bet = R.bet;
+R.D = { gc: R.step1.confirmation.base.gap, gd: R.step1.discovery.base.gap, all: Object.assign({ n: R.step1['all 13 seasons'].base.n }, R.step1['all 13 seasons'].base.gap),
+  mc: R.step2.confirmation.base.gap, md: R.step2.discovery.base.gap, mp: R.step2.confirmation.base.mean_pace, mpd: R.step2.discovery.base.mean_pace,
+  mr: R.step3.models[CONFL].model_resid.mean_pace, mdetect: R.step1_reading.min_detectable_gap_coef_confirmation, mpace: R.step1.confirmation.base.mean_pace };
+document.querySelectorAll('[data-b]').forEach(el => { const [p, f] = el.dataset.b.split('|'); const v = path(R, p); el.textContent = v == null ? '?' : (f ? fmt[f](v) : String(v)); });
+function table(id, head, rows, hl) {
+  const t = document.getElementById(id);
+  t.innerHTML = '<thead><tr>' + head.map(h => `<th>${h}</th>`).join('') + '</tr></thead><tbody>' + rows.map((r, i) => `<tr class="${hl && hl(i) ? 'hl' : ''}">` + r.map(c => `<td>${c}</td>`).join('') + '</tr>').join('') + '</tbody>';
+}
+const ci = (lo, hi, f) => `${f(lo)} to ${f(hi)}`;
+const cc = (c, f = fmt.s3) => `${f(c.coef)} (${ci(c.lo, c.hi, f)})`;
+const pers = ['discovery', 'confirmation', 'registered pooled', 'supplementary 2013-14..2018-19', 'all 13 seasons'];
+table('t-mech', ['Sample', 'Games', 'Gap, base (95%)', 'Gap, season dummies', 'Gap, regulation only', 'Average pace, base'], pers.map(p => [p, fmt.int(R.step1[p].base.n), cc(R.step1[p].base.gap), cc(R.step1[p].season_dummies.gap), cc(R.step1[p].regulation_only.gap), cc(R.step1[p].base.mean_pace, fmt['s2'])]));
+const w = R.step1.window_robustness;
+document.getElementById('t-mech').insertAdjacentHTML('beforeend', '<tfoot>' + ['discovery', 'confirmation'].map(p => `<tr class="hl"><td>${p}: window 10 / window 30</td><td></td><td colspan="4" style="text-align:left">${cc(w[p]['window 10'].gap10)} / ${cc(w[p]['window 30'].gap30)}</td></tr>`).join('') + '</tfoot>');
+
+table('t-mkt', ['Sample', 'Games', 'Gap on r (95%)', 'Gap, season dummies', 'Gap, regulation only', 'Average pace on r', 'Opening total on r'], ['discovery', 'confirmation', 'registered pooled', 'pooled 2021-22..2025-26 (no COVID seasons)'].map(p => [p, fmt.int(R.step2[p].base.n), cc(R.step2[p].base.gap, fmt.s2), cc(R.step2[p].season_dummies.gap, fmt.s2), cc(R.step2[p].regulation_only.gap, fmt.s2), cc(R.step2[p].base.mean_pace, fmt.s2), cc(R.step2[p].base.odds_total, fmt.s2)]));
+
+const m3 = R.step3.models;
+table('t-model', ['Coefficient on the gap (95%), per pace point', 'All OOS seasons (2021-22 to 2025-26)', 'Confirmation seasons'], [['model_resid', 'Model residual: actual − prediction'], ['model_lean', 'Model lean: prediction − opening total'], ['r', 'Market residual: actual − opening total']].map(([k, l]) => [l, cc(m3['2021-22..2025-26'][k].gap, fmt.s2), cc(m3[CONFL][k].gap, fmt.s2)]));
+
+const rc = r => `${fmt.roi(r.roi)} (${ci(r.lo, r.hi, fmt.roi)})`;
+table('t-bet', ['Strategy', 'Discovery: bets', 'Discovery: return (95%)', 'Confirmation: bets', 'Confirmation: return (95%)'], Object.keys(bet.discovery).map(k => [k, fmt.int(bet.discovery[k].bets), rc(bet.discovery[k]), fmt.int(bet.confirmation[k].bets), rc(bet.confirmation[k])]), i => i === 0);
+
+__CHART_JS__
+dotChart('c-mech', { label: 'Gap coefficient on possessions', cats: ['discovery', 'confirmation', 'pooled 2019-26', '2013-19 (supp.)', 'all 13'], zero: true, yFmt: (v, d) => sgn(v, 2), xTitle: 'Sample', h: 270,
+  series: [{ name: 'Gap coefficient', color: '--under', hollow: false, pts: pers.map(p => { const c = R.step1[p].base.gap; return { y: c.coef, lo: c.lo, hi: c.hi }; }) }] });
+const Q = R.step3.quintiles;
+dotChart('c-quint', { label: 'Mean miss by gap quintile', cats: Q.map(q => `Q${q.quintile} (${q.gap_mean.toFixed(1)})`), zero: true, yFmt: (v, d) => sgn(v, d === 2 ? 2 : 1), xTitle: 'Quintile of the pace gap (mean gap in parentheses)', h: 280,
+  series: [['model_resid', 'Model residual', '--under'], ['r', 'Market residual', '--over']].map(([k, n, col]) => ({ name: n, color: col, hollow: false, pts: Q.map(q => ({ y: q[k], lo: q[k + '_lo'], hi: q[k + '_hi'] })) })) });
+</script>

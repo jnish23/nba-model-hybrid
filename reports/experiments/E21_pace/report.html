@@ -1,0 +1,252 @@
+<title>Pace Mismatch Test</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700&family=JetBrains+Mono:wght@400;500&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&display=swap">
+<style>
+/* Layout: one reading column, verdict first, then one section per registered step; each section = claim, chart or table, the caveat. */
+:root {
+  --bg: #f3f5f8; --surface: #ffffff; --ink: #14202e; --muted: #556373; --rule: #d6dde5; --wash: #e9edf2;
+  --under: #2a5db0; --over: #c4570a;
+  --good: #1b7442; --good-bg: #e1f2e8; --bad: #aa2a22; --bad-bg: #f8e4e2; --note-bg: #fdf3dc; --note-ink: #6b4b00;
+  --display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1319; --surface: #151c24; --ink: #e6ebf1; --muted: #98a6b5; --rule: #29333f; --wash: #1d2631;
+    --under: #7aa9f4; --over: #f19b58;
+    --good: #5cc88d; --good-bg: #16301f; --bad: #f2776e; --bad-bg: #3a1a18; --note-bg: #2f2713; --note-ink: #e8c872;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1319; --surface: #151c24; --ink: #e6ebf1; --muted: #98a6b5; --rule: #29333f; --wash: #1d2631;
+  --under: #7aa9f4; --over: #f19b58;
+  --good: #5cc88d; --good-bg: #16301f; --bad: #f2776e; --bad-bg: #3a1a18; --note-bg: #2f2713; --note-ink: #e8c872;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 17px; line-height: 1.55; margin: 0;
+  padding-block: 28px 72px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+main { max-width: 860px; margin: 0 auto; display: flex; flex-direction: column; gap: 44px; }
+section { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+h1, h2, h3 { font-family: var(--display); line-height: 1.15; margin: 0; text-wrap: balance; }
+h1 { font-size: clamp(30px, 6vw, 44px); letter-spacing: -0.01em; }
+h2 { font-size: 24px; }
+h3 { font-size: 17px; letter-spacing: 0.02em; }
+p { margin: 0; max-width: 68ch; }
+.eyebrow { font-family: var(--mono); font-size: 12.5px; color: var(--muted); letter-spacing: 0.04em; text-transform: uppercase; }
+.lede { font-size: 19px; max-width: 64ch; }
+a { color: var(--under); }
+code, .mono { font-family: var(--mono); font-size: 0.86em; }
+code { background: var(--wash); padding: 1px 5px; border-radius: 3px; overflow-wrap: anywhere; }
+.num { font-variant-numeric: tabular-nums; }
+.under { color: var(--under); } .over { color: var(--over); }
+
+.verdict { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 22px 22px 20px; display: flex; flex-direction: column; gap: 14px; }
+.verdict .tag { align-self: flex-start; font-family: var(--mono); font-size: 13px; font-weight: 500; letter-spacing: 0.05em; padding: 3px 10px; border-radius: 4px; background: var(--bad-bg); color: var(--bad); }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 0; border-top: 1px solid var(--rule); }
+.fact { padding: 14px 16px 4px 0; min-width: 0; }
+.fact + .fact { padding-left: 16px; border-left: 1px solid var(--rule); }
+@media (max-width: 680px) { .fact + .fact { border-left: 0; padding-left: 0; border-top: 1px solid var(--rule); margin-top: 10px; padding-top: 12px; } }
+.fact b { display: block; font-family: var(--display); font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.fact span { font-size: 15px; color: var(--muted); }
+
+.toc { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 15px; }
+.chartbox { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 14px 14px 8px; min-width: 0; }
+.chartbox h3 { font-size: 15px; margin-bottom: 2px; }
+.chartbox .sub { color: var(--muted); font-size: 14px; margin-bottom: 6px; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 14px; color: var(--muted); margin: 4px 0 2px; }
+.legend i { display: inline-block; width: 11px; height: 11px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+svg { display: block; width: 100%; height: auto; }
+svg text { font-family: var(--body); font-size: 12.5px; fill: var(--muted); font-variant-numeric: tabular-nums; }
+svg .grid { stroke: var(--rule); stroke-width: 1; }
+svg .zero { stroke: var(--ink); stroke-width: 1.2; }
+svg .ref { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 4 4; }
+svg .band { fill: var(--wash); }
+svg .lbl { fill: var(--ink); }
+
+.scroll { overflow-x: auto; max-width: 100%; border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 15px; font-variant-numeric: tabular-nums; }
+th, td { padding: 7px 12px; text-align: right; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; white-space: normal; min-width: 140px; }
+th { font-family: var(--display); font-size: 13px; font-weight: 600; color: var(--muted); background: var(--surface); }
+tr:last-child td { border-bottom: 0; }
+tr.hl td { background: var(--wash); }
+.pill { font-family: var(--mono); font-size: 12.5px; padding: 2px 8px; border-radius: 4px; font-weight: 500; white-space: nowrap; }
+.pill.fail { background: var(--bad-bg); color: var(--bad); }
+.pill.pass { background: var(--good-bg); color: var(--good); }
+.pill.info { background: var(--wash); color: var(--muted); }
+.note { background: var(--note-bg); color: var(--note-ink); border-radius: 6px; padding: 10px 14px; font-size: 15.5px; max-width: 72ch; }
+.note b { font-weight: 600; }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+ul.plain { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; max-width: 70ch; }
+
+.explorer { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+.controls { display: flex; flex-wrap: wrap; gap: 14px 24px; align-items: end; }
+.controls label { display: flex; flex-direction: column; gap: 4px; font-size: 14px; color: var(--muted); }
+select, input[type=range] { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--rule); border-radius: 5px; padding: 5px 8px; min-width: 150px; }
+input[type=range] { padding: 0; min-width: 220px; accent-color: var(--under); }
+.check { flex-direction: row !important; align-items: center; gap: 8px !important; }
+:focus-visible { outline: 2px solid var(--under); outline-offset: 2px; }
+footer { color: var(--muted); font-size: 14px; }
+</style>
+
+<main>
+<header style="display:flex;flex-direction:column;gap:12px">
+  <div class="eyebrow">Experiment E21 · totals · angle 6 of 8 · run 2026-10-23</div>
+  <h1>Pace Mismatch Test</h1>
+  <p class="lede">When a fast team plays a slow one, does the game come in slower than the average of the two paces, so totals built that way go under? Registered in <code>PREREGISTRATION.md</code> before the run; regular-season games only.</p>
+  <nav class="toc" aria-label="Sections"><a href="#verdict">Verdict</a><a href="#mech">1 · Mechanism</a><a href="#market">2 · Market</a><a href="#model">3 · Model</a><a href="#lead">Exploratory lead</a><a href="#bets">Betting</a><a href="#limits">Limits</a></nav>
+</header>
+
+<section id="verdict">
+  <div class="verdict">
+    <span class="tag">H_PACE NOT SUPPORTED · MECHANISM ABSENT</span>
+    <p class="lede">The mechanism is not there. After controlling for the average pace, a bigger gap between the two teams' paces does not change how many possessions the game has: the coefficient is <b class="num"><span data-b="D.gc.coef|s3"></span></b> possessions per pace point in confirmation and <b class="num"><span data-b="D.gd.coef|s3"></span></b> in discovery. Because the mechanism fails, the market and model tests are not gated passes, and the feature test was not run.</p>
+    <div class="facts">
+      <div class="fact"><b class="num"><span data-b="D.all.coef|s3"></span></b><span>gap coefficient on possessions over all 13 seasons with 20-game paces (interval <span data-b="D.all.lo|s3"></span> to <span data-b="D.all.hi|s3"></span>, <span data-b="D.all.n|int"></span> games). In the direction the theory needs, the interval allows at most −0.005 per pace point, under 0.03 possessions for a gap of 5.</span></div>
+      <div class="fact"><b class="num"><span data-b="D.mc.coef|s2"></span></b><span>gap coefficient on r in confirmation, points of total per pace point (interval <span data-b="D.mc.lo|s2"></span> to <span data-b="D.mc.hi|s2"></span>); discovery <span data-b="D.md.coef|s2"></span>. Nothing to bet on.</span></div>
+      <div class="fact"><b class="num"><span data-b="D.mp.coef|s2"></span></b><span>unregistered lead: coefficient on the <i>average</i> pace for r in confirmation (interval <span data-b="D.mp.lo|s2"></span> to <span data-b="D.mp.hi|s2"></span>). Fast matchups go over.</span></div>
+    </div>
+  </div>
+  <div class="note"><b>Data used.</b> Possessions = FGA + 0.44 FTA − OREB + TOV, scaled to 48 minutes. The correlation of my game pace with the box-score <code>pace</code> column is <span data-b="formula_sanity.corr_game_pace_vs_box_pace|3"></span>. Each team's rolling pace is the mean of its previous 20 regular-season games, within the season, with at least 10 prior games, so every team's first 10 games drop out (about 1,070 games per full season remain). The mean gap is <span data-b="formula_sanity.mean_gap_20|1"></span> pace points (standard deviation <span data-b="formula_sanity.sd_gap_20|1"></span>).</div>
+</section>
+
+<section id="mech">
+  <h2>1 · Mechanism: possessions, no line involved</h2>
+  <p>Regression of the game's actual pace on the average of the two rolling paces and the absolute gap. The idea needs a negative gap coefficient; the registered rule needs it negative in both periods and significant in confirmation.</p>
+  <div class="chartbox">
+    <h3>Gap coefficient on possessions, by sample</h3>
+    <div class="sub">Possessions per 48 minutes per pace point of gap, 95% intervals from resampling game days. Below zero would support the idea.</div>
+    <div id="c-mech"></div>
+  </div>
+  <div class="scroll"><table id="t-mech"></table></div>
+  <p>The coefficient is zero in every cut: with season dummies, regulation-only games, 10- and 30-game windows, and the six earlier seasons (which need no odds). The confirmation interval (<span data-b="D.gc.lo|s3"></span> to <span data-b="D.gc.hi|s3"></span>) rules out a gap effect more negative than <span data-b="D.gc.lo|s3"></span> possessions per pace point, about −0.14 points of total per point of gap at roughly 2.2 points per possession. The smallest effect this sample could detect at 80% power is <span data-b="D.mdetect|3"></span> possessions per pace point.</p>
+  <p>The average-pace coefficient is above 1 (<span data-b="D.mpace.coef|2"></span> in confirmation). That is what you get when each team's style adds to the game: a matchup of two fast teams is faster than the average of their paces implies, and two slow teams slower. It is my reading of the number, not a registered test.</p>
+</section>
+
+<section id="market">
+  <h2>2 · Market: r on the gap (ungated, exploratory)</h2>
+  <p>Because step 1 failed, the registration labels this step exploratory and ungated, and gives the angle a Holm input of 1.0. r on the gap, the average pace and the opening total.</p>
+  <div class="scroll"><table id="t-mkt"></table></div>
+  <p>Gap coefficients are zero in both periods. The smallest effect detectable at 80% power in confirmation is about <span data-b="step2_reading.min_detectable_gap_coef_confirmation|2"></span> points of total per pace point, so this step is much weaker than the possession test.</p>
+</section>
+
+<section id="model">
+  <h2>3 · Does the deployed model use the gap?</h2>
+  <div class="chartbox">
+    <h3>Mean miss by quintile of the pace gap, 2021-22 to 2025-26</h3>
+    <div class="sub">Points. Model = actual − model prediction; market = actual − opening total. A downward slope would mean a high gap goes under.</div>
+    <div id="c-quint"></div>
+  </div>
+  <div class="scroll"><table id="t-model"></table></div>
+  <p>The model's residual is flat across gap quintiles and the gap coefficient is <span data-b="step3_reading.confirmation_coef|s2"></span> (one-sided p = <span data-b="step3_reading.p_one_sided|2"></span>). There is nothing to absorb or fix.</p>
+</section>
+
+<section id="lead">
+  <h2>Exploratory lead: average pace level</h2>
+  <p>In the same regressions, the <i>average</i> pace of the two teams predicts r positively and the model's residual too (confirmation: r <span data-b="D.mp.coef|s2"></span>, model residual <span data-b="D.mr.coef|s2"></span>, interval <span data-b="D.mr.lo|s2"></span> to <span data-b="D.mr.hi|s2"></span>), which means both the market total and the model under-weight how fast the two teams play. It is positive with season dummies and without, but it is positive only weakly in discovery (<span data-b="D.mpd.coef|s2"></span>, interval <span data-b="D.mpd.lo|s2"></span> to <span data-b="D.mpd.hi|s2"></span>), and nobody registered it, so it is a lead to test rather than a finding. E05 tested pace-normalised team statistics and rejected them; a pace-level feature in the totals model was not part of that.</p>
+</section>
+
+<section id="bets">
+  <h2>4 · Betting test</h2>
+  <p>Under at -110 when the gap is at or above a discovery quantile cutoff in {0.5 to 0.9}, chosen on discovery (at least 200 bets): q = <span data-b="bet.q_chosen|raw"></span>, gap ≥ <span data-b="bet.cutoff|2"></span>.</p>
+  <div class="scroll"><table id="t-bet"></table></div>
+  <p>Unders on large gaps do slightly better than unders on all games, but they still lose; the best-book line brings them close to break-even, not above it, and the over mirror loses as well.</p>
+</section>
+
+<section id="limits">
+  <h2>Limits</h2>
+  <ul class="plain">
+    <li>The gap is measured from 20-game averages, which are noisy; the window checks (10 and 30 games) give the same null, and the interval is tight enough that a real effect of the size the theory suggests would have shown.</li>
+    <li>Games with fewer than 10 prior games for either team are excluded, so early-season matchups are not tested.</li>
+    <li>The market and model tests are weaker than the mechanism test (the market total carries about 18 points of noise per game).</li>
+    <li>Holm across the 8 angles is pending; this angle's input is 1.0. The feature test was not run because the gate failed.</li>
+    <li>Script: <code>experiments/e21_pace.py</code>; numbers: <code>reports/experiments/E21_pace/results.json</code>.</li>
+  </ul>
+</section>
+<footer>Day-cluster bootstrap, 1,000 draws, seed 20261017. One-sided p = share of draws on the wrong side of the claimed negative sign.</footer>
+</main>
+
+<script>
+const R = {"games_regular_season_all": 15629, "games_with_20g_pace": {"2013-14": 1074, "2014-15": 1071, "2015-16": 1073, "2016-17": 1073, "2017-18": 1075, "2018-19": 1074, "2019-20": 904, "2020-21": 924, "2021-22": 1073, "2022-23": 1073, "2023-24": 1060, "2024-25": 1074, "2025-26": 1075}, "formula_sanity": {"corr_game_pace_vs_box_pace": 0.962113688232319, "mean_gap_20": 2.701593573225726, "sd_gap_20": 1.9988482281534081}, "step1": {"discovery": {"base": {"mean_pace": {"coef": 1.2940089153559577, "lo": 1.1938517937391262, "hi": 1.3965809217288934, "se": 0.05171661428310387, "p_one_sided_negative": 1.0, "p_two_sided": 0.000999000999000999}, "gap": {"coef": 0.05064942138221408, "lo": -0.0353386187694856, "hi": 0.13428711752976422, "se": 0.04327187150491067, "p_one_sided_negative": 0.8861138861138861, "p_two_sided": 0.22777222777222778}, "n": 2901}, "season_dummies": {"mean_pace": {"coef": 1.4042187216423818, "lo": 1.297394898680645, "hi": 1.510848142109943, "se": 0.054452358017678046, "p_one_sided_negative": 1.0, "p_two_sided": 0.000999000999000999}, "gap": {"coef": 0.0616896603962347, "lo": -0.026261355103795285, "hi": 0.14427424718637308, "se": 0.04350398017606336, "p_one_sided_negative": 0.919080919080919, "p_two_sided": 0.16183816183816183}, "n": 2901}, "regulation_only": {"mean_pace": {"coef": 1.2906348862884658, "lo": 1.1894570537952522, "hi": 1.3993886790291465, "se": 0.05355398602905467, "p_one_sided_negative": 1.0, "p_two_sided": 0.000999000999000999}, "gap": {"coef": 0.05779522785194389, "lo": -0.0317519819588824, "hi": 0.1443701292814115, "se": 0.04492911001027906, "p_one_sided_negative": 0.9040959040959041, "p_two_sided": 0.1918081918081918}, "n": 2745}}, "confirmation": {"base": {"mean_pace": {"coef": 1.4648913277210465, "lo": 1.3808260248319115, "hi": 1.5461778241671171, "se": 0.04218158146306265, "p_one_sided_negative": 1.0, "p_two_sided": 0.000999000999000999}, "gap": {"coef": -0.004364281322219126, "lo": -0.06256203516254046, "hi": 0.05766713547227278, "se": 0.03067070679459521, "p_one_sided_negative": 0.44255744255744256, "p_two_sided": 0.8831168831168831}, "n": 4282}, "season_dummies": {"mean_pace": {"coef": 1.4765839625063222, "lo": 1.399801935725235, "hi": 1.5559138540573534, "se": 0.039824468962275116, "p_one_sided_negative": 1.0, "p_two_sided": 0.000999000999000999}, "gap": {"coef": -0.0035617180539338268, "lo": -0.06281576187882892, "hi": 0.05896370091951671, "se": 0.031066189489373886, "p_one_sided_negative": 0.4515484515484515, "p_two_sided": 0.9010989010989011}, "n": 4282}, "regulation_only": {"mean_pace": {"coef": 1.471345803118114, "lo": 1.3866821176663375, "hi": 1.5506604313097665, "se": 0.04183120246005841, "p_one_sided_negative": 1.0, "p_two_sided": 0.000999000999000999}, "gap": {"coef": -0.023564166558334872, "lo": -0.0836216439517053, "hi": 0.04190644171008329, "se": 0.03202247083208892, "p_one_sided_negative": 0.24075924075924077, "p_two_sided": 0.47952047952047955}, "n": 4071}}, "registered pooled": {"base": {"mean_pace": {"coef": 1.3899055346408065, "lo": 1.3282478260668866, "hi": 1.4516657293040445, "se": 0.03148415898907088, "p_one_sided_negative": 1.0, "p_two_sided": 0.000999000999000999}, "gap": {"coef": 0.012256006349540577, "lo": -0.0359796745138762, "hi": 0.06235588980399398, "se": 0.025085603142313825, "p_one_sided_negative": 0.7202797202797203, "p_two_sided": 0.5594405594405595}, "n": 7183}, "season_dummies": {"mean_pace": {"coef": 1.4497103711794646, "lo": 1.3883397241487339, "hi": 1.5099381222564268, "se": 0.0310199995172686, "p_one_sided_negative": 1.0, "p_two_sided": 0.000999000999000999}, "gap": {"coef": 0.02120797075525546, "lo": -0.02723014833786347, "hi": 0.07150579091489345, "se": 0.025187739605295134, "p_one_sided_negative": 0.8121878121878122, "p_two_sided": 0.3756243756243756}, "n": 7183}, "regulation_only": {"mean_pace": {"coef": 1.3930994816287803, "lo": 1.3264932912345784, "hi": 1.4587163637650258, "se": 0.033730375645522295, "p_one_sided_negative": 1.0, "p_two_sided": 0.000999000999000999}, "gap": {"coef": 0.003336965709009176, "lo": -0.04504365941960376, "hi": 0.05375036361621488, "se": 0.02520255689689251, "p_one_sided_negative": 0.5684315684315684, "p_two_sided": 0.8631368631368631}, "n": 6816}}, "supplementary 2013-14..2018-19": {"base": {"mean_pace": {"coef": 1.2179193369087187, "lo": 1.1775030287476187, "hi": 1.2600430724416953, "se": 0.021056133595427715, "p_one_sided_negative": 1.0, "p_two_sided": 0.000999000999000999}, "gap": {"coef": 0.005369264472852102, "lo": -0.041738001572782915, "hi": 0.053209906397380984, "se": 0.024221405094429566, "p_one_sided_negative": 0.6043956043956044, "p_two_sided": 0.7912087912087912}, "n": 6440}, "season_dummies": {"mean_pace": {"coef": 1.5548666218140053, "lo": 1.5004415973442893, "hi": 1.6140201015242217, "se": 0.028974108209166436, "p_one_sided_negative": 1.0, "p_two_sided": 0.000999000999000999}, "gap": {"coef": -0.024083287051686216, "lo": -0.07015500726657749, "hi": 0.022504747579022717, "se": 0.023637692562653117, "p_one_sided_negative": 0.15784215784215785, "p_two_sided": 0.31368631368631367}, "n": 6440}, "regulation_only": {"mean_pace": {"coef": 1.2204659181893607, "lo": 1.1790802622096832, "hi": 1.2640195700036694, "se": 0.021668190763771984, "p_one_sided_negative": 1.0, "p_two_sided": 0.000999000999000999}, "gap": {"coef": 0.0012487028957981529, "lo": -0.049613101508408385, "hi": 0.05142309277625259, "se": 0.02577453935833188, "p_one_sided_negative": 0.5304695304695305, "p_two_sided": 0.939060939060939}, "n": 6056}}, "all 13 seasons": {"base": {"mean_pace": {"coef": 1.1875279200387134, "lo": 1.1596383173908125, "hi": 1.2173120672605677, "se": 0.014712691293304915, "p_one_sided_negative": 1.0, "p_two_sided": 0.000999000999000999}, "gap": {"coef": 0.027784532316801246, "lo": -0.0053963037706909285, "hi": 0.06247555238053382, "se": 0.01731424901816958, "p_one_sided_negative": 0.9370629370629371, "p_two_sided": 0.1258741258741259}, "n": 13623}, "season_dummies": {"mean_pace": {"coef": 1.5025104789466324, "lo": 1.4619975710494764, "hi": 1.5447778285415656, "se": 0.02111741262553298, "p_one_sided_negative": 1.0, "p_two_sided": 0.000999000999000999}, "gap": {"coef": -0.0017247273572614718, "lo": -0.03540841407324395, "hi": 0.03300086339589418, "se": 0.017451346293147485, "p_one_sided_negative": 0.46853146853146854, "p_two_sided": 0.935064935064935}, "n": 13623}, "regulation_only": {"mean_pace": {"coef": 1.1906917761163232, "lo": 1.1621270021979777, "hi": 1.2221040091615967, "se": 0.015300256878474226, "p_one_sided_negative": 1.0, "p_two_sided": 0.000999000999000999}, "gap": {"coef": 0.021585833557450196, "lo": -0.014906905986140721, "hi": 0.0569452308992263, "se": 0.018329626756471176, "p_one_sided_negative": 0.8871128871128872, "p_two_sided": 0.22577422577422576}, "n": 12872}}, "window_robustness": {"discovery": {"window 10": {"mean_pace10": {"coef": 1.2259581339678332, "lo": 1.1392566614875945, "hi": 1.307251726894004, "se": 0.04285588403224733, "p_one_sided_negative": 1.0, "p_two_sided": 0.000999000999000999}, "gap10": {"coef": -0.004631717425301104, "lo": -0.07595880679583887, "hi": 0.0699379893096077, "se": 0.03721857043506291, "p_one_sided_negative": 0.44655344655344653, "p_two_sided": 0.8911088911088911}, "n": 2901}, "window 30": {"mean_pace30": {"coef": 1.318948777038438, "lo": 1.2121393083020482, "hi": 1.4241576857865097, "se": 0.054086320786852424, "p_one_sided_negative": 1.0, "p_two_sided": 0.000999000999000999}, "gap30": {"coef": 0.049967492646739935, "lo": -0.034861365032537964, "hi": 0.13857163764032107, "se": 0.04424311292674976, "p_one_sided_negative": 0.8741258741258742, "p_two_sided": 0.2517482517482518}, "n": 2901}}, "confirmation": {"window 10": {"mean_pace10": {"coef": 1.2719171456443275, "lo": 1.20310334176155, "hi": 1.3410669882617243, "se": 0.03519480778065672, "p_one_sided_negative": 1.0, "p_two_sided": 0.000999000999000999}, "gap10": {"coef": -0.007824738731963694, "lo": -0.06721963570204909, "hi": 0.05531494920105132, "se": 0.03125882267936235, "p_one_sided_negative": 0.3956043956043956, "p_two_sided": 0.7892107892107892}, "n": 4282}, "window 30": {"mean_pace30": {"coef": 1.573026027622905, "lo": 1.4908449890416513, "hi": 1.6564281217453496, "se": 0.042240595077474054, "p_one_sided_negative": 1.0, "p_two_sided": 0.000999000999000999}, "gap30": {"coef": 0.010835182422161705, "lo": -0.048334009269855996, "hi": 0.07306589766402517, "se": 0.030969364013745195, "p_one_sided_negative": 0.6293706293706294, "p_two_sided": 0.7412587412587412}, "n": 4282}}}}, "step1_reading": {"supported": false, "discovery_gap_coef": 0.05064942138221408, "confirmation_gap_coef": -0.004364281322219126, "confirmation_p_one_sided": 0.44255744255744256, "min_detectable_gap_coef_confirmation": 0.08587797902486659, "confirmation_mean_pace_coef": 1.4648913277210465}, "step2": {"discovery": {"base": {"gap": {"coef": -0.02126110992017352, "lo": -0.39607494422818185, "hi": 0.34655110393801886, "se": 0.1894454204505614, "p_one_sided_negative": 0.44655344655344653, "p_two_sided": 0.8911088911088911}, "mean_pace": {"coef": 0.17347037228234324, "lo": -0.24932600836370425, "hi": 0.6038862023157928, "se": 0.21765617619374925, "p_one_sided_negative": 0.7832167832167832, "p_two_sided": 0.43356643356643354}, "odds_total": {"coef": -0.06967211836089392, "lo": -0.16713123655433582, "hi": 0.022570617608491543, "se": 0.04839333014357841, "p_one_sided_negative": 0.08491508491508491, "p_two_sided": 0.16783216783216784}, "n": 2901}, "season_dummies": {"gap": {"coef": -0.02321051719823764, "lo": -0.4035544774520974, "hi": 0.34434638333193907, "se": 0.19079103591429503, "p_one_sided_negative": 0.4435564435564436, "p_two_sided": 0.8851148851148851}, "mean_pace": {"coef": 0.13905057094733142, "lo": -0.365875792934519, "hi": 0.6429323058466809, "se": 0.2573490047911224, "p_one_sided_negative": 0.7092907092907093, "p_two_sided": 0.5814185814185814}, "odds_total": {"coef": -0.05126818207200565, "lo": -0.15741861479926816, "hi": 0.0495176717293193, "se": 0.05278986901239476, "p_one_sided_negative": 0.16983016983016982, "p_two_sided": 0.33766233766233766}, "n": 2901}, "regulation_only": {"gap": {"coef": -0.08692270176893324, "lo": -0.45491596816775426, "hi": 0.29742350571434223, "se": 0.19192333517400423, "p_one_sided_negative": 0.3116883116883117, "p_two_sided": 0.6213786213786214}, "mean_pace": {"coef": 0.08369398336726971, "lo": -0.3372946247368747, "hi": 0.5018859929094422, "se": 0.21407668817508088, "p_one_sided_negative": 0.6453546453546454, "p_two_sided": 0.7092907092907093}, "odds_total": {"coef": -0.04318392552426176, "lo": -0.14020464530178894, "hi": 0.050183119675320055, "se": 0.04856830739211964, "p_one_sided_negative": 0.21178821178821178, "p_two_sided": 0.42157842157842157}, "n": 2745}}, "confirmation": {"base": {"gap": {"coef": 0.03228205927928944, "lo": -0.2897268825961302, "hi": 0.33961766775483104, "se": 0.1605470791711636, "p_one_sided_negative": 0.5964035964035964, "p_two_sided": 0.8071928071928072}, "mean_pace": {"coef": 0.8304273180855597, "lo": 0.36976209194151205, "hi": 1.2822002759705344, "se": 0.23276484286454652, "p_one_sided_negative": 0.999000999000999, "p_two_sided": 0.001998001998001998}, "odds_total": {"coef": -0.16513779774205503, "lo": -0.25269384510877013, "hi": -0.06728843315842775, "se": 0.04729729896692408, "p_one_sided_negative": 0.001998001998001998, "p_two_sided": 0.001998001998001998}, "n": 4282}, "season_dummies": {"gap": {"coef": 0.031410180769230904, "lo": -0.28610844038899624, "hi": 0.34219726769806263, "se": 0.16028206838955583, "p_one_sided_negative": 0.5894105894105894, "p_two_sided": 0.8211788211788211}, "mean_pace": {"coef": 0.8441667775832421, "lo": 0.3615000088939072, "hi": 1.2958120279912826, "se": 0.2383449028309631, "p_one_sided_negative": 0.999000999000999, "p_two_sided": 0.001998001998001998}, "odds_total": {"coef": -0.1683474959151393, "lo": -0.25893854873286204, "hi": -0.0688880240887304, "se": 0.04848227669493154, "p_one_sided_negative": 0.001998001998001998, "p_two_sided": 0.001998001998001998}, "n": 4282}, "regulation_only": {"gap": {"coef": 0.08561464262109056, "lo": -0.22577261255573475, "hi": 0.391023753556886, "se": 0.15734601176342367, "p_one_sided_negative": 0.7172827172827173, "p_two_sided": 0.5654345654345654}, "mean_pace": {"coef": 0.859323068946603, "lo": 0.42660337151448235, "hi": 1.2773545289286092, "se": 0.21702835648319563, "p_one_sided_negative": 0.999000999000999, "p_two_sided": 0.001998001998001998}, "odds_total": {"coef": -0.17512271496718793, "lo": -0.25917377252912344, "hi": -0.08267992839711702, "se": 0.045023939829593476, "p_one_sided_negative": 0.000999000999000999, "p_two_sided": 0.000999000999000999}, "n": 4071}}, "registered pooled": {"base": {"gap": {"coef": -0.0009885147315088743, "lo": -0.2534158212296949, "hi": 0.24196930951350593, "se": 0.12637375784265328, "p_one_sided_negative": 0.47952047952047955, "p_two_sided": 0.957042957042957}, "mean_pace": {"coef": 0.4410963105733601, "lo": 0.12050413816238817, "hi": 0.7617491585968293, "se": 0.16358291337613295, "p_one_sided_negative": 0.998001998001998, "p_two_sided": 0.003996003996003996}, "odds_total": {"coef": -0.09798636156799297, "lo": -0.16016680998520402, "hi": -0.031821208304560825, "se": 0.032741224918531424, "p_one_sided_negative": 0.004995004995004995, "p_two_sided": 0.007992007992007992}, "n": 7183}, "season_dummies": {"gap": {"coef": 0.00384393953714059, "lo": -0.242479293564973, "hi": 0.24760933623065662, "se": 0.12502260964174225, "p_one_sided_negative": 0.4955044955044955, "p_two_sided": 0.989010989010989}, "mean_pace": {"coef": 0.5128084154913486, "lo": 0.15657812832331283, "hi": 0.8519792824042537, "se": 0.17739825359207675, "p_one_sided_negative": 0.998001998001998, "p_two_sided": 0.003996003996003996}, "odds_total": {"coef": -0.1119532230241406, "lo": -0.17919565457221623, "hi": -0.04354258478588807, "se": 0.03460537494549188, "p_one_sided_negative": 0.002997002997002997, "p_two_sided": 0.003996003996003996}, "n": 7183}, "regulation_only": {"gap": {"coef": 0.005322986608182969, "lo": -0.22668808454640096, "hi": 0.23315494512760904, "se": 0.11730689532500256, "p_one_sided_negative": 0.5214785214785215, "p_two_sided": 0.957042957042957}, "mean_pace": {"coef": 0.3979106324901814, "lo": 0.09678427063509489, "hi": 0.7168305656857823, "se": 0.1581750752680325, "p_one_sided_negative": 0.997002997002997, "p_two_sided": 0.005994005994005994}, "odds_total": {"coef": -0.09044463357263485, "lo": -0.1516291559831093, "hi": -0.028006490677296835, "se": 0.031536394210666445, "p_one_sided_negative": 0.004995004995004995, "p_two_sided": 0.007992007992007992}, "n": 6816}}, "pooled 2021-22..2025-26 (no COVID seasons)": {"base": {"gap": {"coef": 0.046322292964830834, "lo": -0.25864655092906735, "hi": 0.32073456026745123, "se": 0.1478013038766629, "p_one_sided_negative": 0.6393606393606394, "p_two_sided": 0.7212787212787213}, "mean_pace": {"coef": 0.725658897180612, "lo": 0.3235501047134404, "hi": 1.1439124415521205, "se": 0.20927610633639798, "p_one_sided_negative": 0.998001998001998, "p_two_sided": 0.003996003996003996}, "odds_total": {"coef": -0.13164626362243526, "lo": -0.2098993669503784, "hi": -0.05068665548255084, "se": 0.04061548761934377, "p_one_sided_negative": 0.004995004995004995, "p_two_sided": 0.007992007992007992}, "n": 5355}, "season_dummies": {"gap": {"coef": 0.049205743200700126, "lo": -0.2489163817754557, "hi": 0.32639759008174407, "se": 0.1467637683309183, "p_one_sided_negative": 0.6463536463536463, "p_two_sided": 0.7072927072927073}, "mean_pace": {"coef": 0.7325381585170461, "lo": 0.32252696206216597, "hi": 1.1526265409616197, "se": 0.2117600966580239, "p_one_sided_negative": 0.999000999000999, "p_two_sided": 0.001998001998001998}, "odds_total": {"coef": -0.1269473877788879, "lo": -0.20900916416834595, "hi": -0.043511778485875306, "se": 0.042218720837364956, "p_one_sided_negative": 0.002997002997002997, "p_two_sided": 0.003996003996003996}, "n": 5355}, "regulation_only": {"gap": {"coef": 0.07408603409647979, "lo": -0.20003398750192938, "hi": 0.33576716941928614, "se": 0.1366839686023509, "p_one_sided_negative": 0.7082917082917083, "p_two_sided": 0.5834165834165834}, "mean_pace": {"coef": 0.6803252817882798, "lo": 0.2929786108106078, "hi": 1.069265138649534, "se": 0.19803227750993013, "p_one_sided_negative": 0.998001998001998, "p_two_sided": 0.003996003996003996}, "odds_total": {"coef": -0.1290063163648214, "lo": -0.2022839334171321, "hi": -0.04932117416973324, "se": 0.039021112052907876, "p_one_sided_negative": 0.003996003996003996, "p_two_sided": 0.005994005994005994}, "n": 5094}}}, "step2_reading": {"supported_raw": false, "gated_on_step1": false, "status": "exploratory and ungated", "confirmation_p_one_sided": 0.5964035964035964, "holm_input_p": 1.0, "min_detectable_gap_coef_confirmation": 0.44953182167925804}, "step3": {"n": 5352, "models": {"2021-22..2025-26": {"model_resid": {"gap": {"coef": 0.07723975338046825, "lo": -0.19431266728681706, "hi": 0.3471042841764538, "se": 0.1381165692508344, "p_one_sided_negative": 0.7022977022977023, "p_two_sided": 0.5954045954045954}, "mean_pace": {"coef": 0.4771923937732636, "lo": 0.05657277139969727, "hi": 0.9313419138808064, "se": 0.22315539349007887, "p_one_sided_negative": 0.983016983016983, "p_two_sided": 0.03396603396603397}, "odds_total": {"coef": 0.1260512934460571, "lo": 0.04191863246339804, "hi": 0.21052899707666853, "se": 0.043012848115630234, "p_one_sided_negative": 0.998001998001998, "p_two_sided": 0.003996003996003996}, "n": 5352}, "model_lean": {"gap": {"coef": -0.02484086859706386, "lo": -0.07299024224030173, "hi": 0.0203460060955181, "se": 0.0238102674326071, "p_one_sided_negative": 0.13086913086913088, "p_two_sided": 0.2597402597402597}, "mean_pace": {"coef": 0.2547778211522977, "lo": 0.18842076527158777, "hi": 0.32289561373732995, "se": 0.03430480828207708, "p_one_sided_negative": 1.0, "p_two_sided": 0.000999000999000999}, "odds_total": {"coef": -0.2588076981355176, "lo": -0.276245250916862, "hi": -0.2422243882654193, "se": 0.008678791492714964, "p_one_sided_negative": 0.000999000999000999, "p_two_sided": 0.000999000999000999}, "n": 5352}, "r": {"gap": {"coef": 0.05239888478340423, "lo": -0.21425284055056476, "hi": 0.32547957320618187, "se": 0.13768684024406802, "p_one_sided_negative": 0.6343656343656343, "p_two_sided": 0.7312687312687313}, "mean_pace": {"coef": 0.7319702149256568, "lo": 0.32171993628484535, "hi": 1.1858603488345825, "se": 0.2204439827933003, "p_one_sided_negative": 0.998001998001998, "p_two_sided": 0.003996003996003996}, "odds_total": {"coef": -0.132756404689473, "lo": -0.21797545018227135, "hi": -0.05210021443477798, "se": 0.04231511116007484, "p_one_sided_negative": 0.002997002997002997, "p_two_sided": 0.003996003996003996}, "n": 5352}}, "confirmation 2022-23..2025-26": {"model_resid": {"gap": {"coef": 0.04999379658503433, "lo": -0.24729257325548654, "hi": 0.34079813227528466, "se": 0.15002313916601304, "p_one_sided_negative": 0.6273726273726273, "p_two_sided": 0.7452547452547452}, "mean_pace": {"coef": 0.5592692758483915, "lo": 0.0844418356865105, "hi": 1.0584378779255816, "se": 0.248468378122212, "p_one_sided_negative": 0.983016983016983, "p_two_sided": 0.03396603396603397}, "odds_total": {"coef": 0.14037465515948774, "lo": 0.04402754058694485, "hi": 0.23603579467143662, "se": 0.04898169747053362, "p_one_sided_negative": 0.999000999000999, "p_two_sided": 0.001998001998001998}, "n": 4279}, "model_lean": {"gap": {"coef": -0.010636613732676771, "lo": -0.05974432223855916, "hi": 0.03585767183114312, "se": 0.024388263793291398, "p_one_sided_negative": 0.2957042957042957, "p_two_sided": 0.5894105894105894}, "mean_pace": {"coef": 0.2792122517516013, "lo": 0.20482411861684477, "hi": 0.3545666066928997, "se": 0.03819961430511605, "p_one_sided_negative": 1.0, "p_two_sided": 0.000999000999000999}, "odds_total": {"coef": -0.3070674278887013, "lo": -0.3267565838867762, "hi": -0.2898696194043807, "se": 0.00940993991897844, "p_one_sided_negative": 0.000999000999000999, "p_two_sided": 0.000999000999000999}, "n": 4279}, "r": {"gap": {"coef": 0.03935718285235964, "lo": -0.26841580902080714, "hi": 0.32756988495107053, "se": 0.15203716682956064, "p_one_sided_negative": 0.6033966033966034, "p_two_sided": 0.7932067932067932}, "mean_pace": {"coef": 0.8384815276000214, "lo": 0.35903780281762526, "hi": 1.3294039050472441, "se": 0.24754237301775991, "p_one_sided_negative": 1.0, "p_two_sided": 0.000999000999000999}, "odds_total": {"coef": -0.1666927727292176, "lo": -0.2627232707406629, "hi": -0.07255472519710998, "se": 0.048512384067232885, "p_one_sided_negative": 0.000999000999000999, "p_two_sided": 0.000999000999000999}, "n": 4279}}}, "quintiles": [{"quintile": 1, "games": 1071, "gap_mean": 0.41859443994685963, "model_resid": 0.5252755686365232, "model_resid_lo": -0.6103677287284403, "model_resid_hi": 1.6408584021445276, "r": -0.3674136321195145, "r_lo": -1.5014028600169176, "r_hi": 0.6647356573498324, "model_lean": -0.8926892007560377, "model_lean_lo": -1.1194081844730746, "model_lean_hi": -0.6647633753196791}, {"quintile": 2, "games": 1070, "gap_mean": 1.2632399528701894, "model_resid": 1.8040860923744502, "model_resid_lo": 0.6803983224698784, "model_resid_hi": 2.8282393841948856, "r": 1.0093457943925233, "r_lo": -0.12594525727437117, "r_hi": 2.0432245992740357, "model_lean": -0.7947402979819267, "model_lean_lo": -1.01316215578507, "model_lean_hi": -0.5575283649815629}, {"quintile": 3, "games": 1069, "gap_mean": 2.194836206575811, "model_resid": 2.842973105995932, "model_resid_lo": 1.763728562661911, "model_resid_hi": 3.92753626675981, "r": 1.7399438727782974, "r_lo": 0.681579076361718, "r_hi": 2.80601965910053, "model_lean": -1.1030292332176346, "model_lean_lo": -1.3263797330089835, "model_lean_hi": -0.8815822838622336}, {"quintile": 4, "games": 1071, "gap_mean": 3.324319995779021, "model_resid": 1.3861485285579649, "model_resid_lo": 0.36770822936677705, "model_resid_hi": 2.4146714644827263, "r": 0.4598506069094304, "r_lo": -0.49098498531744933, "r_hi": 1.4371146254337086, "model_lean": -0.9262979216485344, "model_lean_lo": -1.1504664219044372, "model_lean_hi": -0.68348665786803}, {"quintile": 5, "games": 1071, "gap_mean": 5.407287255543031, "model_resid": 1.9386902710500795, "model_resid_lo": 0.7470459610292979, "model_resid_hi": 2.9820940457386356, "r": 0.9187675070028011, "r_lo": -0.2688791868099608, "r_hi": 1.9900850203735865, "model_lean": -1.0199227640472783, "model_lean_lo": -1.2331521032936348, "model_lean_hi": -0.8073277381302301}]}, "step3_reading": {"supported": false, "confirmation_coef": 0.04999379658503433, "p_one_sided": 0.6273726273726273}, "layer_c_gate_passed": false, "bet": {"grid": [{"q": 0.5, "cutoff_gap": 2.212075471698128, "discovery": {"roi": -7.017104191466701, "lo": -12.110312295398137, "hi": -2.1521933160042765, "bets": 1451}, "discovery_over_mirror": {"roi": -2.017417455046677, "lo": -6.893275289952, "hi": 3.1062574343585037, "bets": 1451}, "confirmation": {"roi": -5.044908923025266, "lo": -8.980406206765329, "hi": -1.0319090113911165, "bets": 2166}, "confirmation_over_mirror": {"roi": -3.9872408293460926, "lo": -7.972220953512545, "hi": -0.07505959788221533, "bets": 2166}}, {"q": 0.6, "cutoff_gap": 2.7379999999999995, "discovery": {"roi": -6.820139378278914, "lo": -12.287280120571454, "hi": -1.3501883584318013, "bets": 1161}, "discovery_over_mirror": {"roi": -2.2159580299115187, "lo": -7.700525446139856, "hi": 3.2910450218242016, "bets": 1161}, "confirmation": {"roi": -6.0364464692482915, "lo": -10.351265975862155, "hi": -1.416380421418413, "bets": 1756}, "confirmation_over_mirror": {"roi": -2.9923379581693945, "lo": -7.59582573133469, "hi": 1.3231237591032425, "bets": 1756}}, {"q": 0.7, "cutoff_gap": 3.377999999999986, "discovery": {"roi": -6.0536478446926205, "lo": -12.774123886700735, "hi": 0.489697225189498, "bets": 871}, "discovery_over_mirror": {"roi": -2.9850746268656714, "lo": -9.528553945362617, "hi": 3.7597783134591762, "bets": 871}, "confirmation": {"roi": -4.207832823939156, "lo": -9.489432136490963, "hi": 1.1801567290781432, "bets": 1279}, "confirmation_over_mirror": {"roi": -4.804890184092686, "lo": -10.19689847493492, "hi": 0.4467819485267104, "bets": 1279}}, {"q": 0.8, "cutoff_gap": 4.140000000000001, "discovery": {"roi": -8.950086058519792, "lo": -16.601934184285696, "hi": -0.719084128722683, "bets": 581}, "discovery_over_mirror": {"roi": -0.07823501799405407, "lo": -8.278558389401766, "hi": 7.603807525900384, "bets": 581}, "confirmation": {"roi": -6.784415584415584, "lo": -13.294230172250277, "hi": -0.2578550191493662, "bets": 875}, "confirmation_over_mirror": {"roi": -2.2025974025974024, "lo": -8.708198951824231, "hi": 4.301807412679848, "bets": 875}}, {"q": 0.9, "cutoff_gap": 5.285283018867943, "discovery": {"roi": -14.026866604186194, "lo": -24.90362780135508, "hi": -2.2688579341805197, "bets": 291}, "discovery_over_mirror": {"roi": 4.9984379881287095, "lo": -6.703178400546826, "hi": 15.891881636310137, "bets": 291}, "confirmation": {"roi": -2.5546605293440736, "lo": -11.857032392894464, "hi": 6.593802065864189, "bets": 395}, "confirmation_over_mirror": {"roi": -6.421173762945914, "lo": -15.621116354995038, "hi": 2.9105538140020872, "bets": 395}}], "q_chosen": 0.7, "cutoff": 3.377999999999986, "discovery": {"under opening @ -110": {"roi": -6.0536478446926205, "lo": -12.774123886700735, "hi": 0.489697225189498, "bets": 871}, "under closing @ -110": {"roi": -6.487202118270079, "lo": -13.408460518239615, "hi": 0.14743244780791276, "bets": 824}, "under best book": {"roi": -2.8922666420379555, "lo": -9.46245729100762, "hi": 3.9465511630483445, "bets": 871}, "under all games (control)": {"roi": -7.34229576008273, "lo": -10.639513586703005, "hi": -4.024458329279801, "bets": 2901}, "over, same games (exploratory mirror)": {"roi": -2.9850746268656714, "lo": -9.528553945362617, "hi": 3.7597783134591762, "bets": 871}}, "confirmation": {"under opening @ -110": {"roi": -4.207832823939156, "lo": -9.489432136490963, "hi": 1.1801567290781432, "bets": 1279}, "under closing @ -110": {"roi": -3.393085787451984, "lo": -8.53929605222194, "hi": 2.0002987298625103, "bets": 1278}, "under best book": {"roi": -0.9051931600803304, "lo": -6.1693670166107095, "hi": 4.3059057243444245, "bets": 1279}, "under all games (control)": {"roi": -5.260923103052948, "lo": -7.802713509659637, "hi": -2.19769133978883, "bets": 4282}, "over, same games (exploratory mirror)": {"roi": -4.804890184092686, "lo": -10.19689847493492, "hi": 0.4467819485267104, "bets": 1279}}}};
+const fmt = {
+  '1': v => v.toFixed(1), '2': v => v.toFixed(2), '3': v => v.toFixed(3), 's2': v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(2), 's3': v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(3),
+  'int': v => Math.round(v).toLocaleString('en-US'), 'roi': v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1) + '%', 'raw': v => String(v)
+};
+const path = (o, p) => p.split('.').reduce((a, k) => (a == null ? a : a[k]), o);
+const CONFL = 'confirmation 2022-23..2025-26';
+const bet = R.bet;
+R.D = { gc: R.step1.confirmation.base.gap, gd: R.step1.discovery.base.gap, all: Object.assign({ n: R.step1['all 13 seasons'].base.n }, R.step1['all 13 seasons'].base.gap),
+  mc: R.step2.confirmation.base.gap, md: R.step2.discovery.base.gap, mp: R.step2.confirmation.base.mean_pace, mpd: R.step2.discovery.base.mean_pace,
+  mr: R.step3.models[CONFL].model_resid.mean_pace, mdetect: R.step1_reading.min_detectable_gap_coef_confirmation, mpace: R.step1.confirmation.base.mean_pace };
+document.querySelectorAll('[data-b]').forEach(el => { const [p, f] = el.dataset.b.split('|'); const v = path(R, p); el.textContent = v == null ? '?' : (f ? fmt[f](v) : String(v)); });
+function table(id, head, rows, hl) {
+  const t = document.getElementById(id);
+  t.innerHTML = '<thead><tr>' + head.map(h => `<th>${h}</th>`).join('') + '</tr></thead><tbody>' + rows.map((r, i) => `<tr class="${hl && hl(i) ? 'hl' : ''}">` + r.map(c => `<td>${c}</td>`).join('') + '</tr>').join('') + '</tbody>';
+}
+const ci = (lo, hi, f) => `${f(lo)} to ${f(hi)}`;
+const cc = (c, f = fmt.s3) => `${f(c.coef)} (${ci(c.lo, c.hi, f)})`;
+const pers = ['discovery', 'confirmation', 'registered pooled', 'supplementary 2013-14..2018-19', 'all 13 seasons'];
+table('t-mech', ['Sample', 'Games', 'Gap, base (95%)', 'Gap, season dummies', 'Gap, regulation only', 'Average pace, base'], pers.map(p => [p, fmt.int(R.step1[p].base.n), cc(R.step1[p].base.gap), cc(R.step1[p].season_dummies.gap), cc(R.step1[p].regulation_only.gap), cc(R.step1[p].base.mean_pace, fmt['s2'])]));
+const w = R.step1.window_robustness;
+document.getElementById('t-mech').insertAdjacentHTML('beforeend', '<tfoot>' + ['discovery', 'confirmation'].map(p => `<tr class="hl"><td>${p}: window 10 / window 30</td><td></td><td colspan="4" style="text-align:left">${cc(w[p]['window 10'].gap10)} / ${cc(w[p]['window 30'].gap30)}</td></tr>`).join('') + '</tfoot>');
+
+table('t-mkt', ['Sample', 'Games', 'Gap on r (95%)', 'Gap, season dummies', 'Gap, regulation only', 'Average pace on r', 'Opening total on r'], ['discovery', 'confirmation', 'registered pooled', 'pooled 2021-22..2025-26 (no COVID seasons)'].map(p => [p, fmt.int(R.step2[p].base.n), cc(R.step2[p].base.gap, fmt.s2), cc(R.step2[p].season_dummies.gap, fmt.s2), cc(R.step2[p].regulation_only.gap, fmt.s2), cc(R.step2[p].base.mean_pace, fmt.s2), cc(R.step2[p].base.odds_total, fmt.s2)]));
+
+const m3 = R.step3.models;
+table('t-model', ['Coefficient on the gap (95%), per pace point', 'All OOS seasons (2021-22 to 2025-26)', 'Confirmation seasons'], [['model_resid', 'Model residual: actual − prediction'], ['model_lean', 'Model lean: prediction − opening total'], ['r', 'Market residual: actual − opening total']].map(([k, l]) => [l, cc(m3['2021-22..2025-26'][k].gap, fmt.s2), cc(m3[CONFL][k].gap, fmt.s2)]));
+
+const rc = r => `${fmt.roi(r.roi)} (${ci(r.lo, r.hi, fmt.roi)})`;
+table('t-bet', ['Strategy', 'Discovery: bets', 'Discovery: return (95%)', 'Confirmation: bets', 'Confirmation: return (95%)'], Object.keys(bet.discovery).map(k => [k, fmt.int(bet.discovery[k].bets), rc(bet.discovery[k]), fmt.int(bet.confirmation[k].bets), rc(bet.confirmation[k])]), i => i === 0);
+
+const NS = 'http://www.w3.org/2000/svg';
+function ticks(lo, hi, n) {
+  const raw = (hi - lo) / n, p = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / p;
+  const step = (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p, out = [];
+  for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) out.push(+v.toFixed(10));
+  return out;
+}
+function dotChart(el, o) {
+  const W = 720, H = o.h || 290, m = { l: 58, r: 16, t: o.bands ? 30 : 14, b: 44 }, n = o.cats.length, S = o.series.length;
+  let lo = Infinity, hi = -Infinity;
+  o.series.forEach(s => s.pts.forEach(p => { lo = Math.min(lo, p.lo); hi = Math.max(hi, p.hi); }));
+  (o.refs || []).forEach(r => { lo = Math.min(lo, r.y); hi = Math.max(hi, r.y); });
+  if (o.zero) { lo = Math.min(lo, 0); hi = Math.max(hi, 0); }
+  const tk = ticks(lo, hi, 5); lo = Math.min(lo, tk[0]); hi = Math.max(hi, tk[tk.length - 1]);
+  const pad = (hi - lo) * 0.03; lo -= pad; hi += pad;
+  const bw = (W - m.l - m.r) / n, cx = i => m.l + (i + 0.5) * bw, y = v => m.t + (hi - v) / (hi - lo) * (H - m.t - m.b);
+  const step = Math.min(20, bw / (S + 1));
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${o.label}">`;
+  (o.bands || []).forEach(b => { s += `<rect class="band" x="${cx(b.from) - bw / 2}" y="${m.t}" width="${(b.to - b.from + 1) * bw}" height="${H - m.t - m.b}"/><text x="${cx(b.from) - bw / 2 + 6}" y="${m.t - 8}">${b.label}</text>`; });
+  tk.forEach(v => { s += `<line class="grid" x1="${m.l}" x2="${W - m.r}" y1="${y(v)}" y2="${y(v)}"/><text x="${m.l - 8}" y="${y(v) + 4}" text-anchor="end">${o.yFmt(v)}</text>`; });
+  if (o.zero) s += `<line class="zero" x1="${m.l}" x2="${W - m.r}" y1="${y(0)}" y2="${y(0)}"/>`;
+  (o.refs || []).forEach(r => { s += `<line class="ref" x1="${m.l}" x2="${W - m.r}" y1="${y(r.y)}" y2="${y(r.y)}"/><text x="${W - m.r - 4}" y="${y(r.y) - 4}" text-anchor="end">${r.label}</text>`; });
+  o.cats.forEach((cat, i) => { s += `<text x="${cx(i)}" y="${H - m.b + 18}" text-anchor="middle">${cat}</text>`; });
+  if (o.xTitle) s += `<text class="lbl" x="${m.l + (W - m.l - m.r) / 2}" y="${H - 6}" text-anchor="middle">${o.xTitle}</text>`;
+  o.series.forEach((se, si) => {
+    const off = (si - (S - 1) / 2) * step;
+    se.pts.forEach((p, i) => {
+      if (!p) return;
+      const x = cx(i) + off, col = `var(${se.color})`;
+      s += `<g><title>${se.name} · ${o.cats[i]}: ${o.yFmt(p.y, 2)} (${o.yFmt(p.lo, 2)} to ${o.yFmt(p.hi, 2)})</title><line x1="${x}" x2="${x}" y1="${y(p.lo)}" y2="${y(p.hi)}" stroke="${col}" stroke-width="2"/>` +
+        `<line x1="${x - 3}" x2="${x + 3}" y1="${y(p.lo)}" y2="${y(p.lo)}" stroke="${col}" stroke-width="2"/><line x1="${x - 3}" x2="${x + 3}" y1="${y(p.hi)}" y2="${y(p.hi)}" stroke="${col}" stroke-width="2"/>` +
+        `<circle cx="${x}" cy="${y(p.y)}" r="4.2" fill="${se.hollow ? 'var(--surface)' : col}" stroke="${col}" stroke-width="2"/></g>`;
+    });
+  });
+  s += '</svg>';
+  const lg = o.series.length > 1 ? `<div class="legend">${o.series.map(se => `<span><i style="background:${se.hollow ? 'var(--surface)' : `var(${se.color})`};border:2px solid var(${se.color})"></i>${se.name}</span>`).join('')}</div>` : '';
+  document.getElementById(el).innerHTML = lg + s;
+}
+const pctT = (v, d) => (v * 100).toFixed(d === 2 ? 1 : 0) + '%';
+const sgn = (v, d) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(d === 2 ? 2 : 1);
+
+
+dotChart('c-mech', { label: 'Gap coefficient on possessions', cats: ['discovery', 'confirmation', 'pooled 2019-26', '2013-19 (supp.)', 'all 13'], zero: true, yFmt: (v, d) => sgn(v, 2), xTitle: 'Sample', h: 270,
+  series: [{ name: 'Gap coefficient', color: '--under', hollow: false, pts: pers.map(p => { const c = R.step1[p].base.gap; return { y: c.coef, lo: c.lo, hi: c.hi }; }) }] });
+const Q = R.step3.quintiles;
+dotChart('c-quint', { label: 'Mean miss by gap quintile', cats: Q.map(q => `Q${q.quintile} (${q.gap_mean.toFixed(1)})`), zero: true, yFmt: (v, d) => sgn(v, d === 2 ? 2 : 1), xTitle: 'Quintile of the pace gap (mean gap in parentheses)', h: 280,
+  series: [['model_resid', 'Model residual', '--under'], ['r', 'Market residual', '--over']].map(([k, n, col]) => ({ name: n, color: col, hollow: false, pts: Q.map(q => ({ y: q[k], lo: q[k + '_lo'], hi: q[k + '_hi'] })) })) });
+</script>
