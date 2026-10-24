@@ -205,3 +205,22 @@ def test_e06_calibration_rows_are_in_fold_order_not_date_order():
     assert not out['gameDate'].is_monotonic_increasing                                    # ...so a date sort would have scrambled them
     for s, g in out.groupby('fold'):
         assert set(g['kappa']) == {chosen[s]} and len(g) == 6 and g['gameDate'].is_monotonic_increasing
+
+
+# ------------------------------------------------------------------ E17 / E19: bootstrap draws that miss a thin cell
+
+@pytest.mark.parametrize('module,fn', [('e17_interaction', 'ratio_diff'), ('e19_tanking', 'e14_ratio_diff')])
+def test_bootstrap_ratio_diff_ignores_draws_with_an_empty_cell(module, fn):
+    import importlib
+    from experiments.e14_blowout_under import DayBoot
+    mod = importlib.import_module(f'experiments.{module}')
+    dates = pd.Timestamp('2024-01-01') + pd.to_timedelta(np.repeat(np.arange(12), 5), unit='D')
+    db = DayBoot(dates, n_boot=400, seed=3)
+    n = len(dates)
+    num, den = np.ones(n), np.ones(n)
+    thin = np.zeros(n, bool)
+    thin[:2] = True                                              # two games on one day: ~1/3 of the draws never pick that day
+    rest = ~thin
+    assert (db.W @ db.day_sum(np.where(thin, den, 0.0)) == 0).any()
+    out = getattr(mod, fn)(db, num, den, thin, rest)
+    assert np.isfinite([out['diff'], out['lo'], out['hi']]).all() and out['lo'] <= out['hi']
