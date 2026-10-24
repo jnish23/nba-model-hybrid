@@ -20,20 +20,8 @@ def main():
     ap.add_argument('--live', action='store_true', help='export the live paper record (data/props_live.db) to data/props_dashboard_live instead of the backtest')
     a = ap.parse_args()
     if a.live:
-        from props.live import config, export as live_export, store
-        out = a.out if a.out != 'data/props_dashboard' else 'data/props_dashboard_live'
-        import pandas as pd
-        from props import schedule as S
-        from props.live import health
-        cfg, now = config.load(), pd.Timestamp.now(tz='UTC')
-        sched = S.load_schedule(cfg['model_season'])
-        tips = pd.to_datetime(sched['nba_tip_utc'], utc=True)
-        soon = bool(((tips > now - pd.Timedelta(hours=1)) & (tips < now + pd.Timedelta(hours=6))).any())
-        conn = store.connect(store.DEFAULT_PATH)
-        checks = health.checks(conn, 'data/props_odds.db', 'data/raw/injury_reports', now, soon)
-        print(checks.to_string(index=False))
-        live_export.export_live(store.DEFAULT_PATH, out, cfg, a.n_boot, checks)
-        print('wrote', out)
+        from props.live import refresh
+        refresh.refresh_live_export(a.out if a.out != 'data/props_dashboard' else 'data/props_dashboard_live', n_boot=a.n_boot)
         return
     export.export_all(a.out, seasons=a.seasons, n_boot=a.n_boot)
     print('wrote', a.out)

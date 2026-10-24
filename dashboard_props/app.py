@@ -29,8 +29,9 @@ T_LABEL = {240: 'T-4h', 60: 'T-1h', 5: 'T-5m'}
 st.set_page_config(page_title='NBA Props', page_icon='🏀', layout='wide')
 
 
-@st.cache_data(show_spinner=False)
-def load(data_dir):
+@st.cache_data(show_spinner=False, ttl=300)
+def load(data_dir, stamp=None):
+    """`stamp` (the export's modification time) is part of the cache key, so a hosted app picks up new data as soon as the files change; the 5-minute expiry is a backstop."""
     d = Path(data_dir)
     bets = pd.read_csv(d / 'bets.csv', dtype={'game_id': str})
     bets['played'] = bets['played'].fillna(0).astype(bool)
@@ -38,7 +39,7 @@ def load(data_dir):
     out = {'bets': bets, 'summary': pd.read_csv(d / 'season_summary.csv'), 'reliability': pd.read_csv(d / 'reliability.csv'), 'bias': pd.read_csv(d / 'bias_monthly.csv'),
            'meta': json.loads((d / 'meta.json').read_text(encoding='utf-8')), 'pmf': json.loads((d / 'pmf.json').read_text(encoding='utf-8')),
            'books': json.loads((d / 'books.json').read_text(encoding='utf-8'))}
-    for name in ('pipeline_health', 'slot_log', 'checks'):
+    for name in ('pipeline_health', 'slot_log', 'checks', 'current'):
         out[name] = pd.read_csv(d / f'{name}.csv') if (d / f'{name}.csv').exists() else pd.DataFrame()
     return out
 
@@ -51,7 +52,25 @@ def bet_label(r):
     return f"{r['player_name']} · {r['side'].upper()} {L.STAT_LABEL.get(r['stat'], r['stat'])} {r['line']:g}"
 
 
-def board_table(d, mode, treatment, reveal):
+NOW_COLS = {'median': ('dec_median_now', 'ev_median_now'), 'best': ('dec_best_now', 'ev_best_now'), 'flat': (None, 'ev_flat_now')}
+
+
+def add_now(t, d, cur, mode):
+    """Current odds next to the recorded ones (live pending bets only): the price, line and EV at the latest snapshot, and whether the bet would still qualify."""
+    if cur is None or cur.empty:
+        return t
+    c = d[['bet_id']].merge(cur, on='bet_id', how='left')
+    dec_n, ev_n = NOW_COLS[mode]
+    dec = c[dec_n].to_numpy(float) if dec_n else np.where(c['ev_flat_now'].notna(), L.FLAT_110, np.nan)
+    t = t.copy()
+    t['Price now'] = np.where(np.isfinite(dec), L.american(np.nan_to_num(dec, nan=2.0)), '')
+    t['Line now'] = c['line_now'].to_numpy()
+    t['EV now'] = c[ev_n].to_numpy()
+    t['Still bet?'] = np.where(c['still_qualifies'].isna(), '', np.where(c['still_qualifies'] == 1, 'yes', 'no'))
+    return t
+
+
+def board_table(d, mode, treatment, reveal, cur=None):
     ev_c, dec_c = L.ev_col(mode), L.dec_col(mode)
     side_model = L.side_prob(d, 'p_over_star')
     side_mkt = L.side_prob(d, 'p_over_market')
@@ -69,7 +88,7 @@ def board_table(d, mode, treatment, reveal):
         t['Actual'] = d['y'].to_numpy()
         t['Result'] = d[f'status_{treatment}'].to_numpy()
         t['Units'] = w['profit'].to_numpy()
-    return t
+    return add_now(t, d, cur, mode)
 
 
 def page_board(D, mode, treatment):
@@ -95,14 +114,19 @@ def page_board(D, mode, treatment):
     if shown.empty:
         st.info('No bets pass the filters on this slate.')
         return
-    t = board_table(shown, mode, treatment, reveal)
+    cur = D.get('current')
+    if live and cur is not None and len(cur):
+        asof = pd.to_datetime(cur['as_of_utc'], utc=True).max().tz_convert('America/New_York')
+        st.caption(f"Odds now: latest snapshot {asof:%a %H:%M} ET ({cur['snapshot_minutes_now'].min():.0f} min before the earliest tip it covers). 'Price now', 'Line now' and 'EV now' re-value the recorded bet "
+                   f"at today's prices and line; the recorded bet itself never changes. The odds collector snapshots about every 30 minutes, so a later refresh can show newer prices.")
+    t = board_table(shown, mode, treatment, reveal, cur)
     cfg = {'Model': st.column_config.ProgressColumn('Model P', min_value=0.0, max_value=1.0, format='%.2f'), 'Market': st.column_config.NumberColumn('Market P', format='%.2f'),
-           'EV': st.column_config.NumberColumn('EV', format='%.3f')}
+           'EV': st.column_config.NumberColumn('EV', format='%.3f'), 'EV now': st.column_config.NumberColumn('EV now', format='%.3f')}
     st.dataframe(t, use_container_width=True, hide_index=True, column_config=cfg)
     with st.expander('All shown bets grouped by game'):
         for game, g in shown.groupby('matchup', sort=False):
             st.markdown(f'**{game}**')
-            st.dataframe(board_table(g, mode, treatment, reveal).drop(columns=['Game']), use_container_width=True, hide_index=True, column_config=cfg)
+            st.dataframe(board_table(g, mode, treatment, reveal, cur).drop(columns=['Game']), use_container_width=True, hide_index=True, column_config=cfg)
     st.download_button('Download this slate (CSV)', t.to_csv(index=False).encode('utf-8'), file_name=f'props_board_{day}.csv')
     st.subheader('Inspect a bet')
     labels = {r['bet_id']: bet_label(r) for _, r in shown.iterrows()}
@@ -262,7 +286,7 @@ def main():
         return
     st.sidebar.header('Data')
     source = st.sidebar.radio('Source', list(sources), index=0)
-    D = load(str(sources[source]))
+    D = load(str(sources[source]), (sources[source] / 'meta.json').stat().st_mtime)
     if D['meta']['mode'] == 'live':
         st.warning('LIVE PAPER RECORD: frozen rule, no real money. ' + D['meta']['disclosure'], icon='⚠️')
         st.sidebar.caption(f"Record started {D['meta'].get('record_started_utc') or 'not yet'} · model {D['meta']['model_version']} · built {D['meta']['built_at_utc']}")
