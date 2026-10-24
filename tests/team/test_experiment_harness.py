@@ -115,3 +115,65 @@ def test_saved_run_records_its_split_and_tags_calibration_rows_with_their_fold(t
     assert json.loads((out / 'refit' / 'split.json').read_text()) == {'calib_cap': 100, 'refit_on_all': True}
     cal = pd.read_csv(out / 'refit' / 'calibration_set_predictions.csv')
     assert len(cal) == 100 and set(cal['fold']) == {'2022-23'}
+
+
+# ------------------------------------------------------------------ residual runs (E1 / E25): selection and missing lines
+
+def _with_market_columns(df, seed=1):
+    rng = np.random.default_rng(seed)
+    df = df.copy()
+    df['odds_home_ml'] = np.where(df['odds_home_spread'] < 0, -150.0, 130.0)
+    df['odds_away_ml'] = np.where(df['odds_home_spread'] < 0, 130.0, -150.0)
+    gone = rng.random(len(df)) < 0.04
+    gone[[0, 1, len(df) - 1, len(df) - 2]] = True                                  # the first training rows and the last test rows too
+    df.loc[gone, ['odds_home_spread', 'odds_total', 'odds_home_ml', 'odds_away_ml']] = np.nan
+    return df
+
+
+@pytest.fixture(scope='module')
+def residual_run(tmp_path_factory):
+    from experiments import e01_residual as e1
+    out = tmp_path_factory.mktemp('resid')
+    mp = pytest.MonkeyPatch()
+    mp.setattr(lib, 'OUT', out)
+    m, df = _games(per_season=1000, seasons=('2019-20', '2020-21', '2021-22', '2022-23'))
+    df = _with_market_columns(df)
+    before = df.copy()
+    hooks = {'init_scores': e1.init_scores, 'target': e1.target, 'pred_offset': e1.pred_offset, 'require_columns': e1.LINE_COLUMNS}
+    res = lib.run_walk_forward('resid', df_override=(m, df), selection='residual_no_odds', hooks=hooks, seasons=['2022-23'], calib_cap=100)
+    mp.undo()
+    return out, m, df, before, res
+
+
+def test_residual_selection_leaves_the_market_out_of_the_feature_lists(residual_run):
+    out, *_ = residual_run
+    feats = json.loads((out / 'resid' / 'features.json').read_text())['2022-23']
+    assert all(not f.startswith('odds_') for fs in feats.values() for f in fs)
+    assert json.loads((out / 'resid' / 'selection.json').read_text()) == {'selection': 'residual_no_odds'}
+
+
+def test_missing_lines_are_dropped_inside_the_fold_not_from_the_frame(residual_run):
+    out, m, df, before, (test, calib, info) = residual_run
+    pd.testing.assert_frame_equal(df, before)                                       # the caller's frame is untouched
+    train = df[df['seasonYear'] < '2022-23'].sort_values('gameDate', kind='stable').reset_index(drop=True)
+    boundary = train.iloc[len(train) - 100:]                                         # the calibration block, set on the FULL history
+    ok = lambda f: f.dropna(subset=['odds_home_spread', 'odds_total'])
+    assert set(calib['gameId']) == set(ok(boundary)['gameId'])
+    assert set(test['gameId']) == set(ok(df[df['seasonYear'] == '2022-23'])['gameId'])
+    assert info['2022-23']['spread']['refit_rows'] == len(ok(train))
+    assert test['spread_pred'].notna().all() and test['total_pred'].notna().all()
+
+
+def test_cached_features_from_another_selection_rule_are_not_reused(tmp_path, monkeypatch):
+    monkeypatch.setattr(lib, 'OUT', tmp_path)
+    m, df = _games()
+    calls = []
+    real = lib.select_fold_features
+    monkeypatch.setattr(lib, 'select_fold_features', lambda *a: calls.append(a[2]) or real(*a))
+    kw = dict(df_override=(m, df), seasons=['2022-23'], calib_cap=100, refit_on_all=False)
+    lib.run_walk_forward('c', selection='raw', **kw)
+    lib.run_walk_forward('c', selection='raw', **kw)               # same rule: the cache is reused
+    lib.run_walk_forward('c', selection='legacy', **kw)            # a different rule: selected afresh
+    assert calls == ['raw', 'legacy']
+    with pytest.raises(ValueError):
+        real(m, df, 'bogus', 0)

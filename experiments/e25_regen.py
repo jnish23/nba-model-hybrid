@@ -1,6 +1,6 @@
 """E25 step 1 - regenerate the three walk-forward runs on the current training set (see PREREGISTRATION.md, E25).
     E25_with_odds  opening odds in the feature pools (the baseline)
-    E25_residual   E1's hooks on E25_with_odds's feature sets (market as an offset)
+    E25_residual   E1's hooks (market as an offset); features selected against the residual targets, odds left out of the lists
     E25_no_odds    no market information in the pools; features selected afresh per fold
 python -m experiments.e25_regen [with_odds|residual|no_odds ...]"""
 import logging
@@ -57,12 +57,12 @@ def main(which):
     if 'with_odds' in which:
         run_walk_forward('E25_with_odds', csv=csv)
     if 'residual' in which:
-        m, df = load_games(csv)                      # the residual targets need a line: drop the 44 games without one
-        df = df[df['odds_home_spread'].notna() & df['odds_total'].notna()].reset_index(drop=True)
-        run_walk_forward('E25_residual', df_override=(m, df), features_from='E25_with_odds',
-                         hooks={'init_scores': init_scores, 'target': e1.target, 'pred_offset': e1.pred_offset})
+        m, df = load_games(csv)                      # the residual targets need a line: the games without one are dropped inside each fold
+        run_walk_forward('E25_residual', df_override=(m, df), selection='residual_no_odds',
+                         hooks={'init_scores': init_scores, 'target': e1.target, 'pred_offset': e1.pred_offset,
+                                'require_columns': e1.LINE_COLUMNS})
     if 'no_odds' in which:
-        run_walk_forward('E25_no_odds', df_override=load_games_no_odds(csv))
+        run_walk_forward('E25_no_odds', df_override=load_games_no_odds(csv), selection='raw')
 
 
 if __name__ == '__main__':

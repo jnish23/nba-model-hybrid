@@ -106,16 +106,37 @@ DEFAULT_KEEP = ['gameId', 'gameDate', 'seasonYear', 'target_home_win', 'target_p
                 'close_home_prob', 'open_home_prob']
 
 
+SELECTIONS = ('residual', 'residual_no_odds', 'raw', 'legacy')
+
+
+def select_fold_features(m, sel_df, selection, seed):
+    """Per-target feature lists for one fold. 'residual': team features ranked against the gap from the opening line, odds_* appended
+    (BaselineModel.select_market_features - the production rule when the lines are inputs); 'residual_no_odds': the same without the
+    odds columns in the lists (the line enters as an offset, E1); 'raw': raw margin / total / win targets, no odds-free proxy step
+    (no-market pools); 'legacy': the pre-audit selection, bit for bit."""
+    if selection not in SELECTIONS:
+        raise ValueError(f'selection must be one of {SELECTIONS}, got {selection!r}')
+    if selection in ('residual', 'residual_no_odds'):
+        return m.select_market_features(sel_df, seed=seed, append_odds=selection == 'residual')
+    kw = {'legacy': True} if selection == 'legacy' else {}
+    return {k: m._select_features_from_subset(sel_df, t, seed=seed, **kw) for k, t in TARGETS.items()}
+
+
 def run_walk_forward(name, csv=None, features_from=None, hooks=None, seasons=TEST_SEASONS, save=True, df_override=None, selection_seed=42,
-                     calib_cap=CALIB_MAX_ROWS, refit_on_all=True):
+                     calib_cap=CALIB_MAX_ROWS, refit_on_all=True, selection='residual'):
     """
     Run all folds. `hooks` (dict, optional) lets an experiment change ONE thing:
       'init_scores'(kind, frame, fold_ctx) -> array|None   market-residual init_score (E1)
       'extra_columns' - list of extra columns to keep in the outputs
+      'require_columns' - columns that must be present for a row to be used (E1: the opening spread and total). Rows lacking one are
+                          dropped INSIDE each fold, after the model_train / calibration boundaries are set on the full history, so
+                          the boundaries match the baseline's; test rows without a line get no prediction.
     Returns (test_predictions, calib_predictions, info). Selected features are cached per fold in OUT/name/features.json
     and reused from `features_from` (another run's name) so that an experiment that does not touch features uses
     exactly the baseline feature sets.
     calib_cap / refit_on_all: see the module docstring (calib_cap=None, refit_on_all=False reproduces the pre-audit runs).
+    selection: how each fold's features are chosen (SELECTIONS / select_fold_features); a cached features.json is reused only when it
+    was written under the same rule (selection.json), otherwise it is ignored and the features are selected afresh.
     """
     hooks = hooks or {}
     t0 = time.time()
@@ -127,16 +148,23 @@ def run_walk_forward(name, csv=None, features_from=None, hooks=None, seasons=TES
     if features_from:
         cached = json.loads((OUT / features_from / 'features.json').read_text())
     elif feats_path.exists():
-        cached = json.loads(feats_path.read_text())
+        rule = out_dir / 'selection.json'
+        if rule.exists() and json.loads(rule.read_text()).get('selection') == selection:
+            cached = json.loads(feats_path.read_text())
+        else:
+            logging.warning(f"[{name}] ignoring the cached features.json: it was not selected under selection={selection!r}")
     chosen, tests, calibs, info = {}, [], [], {}
     keep = DEFAULT_KEEP + hooks.get('extra_columns', [])
     for s in seasons:
         mt, calib, test, n_fl = split_fold(df, s, calib_cap=calib_cap)
+        if hooks.get('require_columns'):
+            mt, calib, test = (f.dropna(subset=hooks['require_columns']).reset_index(drop=True) for f in (mt, calib, test))
+            n_fl = int(len(mt) * FLAML_TRAIN_FRAC)
         ctx = {'season': s, 'n_fl': n_fl, 'mt': mt, 'calib': calib, 'test': test}
         fold_feats = cached.get(s)
         if fold_feats is None:
             sel_df = mt.iloc[:n_fl]
-            fold_feats = {k: m._select_features_from_subset(sel_df, t, seed=selection_seed) for k, t in TARGETS.items()}
+            fold_feats = select_fold_features(m, sel_df, selection, selection_seed)
         chosen[s] = fold_feats
         res_test = test[[c for c in keep if c in test]].copy()
         res_cal = calib[[c for c in keep if c in calib]].copy()
@@ -192,6 +220,7 @@ def run_walk_forward(name, csv=None, features_from=None, hooks=None, seasons=TES
         calib_df.to_csv(out_dir / 'calibration_set_predictions.csv', index=False)
         (out_dir / 'fold_info.json').write_text(json.dumps(info, indent=1))
         (out_dir / 'split.json').write_text(json.dumps({'calib_cap': calib_cap, 'refit_on_all': refit_on_all}))
+        (out_dir / 'selection.json').write_text(json.dumps({'selection': selection if not features_from else f'features_from:{features_from}'}))
     return test_df, calib_df, info
 
 

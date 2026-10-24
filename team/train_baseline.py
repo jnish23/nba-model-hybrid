@@ -583,7 +583,7 @@ class BaselineModel:
 
         return selected
 
-    def select_market_features(self, sel_df, min_rows=1500, **kw):
+    def select_market_features(self, sel_df, min_rows=1500, append_odds=True, **kw):
         """
         Feature lists {'ml', 'spread', 'total'} for models that have the opening lines among their inputs.
 
@@ -592,7 +592,8 @@ class BaselineModel:
         yardstick. Here the team features are selected against what the market misses (margin + home spread for ML and spread,
         total - opening total for the total) with the odds_* columns excluded from the proxy models, and the pool's odds_*
         columns are appended to every list afterwards. Rows without a line have no residual and are skipped; if fewer than
-        `min_rows` remain the raw target is used instead (still without the odds columns).
+        `min_rows` remain the raw target is used instead (still without the odds columns). append_odds=False leaves the lines out of
+        the lists (a model that takes the line as an offset, not as a feature).
         """
         def pick(rows_df, gap_col, gap, raw_col, pool_target):
             keep = rows_df.assign(**{gap_col: gap}).dropna(subset=[gap_col])
@@ -601,7 +602,7 @@ class BaselineModel:
             else:
                 logging.warning(f"[{gap_col}] only {len(keep)} rows with an opening line (< {min_rows}): selecting on {raw_col}")
                 feats = self._select_features_from_subset(rows_df, raw_col, exclude_odds=True, **kw)
-            odds = sorted(f for f in self._get_pool_for_target(pool_target) if f.startswith('odds_') and f in rows_df.columns)
+            odds = sorted(f for f in self._get_pool_for_target(pool_target) if f.startswith('odds_') and f in rows_df.columns) if append_odds else []
             return feats + [f for f in odds if f not in feats]
         spread = pick(sel_df, SPREAD_GAP_COL, ResidualSpreadModel.make_target(sel_df), 'target_point_diff', SPREAD_GAP_COL)
         total = pick(sel_df, TOTAL_GAP_COL, ResidualTotalModel.make_target(sel_df), 'target_total_pts', TOTAL_GAP_COL)
