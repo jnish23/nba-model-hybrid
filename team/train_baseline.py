@@ -440,7 +440,7 @@ class BaselineModel:
 
     def _select_features_from_subset(self, df_subset, target, n_top=150, n_min=20, importance_type='gain', seed=42,
                                      groups=None, stratify=True, n_permutations=30, z_threshold=1.28,
-                                     exclude_odds=False, legacy=False):
+                                     exclude_odds=False, legacy=False, n_importance_fits=5):
         """
         Two-Stage Feature Selection (No Leakage):
         1. Hierarchical Clustering (Spearman) to remove highly correlated redundant features.
@@ -462,6 +462,9 @@ class BaselineModel:
         n_permutations / z_threshold: Stage 2 keeps a feature whose real importance is above 0 and more than z_threshold
         null standard deviations above its mean null importance (a 30-draw mean / sd is far steadier than the 90th percentile
         of 10 draws, which is the 9th-10th order statistic).
+        n_importance_fits: the real importances (the cluster representatives, the padding order and the Stage 2 'actual' value) are the mean of
+        this many bagged proxy fits with different bagging seeds; one bagged fit made the lists depend on the seed (the 20-feature padding
+        follows the initial ranking). Each shuffled-target fit uses its own bagging seed.
         exclude_odds: drop the odds_* columns from the pool (the caller appends them afterwards; see select_market_features).
         legacy: reproduce the pre-audit selection exactly ('split' importance, no bagging, unstratified shuffle, 10 draws,
         90th-percentile rule) - only for rebuilding old artifacts.
@@ -469,7 +472,7 @@ class BaselineModel:
         varying it measures how much of a result is selection noise.
         """
         if legacy:
-            importance_type, n_permutations, stratify = 'split', 10, False
+            importance_type, n_permutations, stratify, n_importance_fits = 'split', 10, False, 1
         # 1. Filter available/valid features from the correct pool
         feature_pool = self._get_pool_for_target(target)
         available_features = sorted(f for f in feature_pool if f in df_subset.columns
@@ -487,11 +490,16 @@ class BaselineModel:
         # Initial proxy model to gauge baseline importance
         bagging = {} if legacy else dict(colsample_bytree=0.5, subsample=0.8, subsample_freq=1)
         make_model = lgb.LGBMClassifier if 'win' in target else lgb.LGBMRegressor
-        model = make_model(n_estimators=100, max_depth=4, verbose=-1, random_state=seed, n_jobs=-1,
-                           deterministic=True, force_row_wise=True, importance_type=importance_type, **bagging)
 
-        model.fit(X, y)
-        initial_imp = dict(zip(X.columns, model.feature_importances_))
+        def importances(Xm, ym, n_fits=1, seed_offset=0):
+            imp = 0.0
+            for k in range(n_fits):
+                model = make_model(n_estimators=100, max_depth=4, verbose=-1, random_state=seed + seed_offset + k, n_jobs=-1,
+                                   deterministic=True, force_row_wise=True, importance_type=importance_type, **bagging)
+                imp = imp + model.fit(Xm, ym).feature_importances_
+            return imp / n_fits
+
+        initial_imp = dict(zip(X.columns, importances(X, y, n_importance_fits)))
 
         # ==========================================
         # STAGE 1: Redundancy Filter (Clustering)
@@ -541,12 +549,10 @@ class BaselineModel:
             y_shuffled = y_arr.copy()
             for b in blocks:                                     # one block = the whole sample, or one season
                 y_shuffled[b] = rng.permutation(y_arr[b])
-            model.fit(X_stage1, y_shuffled)
-            null_importances[i, :] = model.feature_importances_
+            null_importances[i, :] = importances(X_stage1, y_shuffled, 1, seed_offset=1000 + i)
 
         # Get actual importance using only the stage1 features
-        model.fit(X_stage1, y)
-        actual_imp = model.feature_importances_
+        actual_imp = importances(X_stage1, y, n_importance_fits)
 
         if legacy:
             # 90th percentile of null importances bounds the noise for each feature

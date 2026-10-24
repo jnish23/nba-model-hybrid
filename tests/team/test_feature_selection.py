@@ -136,3 +136,14 @@ def test_select_market_features_ranks_what_the_line_misses_and_appends_the_odds(
         assert {'odds_home_spread', 'odds_total', 'odds_home_ml'} <= set(got[k])
         assert len(got[k]) == len(set(got[k]))
     assert got['ml'] == got['spread']
+
+
+def test_averaging_the_bagged_importances_makes_the_lists_steadier_across_seeds():
+    df = _frame(n=2000)
+    sel = _selector(df)
+
+    def mean_jaccard(k):
+        lists = [set(sel._select_features_from_subset(df, 'target_point_diff', n_min=1, seed=s, n_importance_fits=k)) for s in (1, 2, 3, 4)]
+        return float(np.mean([len(a & b) / len(a | b) for i, a in enumerate(lists) for b in lists[i + 1:]]))
+
+    assert mean_jaccard(5) > mean_jaccard(1)                 # one bagged fit picks a different near-duplicate for each seed
