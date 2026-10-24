@@ -199,3 +199,42 @@ Steps (cut points fixed now):
 implied smallest detectable change in the spread slope across the interquartile range of the total (2.8 x SE x IQR of T). A non-significant result means "not shown".
 
 **Reading rule.** Supported / not supported against the rules above; no criterion changes after the run; anything else is exploratory.
+
+
+## E18 - calibration of the totals model by total level (angle 4 of 8)
+
+Added 2026-10-23 before any E18 residual was computed (only file structure and row counts were inspected). Shared rules above apply where they fit; this angle is a **model** test (the user: "a model problem, not a market edge"),
+so it follows the E1-E13 walk-forward protocol (`PREREGISTRATION.md` common protocol) instead of the discovery/confirmation split.
+
+**Hypothesis H_CAL:** the deployed-configuration totals model's error depends on the level of the total (known from FINAL_REPORT E1: a large bias for opening totals above 242), and a correction fitted on the calibration block
+reduces total MAE out of sample.
+
+**Disclosure that weakens this registration.** E1's tail analysis already reported the bias above 242 on these same seven folds, and E1-E13 have used all seven test seasons, so there is no unseen holdout. What is new is evaluating three fixes forward;
+which fixes to try was chosen knowing the bias exists. A fix that wins here is a candidate, and its forward evidence would come from the 2026-27 season (E15's forward sample), not from this run.
+
+**Data.** `reports/experiments/baseline/predictions.csv` (7 folds, 2019-20..2025-26, 8,916 games) and `calibration_set_predictions.csv` (the last 20% of each fold's training window, rows labelled by fold with `experiments.lib.label_calib_folds`).
+No model is retrained. `bias = actual - predicted total` (positive = the model is too low). All intervals: day-cluster bootstrap, 1000 draws, seed 20261017, paired where two predictions are compared (`experiments/metrics.py`).
+
+**Step 1 (descriptive; nothing passes or fails).**
+- Mean bias by decile of predicted total and of opening total, per season and pooled. Deciles use edges from the pooled test set ("pooled", shows era shifts) and a second version with edges computed inside each season ("within-season").
+- Opening total > 242 and predicted total > 242: games per season, mean bias per season and pooled with intervals.
+- Level regression `bias ~ (opening total - pooled mean)` once without and once with season dummies; the slope's interval decides the reading **"the level effect survives a season control"** iff it excludes 0 with the dummies.
+
+**Step 2 (candidate fixes, each fitted only on that fold's calibration block, applied to that fold's test games).**
+- (a) Isotonic: `IsotonicRegression(out_of_bounds='clip')` of actual total on predicted total.
+- (b) Linear in the level: OLS of `actual - pred` on `(opening total - calibration-block mean total)`, intercept included; corrected = pred + fitted value.
+- (c) Level-dependent shrinkage toward the line: OLS without intercept of `actual - line` on `(pred - line)` and `(pred - line) x (opening total - calibration mean)`; weight `w = b0 + b1 (L - mean)` clipped to [0, 1]; corrected = line + w (pred - line).
+- Robustness R1 ("recent only"): refit (a), (b), (c) on the later 50% of the fold's calibration block by date. R2 ("era-adjusted level"): (b) and (c) with `L` = opening total minus the mean opening total of all games in the previous 365 days (past lines only).
+
+**Step 3 (metrics and the keep rule).**
+- Total MAE (primary), per season and pooled. Cover log loss as in E4: `p(over) = Phi((pred - line)/sigma)`, outcome over versus under with pushes dropped, `sigma` = standard deviation of the calibration-block residuals after the same fix (baseline: its saved `sigma_total`).
+  5%-edge total bets from `metrics.make_bets(thr=0.05)`: count, hit rate and return at -110 as secondary.
+- **KEEP a fix iff** (i) its total MAE is lower than the baseline's in at least 5 of 7 seasons, **and** (ii) the pooled paired MAE difference has a day-bootstrap interval entirely below 0 (the E1-E13 main criterion), **and** (iii) in both R1 and R2 the pooled paired MAE difference
+  is also negative (point estimate); otherwise "not kept", and a fix that meets (i) and (ii) but fails (iii) is labelled "era-confounded".
+  The user's stricter wording ("error bars excluding zero in at least 5 of 7 seasons") is reported alongside as the count of seasons whose own paired interval excludes 0; it is not the keep rule.
+- Descriptive only: MAE, bias and bet count restricted to opening total > 242; discovery (2019-20..2021-22) and confirmation (2022-23..2025-26) subsets.
+- Holm input: this angle's p-value = 3 x the smallest one-sided pooled bootstrap p among (a), (b), (c) (capped at 1).
+
+**Power note.** Games above 242 are few before 2023-24; per-season intervals there will be wide, and a fix that changes only the extreme tail moves total MAE little. A pooled MAE gain of about 0.05 points is at the edge of what 8,916 games resolve (E1 used 0.2 points as a visible effect).
+
+**Reading rule.** Keep / not kept / era-confounded per fix; no criterion changes after the run; anything else is exploratory.
