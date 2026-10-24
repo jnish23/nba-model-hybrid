@@ -1,6 +1,8 @@
 """E2 - calibration method (see PREREGISTRATION.md). Baseline models/raw predictions are reused unchanged; only the
 probability calibrator differs: isotonic on the last-20% split (baseline), Platt on log-odds (same split), and
-cross-fitted isotonic over the last two training seasons (4 time blocks, out-of-fold raw predictions)."""
+cross-fitted isotonic over the last two training seasons (4 time blocks, out-of-fold raw predictions; each block is predicted by a model
+trained only on the games BEFORE it). Every arm calibrates the same raw test predictions (the baseline's ml_prob_raw), so the arms differ
+only in the calibrator, not in how recent the base model's training data is."""
 import json
 import logging
 import sys
@@ -33,8 +35,8 @@ def crossfit_isotonic(df, season, feats, cfg, test_raw, n_blocks=4):
     blocks = np.array_split(idx, n_blocks)
     oof_p, oof_y = [], []
     for b in blocks:
-        mask = np.ones(len(train), bool)
-        mask[b] = False
+        mask = np.zeros(len(train), bool)
+        mask[:b[0]] = True                    # expanding window: only rows strictly before the block (`train` is in date order)
         est = make_est('clf', GRID[cfg])
         est.fit(train.loc[mask, feats], train.loc[mask, 'target_home_win'])
         oof_p.append(est.predict_proba(train.loc[b, feats])[:, 1])

@@ -60,3 +60,31 @@ def test_joint_kelly_fractions_are_feasible():
     from experiments.e11_exposure import CAP, joint_fractions
     f = joint_fractions(_game(0.80, 0.58))
     assert (f >= 0).all() and f.sum() <= CAP + 1e-9
+
+
+# ------------------------------------------------------------------ E2: cross-fitted isotonic must be causal
+
+def test_crossfit_isotonic_trains_each_block_only_on_earlier_games(monkeypatch):
+    from experiments import e02_calibration as e2
+    n = 800
+    df = pd.DataFrame({'seasonYear': np.repeat(['2017-18', '2018-19', '2019-20', '2020-21'], n // 4),
+                       'gameDate': pd.Timestamp('2017-10-20') + pd.to_timedelta(np.arange(n), unit='D'),
+                       'target_home_win': (np.arange(n) % 3 == 0).astype(int), 'f': np.arange(n, dtype=float)})
+    seen = []
+
+    class Stub:
+        def fit(self, X, y):
+            self.max_train = X.index.max()
+            self.n_train = len(X)
+            return self
+
+        def predict_proba(self, X):
+            seen.append((self.max_train, X.index.min(), X.index.max(), self.n_train))
+            return np.column_stack([1 - np.full(len(X), 0.4), np.full(len(X), 0.4)])
+
+    monkeypatch.setattr(e2, 'make_est', lambda kind, cfg: Stub())
+    monkeypatch.setattr(e2, 'GRID', [{}])
+    out = e2.crossfit_isotonic(df, '2020-21', ['f'], 0, np.array([0.2, 0.5]))
+    assert len(seen) == 4 and len(out) == 2
+    assert all(trained_to < block_start for trained_to, block_start, _, _ in seen)        # never fits on a game it has not "lived through"
+    assert [s[3] for s in seen] == sorted(s[3] for s in seen) and seen[0][3] == 200       # the window expands: block 0 sees the 2017-18 games only
