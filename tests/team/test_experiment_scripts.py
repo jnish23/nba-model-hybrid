@@ -88,3 +88,38 @@ def test_crossfit_isotonic_trains_each_block_only_on_earlier_games(monkeypatch):
     assert len(seen) == 4 and len(out) == 2
     assert all(trained_to < block_start for trained_to, block_start, _, _ in seen)        # never fits on a game it has not "lived through"
     assert [s[3] for s in seen] == sorted(s[3] for s in seen) and seen[0][3] == 200       # the window expands: block 0 sees the 2017-18 games only
+
+
+# ------------------------------------------------------------------ E12: the totals decision uses the totals control
+
+def _mats():
+    ids = ['g1', 'g2', 'g3']
+    cols = ['dk', 'fd', 'mgm']
+    tot = pd.DataFrame([[218.0, 219.5, 221.0], [218.0, 219.5, 221.0], [np.nan, np.nan, np.nan]], index=ids, columns=cols)
+    hs = pd.DataFrame([[-5.5, -6.0, -5.0], [-5.5, -6.0, -5.0], [np.nan] * 3], index=ids, columns=cols)
+    return {'tot': tot, 'hs': hs, 'as': -hs}
+
+
+def test_both_sides_control_for_totals_bets_over_at_the_lowest_and_under_at_the_highest_total():
+    from experiments.e12_shopping import both_sides_control
+    base = pd.DataFrame({'gameId': ['g1', 'g2', 'g3'], 'target_total_pts': [220.0, 230.0, 200.0], 'target_point_diff': [3.0, -9.0, 0.0]})
+    r = both_sides_control(base, _mats(), 'total')
+    win, loss = 100 / 110 * 100, -100.0
+    # g1 (220): over 218 wins, under 221 wins -> a middle; g2 (230): over wins, under loses; g3 has no quote
+    assert r['n'] == 2 and r['roi'] == pytest.approx((win + win + win + loss) / 400 * 100)
+
+
+def test_both_sides_control_for_spreads_differs_from_the_totals_control():
+    from experiments.e12_shopping import both_sides_control
+    base = pd.DataFrame({'gameId': ['g1', 'g2', 'g3'], 'target_total_pts': [220.0, 230.0, 200.0], 'target_point_diff': [3.0, -9.0, 0.0]})
+    sp, tot = both_sides_control(base, _mats(), 'spread'), both_sides_control(base, _mats(), 'total')
+    # best home handicap -5.0, best away handicap +6.0: g1 (home by 3) home loses / away wins; g2 (away by 9) home loses / away wins
+    assert sp['n'] == 2 and sp['roi'] == pytest.approx(2 * (-100 + 100 / 1.1) / 400 * 100)
+    assert sp['roi'] != pytest.approx(tot['roi'])
+
+
+def test_total_decision_is_judged_against_the_total_control():
+    import inspect
+    from experiments import e12_shopping
+    src = inspect.getsource(e12_shopping.main)
+    assert "('total', tot_roi)" in src and "('spread', sp_roi)" in src
