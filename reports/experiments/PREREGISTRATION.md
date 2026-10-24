@@ -313,3 +313,82 @@ Steps:
 **Power (stated now).** The report states the standard error of the `gap` coefficient in each step and the smallest effect detectable at 80% power (2.8 x SE). Each possession adds about 2.2 points to a game total, so a mechanism coefficient of -0.1 possessions per pace point of gap would be worth about -0.2 points of total per pace point.
 
 **Reading rule.** Supported / not supported against the rules above; no criterion changes after the run; anything else is exploratory.
+
+
+## E23 - favourite on a back-to-back (angle 7 of 8)
+
+Added 2026-10-23 before any E23 number was computed (only null shares and value counts of the back-to-back flags were inspected). Shared rules above apply (discovery 2019-20..2021-22, confirmation 2022-23..2025-26, day-cluster bootstrap 1000 draws seed 20261017,
+Holm across 8 pending, layers a/b/c, betting last, sensitivity without 2019-20 and 2020-21). **Exploratory** by the user's instruction: cells are small. **Regular-season games only** (game id prefix 002), as in E19-E22. Nothing about back-to-backs has been seen in either period.
+
+**Hypothesis H_B2B (two-sided; the user says the direction is not obvious):** the total relative to the line, `r = actual total - opening total`, depends on whether the favourite (or the underdog) is on the second night of a back-to-back, and on the size of the spread. A second, mechanism hypothesis (step 3): a favourite on a back-to-back wins by 15 or more less often than its spread implies.
+
+Definitions (fixed now):
+- `is_b2b_home` and `is_b2b_away` from the training set (days of rest = 1). The **favourite** is the team with the negative spread (home if `odds_home_spread < 0`, away if `> 0`); games with a spread of 0 have no favourite and are excluded from every favourite/underdog cell.
+  **FB** = the favourite is on a back-to-back; **UB** = the underdog is on a back-to-back (both can be 1).
+- Spread buckets: `|spread| < 8` and `>= 8` (the user's cut). Sensitivity thresholds fixed now: 6 and 10.
+- Blowout = `|target_point_diff| >= 15`; **favourite blowout** = the favourite wins by 15 or more. Implied probabilities come from `margin ~ Normal(-odds_home_spread, sigma)` with a continuity correction at 14.5, `sigma` = standard deviation of `target_point_diff + odds_home_spread` over the discovery games, fixed once.
+- Data frame, plausibility filter, `r`, bootstrap as in E14-E21.
+
+Steps:
+1. **Cells.** Four cells for the favourite (FB yes/no) x (`|spread|` < 8, >= 8), and the same four for the underdog (UB). For each period: games, mean `r`, under rate (pushes dropped) with intervals; also the same tables at thresholds 6 and 10. Counts are reported first.
+2. **Primary regression.** OLS `r ~ |spread| + (odds_total - discovery mean) + FB + UB + FB x |spread| + UB x |spread| + season dummies`, separately on discovery and confirmation.
+   **Primary statistic: the joint Wald test of the four flag coefficients** (bootstrap covariance, chi-square 4). **H_B2B is supported** iff discovery p < 0.10 and confirmation p < 0.05 (a loose find step, a strict confirm step); Holm uses the confirmation p. Individual coefficients with two-sided bootstrap p-values are descriptive.
+3. **Blowout test (mechanism).** For each favourite cell and each period: observed rate of `|margin| >= 15` and of a favourite blowout, the model-implied rate from the spread, and their difference with a day-bootstrap interval. **The mechanism is supported** iff for the cell (FB, `|spread|` >= 8) the favourite-blowout difference
+   (observed - implied) is below 0 in both periods and its confirmation interval's upper end is below 0 (one-sided in the sign the mechanism needs). Also a linear-probability regression of the favourite-blowout indicator on the same design as step 2, reported.
+4. **Model test (layer b).** The step 2 regression on the out-of-sample model residual `actual - total_pred` and on the model's lean, 2021-22..2025-26, joint Wald p; mean residual in each cell.
+5. **Feature test (layer c).** Only if step 2 is supported and the confirmation joint Wald p of the model residual is < 0.05. Not run otherwise.
+6. **Betting test.** Over and under at -110 at the opening total for the cells FB&>=8, FB&<8, UB&>=8, UB&<8; choose the (cell, side) with the highest discovery return among those with at least 100 discovery bets; apply unchanged to confirmation; report at the opening total, the closing total and the best-book line and price, with all-games controls.
+   Per the user, nothing is bet on a discovery-season result alone: no stake conclusion follows from this step.
+7. **Sensitivity.** Step 2's joint Wald p without 2019-20 and 2020-21 (pooled 2021-22..2025-26), and at the thresholds 6 and 10.
+
+**Power (stated now).** Counts are reported before any result. The user expects about 350 games with a favourite of 8+ on a back-to-back over seven seasons, a standard error of about 1 point on the mean of `r` for such a group scaled to its size (sd of `r` about 18.5: 18.5/sqrt(n)), and about 2.7 points on the under rate. A joint test of four coefficients has little power for a modest effect.
+Underpowered; "not shown" is the expected outcome unless an effect is several points.
+
+**Reading rule.** Supported / not supported against the rules above; no criterion changes after the run; anything else is exploratory. An unexplained discovery-only result is not a finding.
+
+
+## E24 - line movement (angle 8 of 8)
+
+Added 2026-10-23 before any E24 relationship between movement and outcome was computed. Before registering I verified what the odds tables are (see "Data verification"); that check used only table structure, the code that fills the tables, counts, and the open-versus-close mean absolute error by season that `odds_clean.check_closing_contamination` itself uses.
+Shared rules above apply (discovery 2019-20..2021-22, confirmation 2022-23..2025-26, day-cluster bootstrap 1000 draws seed 20261017, Holm across 8 pending, betting last, sensitivity without 2019-20 and 2020-21). Regular-season games only (game id prefix 002), as in E19-E23.
+
+### Data verification (done first, as requested)
+
+- `nba_odds` and `nba_odds_opening` have **no timestamp column**: only `gameDate` and `status` (Final, Final OT, a tip time such as "19:00 ET" before the game, or an in-game string such as "02:45 4th"). `core/snapshot_odds.py` and `core/odds_clean.py` both say so.
+  `nba_odds` is a scrape of the SBR per-book "current" line whenever the scrape ran; for completed games `odds_clean` describes it as "scraped after the game". Pre-game it holds the latest line, in-game scrapes leaked in-game lines (two windows, 2019-10-22..2019-11-19 and 2021-10-19..2021-11-23, are set to missing; individual books more than 3 points (spread) or 6 points (total) from the cross-book median are dropped).
+- Evidence that `nba_odds` is mostly a closing line: over the 8,423 games with both lines, the total's mean absolute error is 1.1-2.9% lower at the "close" than at the open in every season (the documented normal ratio is about 0.97), and for the 16 games of 2026-27 that also have timestamped snapshots, the `nba_odds` consensus total and spread equal the last pre-game snapshot's exactly.
+  So "close" = the last pre-game line as SBR displayed it afterwards, at an unknown time just before tip. Residual contamination by in-game lines that stay within the tolerances cannot be ruled out; it would make the close look more accurate than it was and would bias a movement test.
+- `nba_odds_opening` is SBR's opening line per book; its time is unknown and may be a day or more before tip. The open-to-close move is therefore **not a fixed-horizon quantity**: its standard deviation is about 3.4 points for totals (median absolute 2.0, 99th percentile 9.0) and 1.0 median for spreads (99th percentile 7.0). 94% of totals and 87% of spreads move at all.
+- `odds_snapshots` (hourly collector, `line_type` 'current' and 'opening', `in_game` flag) now holds 6,273 rows over 4 days and 18 games (collection began 2026-10-19). Its 'opening' rows mean "first seen by the collector", not the market opening. The `odds_source_log` shows several sources (sbr, theoddsapi) in use, so the book set can change between fetches. Too few games yet for any test; E24 registers a forward test on it.
+- Consequence for meaning: the historical test measures whether the last pre-game line has already priced everything that moved the line since an early opening (efficiency of the close). It does not measure what a bettor could do at a fixed time. The forward test below is the usable version.
+
+### Hypothesis H_MOVE (two-sided; momentum and overreaction both count)
+
+The closing line is not efficient with respect to its own movement since the open: the error of the close depends on the move. Momentum (the move continues past the close) is a positive slope; overreaction (it reverses) is a negative slope.
+
+Definitions (fixed now):
+- Consensus lines as in `core/odds_clean.py` (`load_clean_odds`, median across kept books, outlier filter, bad closing windows missing), games 2019-20..2025-26 with both an open and a close total (and spread), regular season only.
+- `move_total = close_total - open_total`; `move_home = -(close_home_spread - open_home_spread)` (positive = the line moved toward the home team being a bigger favourite).
+- `err_total = actual total - close_total`; `err_spread = home margin + close_home_spread` (positive = the home team did better than the close implied).
+
+Steps:
+1. **Market-efficiency test (primary).** OLS `err_total ~ 1 + move_total`, separately on discovery and confirmation. **H_MOVE is supported** iff the slopes have the same sign in both periods and the confirmation two-sided bootstrap p < 0.05 (the sign then names momentum or overreaction);
+   Holm uses the confirmation p. Variants reported: with `|spread|` and season dummies; without the largest 1% of absolute moves; with the per-book alternative (the median across books of each book's own close minus open, among books quoting both). Secondary: the same for the spread, `err_spread ~ 1 + move_home`.
+2. **Cross-market check.** OLS `err_total ~ 1 + move_total + move_home + |move_home|` (and a version with an indicator for `|move_home|` at or above its discovery 75th percentile). Primary statistic: the coefficient on `|move_home|` (a large spread move, which is mostly injury news), two-sided p; reported for both periods.
+3. **Model relevance.** The deployed model prices off the opening line (and noon injury information), so movement is not an input and layers (b) and (c) do not apply to the historical test. Reported only: the model's out-of-sample residual `actual - total_pred` against `move_total` in 2021-22..2025-26.
+4. **Usability and betting readout (priced at the close).** The bet is placed at the close, so it must use closing prices. Closing over and under prices come from the per-book quotes of `nba_odds` (cleaned with the `odds_clean` outlier rules and settled at the book quoting the line nearest the consensus, best quoted price on ties; -110 is reported beside it as the naive price).
+   Rule: bet **with** the move (over after a rise, under after a fall) or **against** it when `|move_total| >= c`, c in {2, 3, 4, 5, 6} points, 2 directions x 5 cutoffs; choose the single combination with the highest discovery return among those with at least 200 discovery bets; apply it unchanged to confirmation; return per bet with day-bootstrap intervals, at the quoted close price and at -110.
+5. **Sensitivity.** Step 1 without 2019-20 and 2020-21; discovery = 2021-22 only; excluding games within 14 days of the two flagged contamination windows.
+
+### Forward test on the timestamped snapshots (the actionable version)
+
+- Source `odds_snapshots` with `line_type = 'current'`, `in_game = 0`; consensus across kept books with the `odds_clean` tolerances. **Close** = the last pre-tip snapshot of a game; **T4** = the last snapshot fetched at or before 4 hours before the scheduled start (`game_start`).
+  `move_f = close_total - T4_total`; to be robust to changes in the book set between fetches, the primary `move_f` is the median over books quoting at both times of each book's own change. A game needs both snapshots at least 2 hours apart.
+- Forward sample: games on or after 2026-10-24 that have both snapshots and a final result. Test: OLS `actual total - close_total ~ 1 + move_f`, two-sided. **Supported** iff the 95% bootstrap interval for the slope excludes 0 at the single decisive evaluation, when the sample reaches **1,000 games** (about one season if the collector runs every game day); looks at 250 and 500 games are reported and decide nothing.
+- Power: with a standard deviation of `actual - close` of about 18 and a standard deviation of `move_f` that I do not yet know (it is smaller than the open-to-close move), the report states the standard error and the smallest slope detectable at 80% power; a slope below about 1 divided by the standard deviation of the move in points is out of reach.
+- The same test for the spread. The collector's own reliability (missing fetches, source switches) is reported before any result.
+
+**Power for the historical test (stated now).** With the standard deviation of the move about 3.3 points and of `err_total` about 18, the slope's standard error is about 18/(3.3 x sqrt(n)): roughly 0.08 for the 4,400 confirmation games and 0.12 for the 2,000 discovery games, so a slope of about 0.2 (a fifth of the move continuing) is detectable at the 5% level.
+The report states the actual standard errors.
+
+**Reading rule.** Supported / not supported against the rules above; no criterion changes after the run; anything else is exploratory. A "supported" label on the historical test is evidence about the scraped close, subject to the contamination caveat; only the forward test says what could be acted on.
