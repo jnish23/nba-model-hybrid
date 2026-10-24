@@ -24,6 +24,20 @@ def csv_for(k):
     return next((ROOT / 'data' / 'processed').glob(f'training_set_v1_reduced_*_carryover{k:g}.csv'))
 
 
+def assemble_calibration(cals, chosen):
+    """
+    Calibration-set rows of the E6 run: for every fold (test season, in chronological order) the rows of the run whose kappa was chosen for
+    that fold. `cals`: {kappa: calibration frame with a `fold` column}. The result is in FOLD order, rows within a fold in the date order
+    they were saved in, and keeps `fold`: consecutive folds' calibration blocks overlap in gameDate, so sorting the pooled frame by date
+    (as the first version did) interleaves the folds and breaks every reader that labels folds by position (lib.label_calib_folds).
+    """
+    parts = []
+    for s in TEST_SEASONS:
+        c = cals[chosen[s]]
+        parts.append(c[c['fold'] == s])
+    return pd.concat(parts, ignore_index=True)
+
+
 def main(skip_runs=False):
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s: %(message)s')
     if not skip_runs:
@@ -50,12 +64,12 @@ def main(skip_runs=False):
     test.to_csv(OUT / NAME / 'predictions.csv', index=False)
     from experiments.lib import label_calib_folds, load_games
     _, df_all = load_games()
-    cparts = []
+    cals = {}
     for k, nm in {1.0: 'baseline', **KAPPAS}.items():
         c = load_run(nm)[1]
         c['fold'] = label_calib_folds(df_all, c)
-        cparts.append(c[c['fold'].map(chosen) == k].drop(columns='fold'))
-    pd.concat(cparts).sort_values(['gameDate']).to_csv(OUT / NAME / 'calibration_set_predictions.csv', index=False)
+        cals[k] = c
+    assemble_calibration(cals, chosen).to_csv(OUT / NAME / 'calibration_set_predictions.csv', index=False)
     res = evaluate(NAME, test)
     cmp = compare(NAME, exp_test=test, base_test=base)
     keep, passed, nh_ok = standard_decision(cmp)

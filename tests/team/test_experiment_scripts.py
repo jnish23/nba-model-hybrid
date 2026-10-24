@@ -185,3 +185,23 @@ def test_e04_cover_frame_is_push_aware_like_the_bets():
     tot = cover_frame(df, 'total', sig)
     win, loss = norm.cdf((2.0 - 0.5) / 12), norm.cdf((-2.0 - 0.5) / 12)
     assert tot['p'][0] == pytest.approx(win / (win + loss)) and tot['p'][1] == pytest.approx(norm.cdf(1.5 / 12))
+
+
+# ------------------------------------------------------------------ E6: calibration rows stay in fold order
+
+def test_e06_calibration_rows_are_in_fold_order_not_date_order():
+    from experiments import e06_run
+    # consecutive folds' calibration blocks overlap in gameDate (the last 20% of each training window)
+    def calib(kappa):
+        rows = []
+        for i, s in enumerate(e06_run.TEST_SEASONS):
+            d = pd.Timestamp('2018-01-01') + pd.Timedelta(days=200 * i) + pd.to_timedelta(np.arange(0, 600, 100), unit='D')
+            rows.append(pd.DataFrame({'fold': s, 'gameDate': d, 'kappa': kappa}))
+        return pd.concat(rows, ignore_index=True)
+    cals = {1.0: calib(1.0), 0.75: calib(0.75), 0.5: calib(0.5)}
+    chosen = {s: k for s, k in zip(e06_run.TEST_SEASONS, [1.0, 0.5, 0.75, 1.0, 0.5, 0.75, 1.0])}
+    out = e06_run.assemble_calibration(cals, chosen)
+    assert list(out['fold'].drop_duplicates()) == e06_run.TEST_SEASONS                    # fold blocks are contiguous and chronological
+    assert not out['gameDate'].is_monotonic_increasing                                    # ...so a date sort would have scrambled them
+    for s, g in out.groupby('fold'):
+        assert set(g['kappa']) == {chosen[s]} and len(g) == 6 and g['gameDate'].is_monotonic_increasing
