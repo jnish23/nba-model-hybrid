@@ -1,0 +1,113 @@
+<main>
+<header style="display:flex;flex-direction:column;gap:12px">
+  <div class="eyebrow">Experiment E24 · totals · angle 8 of 8 · run 2026-10-23</div>
+  <h1>Line Movement Test</h1>
+  <p class="lede">Does the move from the opening line to the close carry information the close has not priced, as momentum (the move continues) or overreaction (it reverses)? First, what the odds tables actually contain.</p>
+  <nav class="toc" aria-label="Sections"><a href="#verify">What nba_odds is</a><a href="#verdict">Verdict</a><a href="#eff">1 · Efficiency</a><a href="#cross">2 · Cross-market</a><a href="#model">3 · Model</a><a href="#bets">4 · Betting at the close</a><a href="#forward">5 · Forward test</a><a href="#limits">Limits</a></nav>
+</header>
+
+<section id="verify">
+  <h2>What the odds tables are (verified before registering)</h2>
+  <ul class="plain">
+    <li><b>No timestamps.</b> <code>nba_odds</code> and <code>nba_odds_opening</code> have no time column, only the date and a status (Final, a tip time such as "19:00 ET", or an in-game string such as "02:45 4th"). The collector's own notes say the same.</li>
+    <li><b><code>nba_odds</code> is a scrape of the book prices shown on the day,</b> described in <code>odds_clean.py</code> as "scraped after the game" for completed games, so it is the last pre-game line as displayed afterwards, at an unknown time just before tip. In-game prices leaked in before: two windows (2019-10-22 to 2019-11-19 and 2021-10-19 to 2021-11-23) are set to missing and books more than 3 points (spread) or 6 points (total) from the median are dropped.</li>
+    <li><b>Evidence it is mostly a closing line.</b> The total's mean absolute error is 1.1% to 2.9% lower at the close than at the open in every season (the documented normal), and for the 16 games of 2026-27 that also have timestamped snapshots the two sources are identical to the half point.</li>
+    <li><b><code>nba_odds_opening</code> is SBR's opening line</b>, posted at an unknown time that can be a day or more before tip. So the open-to-close move is not a fixed-horizon number: its standard deviation is <span data-b="move_total_sd|2"></span> points for totals (<span data-b="share_total_moved|pct0"></span> of totals and <span data-b="share_spread_moved|pct0"></span> of spreads move at all).</li>
+    <li><b><code>odds_snapshots</code> is now filling</b> (hourly collector since 2026-10-19; 6,273 rows, 18 games so far; its "opening" rows mean first seen by the collector). Too few games for a test yet; the forward test below is registered for it. Several sources (SBR, The Odds API) feed it, so the book set can change between fetches.</li>
+  </ul>
+  <p>What this means: the historical test asks whether the last displayed pre-game line has already priced everything that moved the line since an early opening. It does not say what you could do at a fixed time. If some in-game price stayed within the filters it would make the close look better than it was, which should push the slope toward overreaction, the opposite of the result below.</p>
+</section>
+
+<section id="verdict">
+  <div class="verdict">
+    <span class="tag">H_MOVE NOT SUPPORTED AT THE REGISTERED THRESHOLD · SMALL MOMENTUM</span>
+    <p class="lede">The closing total keeps about 15% of the open-to-close move to come: when the total rises by a point from the open, the game finishes about 0.15 points above the close. The sign is the same in both periods and the pooled estimate is significant, but the registered rule needs confirmation p &lt; 0.05 on its own and it is p = <span data-b="step1_reading.confirmation_p_two_sided|3"></span>. The effect is too small to beat the vig at the close.</p>
+    <div class="facts">
+      <div class="fact"><b class="num over"><span data-b="D.d.coef|s3"></span> / <span data-b="D.c.coef|s3"></span></b><span>slope of (actual − close) on the total's move, discovery and confirmation (intervals <span data-b="D.d.lo|s2"></span> to <span data-b="D.d.hi|s2"></span> and <span data-b="D.c.lo|s2"></span> to <span data-b="D.c.hi|s2"></span>). All seasons pooled: <span data-b="D.p.coef|s3"></span> (<span data-b="D.p.lo|s2"></span> to <span data-b="D.p.hi|s2"></span>, p = <span data-b="D.p.p_two_sided|3"></span>).</span></div>
+      <div class="fact"><b class="num"><span data-b="D.sp.coef|s3"></span></b><span>the same slope for the spread (pooled, interval <span data-b="D.sp.lo|s2"></span> to <span data-b="D.sp.hi|s2"></span>): the closing spread is efficient.</span></div>
+      <div class="fact"><b class="num"><span data-b="D.bc.roi|roi"></span></b><span>return per bet for the best discovery rule (bet <b><span data-b="bet.chosen.direction|raw"></span></b> when the total moved at least <span data-b="bet.chosen.cutoff|raw"></span> points) in confirmation, priced at the closing quotes (interval <span data-b="D.bc.lo|roi"></span> to <span data-b="D.bc.hi|roi"></span>).</span></div>
+    </div>
+  </div>
+</section>
+
+<section id="eff">
+  <h2>1 · Efficiency of the close</h2>
+  <p>Regression of actual total − closing total on the total's move (close − open). Zero means the close is efficient, positive momentum, negative overreaction. Two-sided, registered primary on the first column.</p>
+  <div class="chartbox"><h3>Slope on the total's move, by sample and specification</h3><div class="sub">95% intervals from resampling game days. Above zero is momentum.</div><div id="c-slope"></div></div>
+  <div class="scroll"><table id="t-eff"></table></div>
+  <p>All variants are positive and similar: with controls and season dummies, without the 1% largest moves, and using each book's own move (<span data-b="perbook_available|int"></span> games). The opening error moves with the move about one for one (slope near 1.15, as it must: that is the news the market priced). The spread slope is near zero in every sample.</p>
+  <div class="scroll"><table id="t-sens"></table></div>
+</section>
+
+<section id="cross">
+  <h2>2 · Cross-market: does a big spread move predict the total's error?</h2>
+  <div class="scroll"><table id="t-cross"></table></div>
+  <p>A large spread move (mostly injury news) predicts a total error in discovery (<span data-b="D.cd.coef|s2"></span> per point of |move|, p = <span data-b="D.cd.p_two_sided|3"></span>) and does not in confirmation (<span data-b="D.cc.coef|s2"></span>, p = <span data-b="D.cc.p_two_sided|2"></span>). The signed spread move flips sign between periods. Not replicated, so not supported.</p>
+</section>
+
+<section id="model">
+  <h2>3 · Relevance to the model</h2>
+  <p>The model prices off the opening line and the noon information, so movement is not an input. Its residual (actual − prediction) rises with the move by <span data-b="D.m.coef|2"></span> points per point of move (interval <span data-b="D.m.lo|2"></span> to <span data-b="D.m.hi|2"></span>): the move is the news the model does not have, and the close has largely priced it. That is why opening-line bets are exposed to line movement, and it is the reason the earlier reports flag the opening-line caveat.</p>
+</section>
+
+<section id="bets">
+  <h2>4 · Betting at the close, with the closing prices</h2>
+  <p>Bets are placed at the close after a move of at least c points, c in {2, 3, 4, 5, 6}, with the move or against it. Priced at the closing over and under quotes (the book nearest the consensus line, best price on ties); mean payout <span data-b="quote_check.mean_over_payout|3"></span> per unit on the over and <span data-b="quote_check.mean_under_payout|3"></span> on the under, about -109. The "-110" column uses the consensus line at -110.</p>
+  <div class="scroll"><table id="t-grid"></table></div>
+  <div class="scroll" style="margin-top:8px"><table id="t-ctl"></table></div>
+  <p>Going with the move loses 1% to 5% per bet (at the chosen cutoff of 2 points about two points better than betting every game), and going against it loses 3% to 8%. The slope is real but about 15% of a move of 2 to 5 points is under a point of total, well inside the vig.</p>
+</section>
+
+<section id="forward">
+  <h2>5 · Forward test on the timestamped snapshots (registered)</h2>
+  <ul class="plain">
+    <li>Source: <code>odds_snapshots</code>, pre-game 'current' rows, consensus across kept books. <b>Close</b> = the last pre-tip snapshot; <b>T4</b> = the last snapshot at or before 4 hours before the scheduled start. Movement = close − T4, computed as the median of each book's own change so that a change in the book set is not read as movement.</li>
+    <li>Test: actual total − close on that movement, two-sided; supported iff the 95% interval excludes 0 at the single decisive evaluation at <b>1,000 games</b> (about one season of collection); looks at 250 and 500 decide nothing. The same for the spread.</li>
+    <li>This is the version that could be acted on, since T4 is a time you can bet before. The collector's reliability (missing fetches, source switches) is reported before any result.</li>
+    <li>Status: 18 games collected over 4 days. The scoring script is not written yet.</li>
+  </ul>
+</section>
+
+<section id="limits">
+  <h2>Limits</h2>
+  <ul class="plain">
+    <li>The close is a scraped price of unknown time; the move is open (unknown, early) to close, not a fixed horizon.</li>
+    <li>Holm across the 8 angles is pending; the confirmation p of <span data-b="step1_reading.confirmation_p_two_sided|3"></span> is near 0.05 but is not a registered pass. The pooled p of <span data-b="D.p.p_two_sided|3"></span> was not the registered criterion and uses the same games.</li>
+    <li>The combination grid has 10 cells; the chosen rule is the least bad on discovery and still loses.</li>
+    <li>Script: <code>experiments/e24_movement.py</code>; numbers: <code>reports/experiments/E24_movement/results.json</code>.</li>
+  </ul>
+</section>
+<footer>Day-cluster bootstrap, 1,000 draws, seed 20261017. Games: regular season 2019-20 to 2025-26 with both an open and a close line.</footer>
+</main>
+
+<script>
+const R = __R__;
+const fmt = {
+  '2': v => v.toFixed(2), '3': v => v.toFixed(3), 's2': v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(2), 's3': v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(3),
+  'int': v => Math.round(v).toLocaleString('en-US'), 'roi': v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1) + '%', 'pct0': v => (v * 100).toFixed(0) + '%', 'raw': v => String(v)
+};
+const path = (o, p) => p.split('.').reduce((a, k) => (a == null ? a : a[k]), o);
+const s1 = R.step1, bet = R.bet;
+R.D = { d: s1.discovery.primary.move_total, c: s1.confirmation.primary.move_total, p: s1['registered pooled'].primary.move_total, sp: s1['registered pooled'].spread.move_home,
+  bc: bet.chosen_result.confirmation.quoted, cd: R.step2.discovery.continuous.abs_move_home, cc: R.step2.confirmation.continuous.abs_move_home, m: R.step3.model_resid_on_move_total.move_total };
+document.querySelectorAll('[data-b]').forEach(el => { const [p, f] = el.dataset.b.split('|'); const v = path(R, p); el.textContent = v == null ? '?' : (f ? fmt[f](v) : String(v)); });
+function table(id, head, rows, hl) {
+  const t = document.getElementById(id);
+  t.innerHTML = '<thead><tr>' + head.map(h => `<th>${h}</th>`).join('') + '</tr></thead><tbody>' + rows.map((r, i) => `<tr class="${hl && hl(i) ? 'hl' : ''}">` + r.map(c => `<td>${c}</td>`).join('') + '</tr>').join('') + '</tbody>';
+}
+const ci = (lo, hi, f) => `${f(lo)} to ${f(hi)}`;
+const cc = (c, f = fmt.s3) => `${f(c.coef)} (${ci(c.lo, c.hi, fmt.s2)}), p = ${fmt['3'](c.p_two_sided)}`;
+const pers = ['discovery', 'confirmation', 'registered pooled'];
+table('t-eff', ['Sample', 'Games', 'Total move, primary', 'With |spread| and season dummies', 'Without the largest 1%', "Each book's own move", 'Spread move, toward home', 'Opening error on the move'],
+  pers.map(p => [p, fmt.int(s1[p].primary.n), cc(s1[p].primary.move_total), cc(s1[p].controls.move_total), cc(s1[p].trimmed_1pct.move_total), cc(s1[p].per_book_move.move_total_perbook), cc(s1[p].spread.move_home), `${fmt.s2(s1[p].open_error_total_vs_move.move_total.coef)}`]), i => i === 0 || i === 1);
+table('t-sens', ['Sensitivity (primary slope)', 'Games', 'Slope (95%), p'], Object.keys(R.sensitivity).map(k => [k, fmt.int(R.sensitivity[k].n), cc(R.sensitivity[k].move_total)]));
+table('t-cross', ['Period', 'Total move', 'Spread move toward home', '|Spread move|'], ['discovery', 'confirmation'].map(p => [p, cc(R.step2[p].continuous.move_total), cc(R.step2[p].continuous.move_home), cc(R.step2[p].continuous.abs_move_home)]));
+const rc = r => `${fmt.roi(r.roi)} (${ci(r.lo, r.hi, fmt.roi)}), ${fmt.int(r.bets)} bets`;
+table('t-grid', ['Rule', 'Discovery, quoted price', 'Confirmation, quoted price', 'Confirmation, -110'], bet.grid.map(g => [`${g.direction}, move ≥ ${g.cutoff}`, rc(g.discovery.quoted), rc(g.confirmation.quoted), fmt.roi(g.confirmation.naive.roi)]), i => bet.grid[i].direction === bet.chosen.direction && bet.grid[i].cutoff === bet.chosen.cutoff);
+table('t-ctl', ['Context: every game', 'Discovery', 'Confirmation'], ['over, all games, quoted', 'under, all games, quoted'].map(k => [k, rc(bet.controls.discovery[k]), rc(bet.controls.confirmation[k])]));
+
+__CHART_JS__
+const vars = [['primary', 'move_total', 'Primary', '--over'], ['controls', 'move_total', 'With controls', '--under'], ['trimmed_1pct', 'move_total', 'Without top 1%', '--muted'], ['per_book_move', 'move_total_perbook', "Each book's move", '--ink']];
+dotChart('c-slope', { label: 'Slope by sample and specification', cats: ['discovery', 'confirmation', 'pooled'], zero: true, yFmt: (v, d) => sgn(v, 2), xTitle: 'Sample', h: 290,
+  series: vars.map(([k, f, n, col]) => ({ name: n, color: col, hollow: false, pts: pers.map(p => { const c = s1[p][k][f]; return { y: c.coef, lo: c.lo, hi: c.hi }; }) })) });
+</script>

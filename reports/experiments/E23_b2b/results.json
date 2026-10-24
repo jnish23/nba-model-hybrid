@@ -1,0 +1,2189 @@
+{
+ "games_before_dropping_pickems": 8270,
+ "games": 8223,
+ "sigma_margin_discovery": 13.50135747942987,
+ "cells": [
+  {
+   "threshold": 8,
+   "side": "favourite",
+   "b2b": true,
+   "spread_bucket": "< 8",
+   "period": "discovery",
+   "games": 378,
+   "mean_r": -1.343915343915344,
+   "mean_r_lo": -3.326199583042626,
+   "mean_r_hi": 0.6282200496585958,
+   "under_rate": 0.5413333333333333,
+   "under_lo": 0.4876374421296296,
+   "under_hi": 0.5924981975234321,
+   "blowout_obs": 0.2857142857142857,
+   "blowout_implied": 0.30600742900448563,
+   "blowout_diff": -0.020293143290199933,
+   "blowout_diff_lo": -0.06298092140266306,
+   "blowout_diff_hi": 0.024031703047943977,
+   "fav_blowout_obs": 0.19047619047619047,
+   "fav_blowout_implied": 0.21585750039781543,
+   "fav_blowout_diff": -0.0253813099216249,
+   "fav_blowout_diff_lo": -0.06515153025334744,
+   "fav_blowout_diff_hi": 0.01698420722381823
+  },
+  {
+   "threshold": 8,
+   "side": "favourite",
+   "b2b": true,
+   "spread_bucket": "< 8",
+   "period": "confirmation",
+   "games": 525,
+   "mean_r": 0.17523809523809525,
+   "mean_r_lo": -1.2743870217712958,
+   "mean_r_hi": 1.8499825255047593,
+   "under_rate": 0.5009560229445507,
+   "under_lo": 0.4594334192204375,
+   "under_hi": 0.5415180805701436,
+   "blowout_obs": 0.32,
+   "blowout_implied": 0.3064715571238433,
+   "blowout_diff": 0.013528442876156725,
+   "blowout_diff_lo": -0.029081753752317516,
+   "blowout_diff_hi": 0.056311929213467296,
+   "fav_blowout_obs": 0.2038095238095238,
+   "fav_blowout_implied": 0.21646132992845346,
+   "fav_blowout_diff": -0.012651806118929666,
+   "fav_blowout_diff_lo": -0.04720243295829277,
+   "fav_blowout_diff_hi": 0.020385709739766167
+  },
+  {
+   "threshold": 8,
+   "side": "favourite",
+   "b2b": true,
+   "spread_bucket": ">= 8",
+   "period": "discovery",
+   "games": 137,
+   "mean_r": 1.4854014598540146,
+   "mean_r_lo": -1.607906314699793,
+   "mean_r_hi": 4.697629133858267,
+   "under_rate": 0.4666666666666667,
+   "under_lo": 0.38396521739130435,
+   "under_hi": 0.5441510695187165,
+   "blowout_obs": 0.38686131386861317,
+   "blowout_implied": 0.41373645993339647,
+   "blowout_diff": -0.02687514606478332,
+   "blowout_diff_lo": -0.10359765451908164,
+   "blowout_diff_hi": 0.05783969012340329,
+   "fav_blowout_obs": 0.32116788321167883,
+   "fav_blowout_implied": 0.3791856478272958,
+   "fav_blowout_diff": -0.058017764615616994,
+   "fav_blowout_diff_lo": -0.1303883579689143,
+   "fav_blowout_diff_hi": 0.020434747130627276
+  },
+  {
+   "threshold": 8,
+   "side": "favourite",
+   "b2b": true,
+   "spread_bucket": ">= 8",
+   "period": "confirmation",
+   "games": 219,
+   "mean_r": 1.9383561643835616,
+   "mean_r_lo": -0.7325367282112368,
+   "mean_r_hi": 4.381652489534158,
+   "under_rate": 0.4541284403669725,
+   "under_lo": 0.3952610346464167,
+   "under_hi": 0.5164928248737709,
+   "blowout_obs": 0.3972602739726027,
+   "blowout_implied": 0.43022043685747974,
+   "blowout_diff": -0.03296016288487699,
+   "blowout_diff_lo": -0.0913630266072184,
+   "blowout_diff_hi": 0.03318557058779465,
+   "fav_blowout_obs": 0.3744292237442922,
+   "fav_blowout_implied": 0.3989121182790436,
+   "fav_blowout_diff": -0.02448289453475138,
+   "fav_blowout_diff_lo": -0.08329478640943576,
+   "fav_blowout_diff_hi": 0.038323209234703934
+  },
+  {
+   "threshold": 8,
+   "side": "favourite",
+   "b2b": false,
+   "spread_bucket": "< 8",
+   "period": "discovery",
+   "games": 2098,
+   "mean_r": 0.006434699714013346,
+   "mean_r_lo": -0.7250039597031143,
+   "mean_r_hi": 0.7483760535064456,
+   "under_rate": 0.5047938638542665,
+   "under_lo": 0.4831925552461754,
+   "under_hi": 0.5239467403635961,
+   "blowout_obs": 0.280743565300286,
+   "blowout_implied": 0.3088488820687273,
+   "blowout_diff": -0.028105316768441316,
+   "blowout_diff_lo": -0.048051791229760006,
+   "blowout_diff_hi": -0.010485500490279092,
+   "fav_blowout_obs": 0.19161105815061963,
+   "fav_blowout_implied": 0.221492392991732,
+   "fav_blowout_diff": -0.029881334841112394,
+   "fav_blowout_diff_lo": -0.04782328237432117,
+   "fav_blowout_diff_hi": -0.013947647977469951
+  },
+  {
+   "threshold": 8,
+   "side": "favourite",
+   "b2b": false,
+   "spread_bucket": "< 8",
+   "period": "confirmation",
+   "games": 2932,
+   "mean_r": 0.4873806275579809,
+   "mean_r_lo": -0.17588786963383224,
+   "mean_r_hi": 1.1448318930275894,
+   "under_rate": 0.49656829100892247,
+   "under_lo": 0.47843673590658614,
+   "under_hi": 0.5142499949408025,
+   "blowout_obs": 0.2813778990450205,
+   "blowout_implied": 0.3095514091797397,
+   "blowout_diff": -0.028173510134719276,
+   "blowout_diff_lo": -0.044305692100690165,
+   "blowout_diff_hi": -0.00878299730089545,
+   "fav_blowout_obs": 0.1947476125511596,
+   "fav_blowout_implied": 0.22305832295525524,
+   "fav_blowout_diff": -0.028310710404095645,
+   "fav_blowout_diff_lo": -0.04370615462847382,
+   "fav_blowout_diff_hi": -0.012647193400822616
+  },
+  {
+   "threshold": 8,
+   "side": "favourite",
+   "b2b": false,
+   "spread_bucket": ">= 8",
+   "period": "discovery",
+   "games": 733,
+   "mean_r": 1.9099590723055935,
+   "mean_r_lo": 0.65100941431504,
+   "mean_r_hi": 3.2511735145347793,
+   "under_rate": 0.4573002754820937,
+   "under_lo": 0.4231183962946881,
+   "under_hi": 0.4919581769436997,
+   "blowout_obs": 0.3969986357435198,
+   "blowout_implied": 0.4180694281215431,
+   "blowout_diff": -0.021070792378023232,
+   "blowout_diff_lo": -0.05657754567253795,
+   "blowout_diff_hi": 0.013013366774770403,
+   "fav_blowout_obs": 0.3656207366984993,
+   "fav_blowout_implied": 0.3844162993262674,
+   "fav_blowout_diff": -0.018795562627768082,
+   "fav_blowout_diff_lo": -0.05300734178647661,
+   "fav_blowout_diff_hi": 0.01406267265930208
+  },
+  {
+   "threshold": 8,
+   "side": "favourite",
+   "b2b": false,
+   "spread_bucket": ">= 8",
+   "period": "confirmation",
+   "games": 1201,
+   "mean_r": 1.1311407160699418,
+   "mean_r_lo": 0.12187597170765588,
+   "mean_r_hi": 2.2069859727625394,
+   "under_rate": 0.49206349206349204,
+   "under_lo": 0.4628433037051833,
+   "under_hi": 0.522259153036363,
+   "blowout_obs": 0.42547876769358867,
+   "blowout_implied": 0.4386789638253148,
+   "blowout_diff": -0.013200196131726166,
+   "blowout_diff_lo": -0.03976882480586042,
+   "blowout_diff_hi": 0.014831095627093963,
+   "fav_blowout_obs": 0.39633638634471274,
+   "fav_blowout_implied": 0.408460703636355,
+   "fav_blowout_diff": -0.012124317291642235,
+   "fav_blowout_diff_lo": -0.03945939391588318,
+   "fav_blowout_diff_hi": 0.015740826057284194
+  },
+  {
+   "threshold": 8,
+   "side": "underdog",
+   "b2b": true,
+   "spread_bucket": "< 8",
+   "period": "discovery",
+   "games": 458,
+   "mean_r": -0.6091703056768559,
+   "mean_r_lo": -2.5476417258529245,
+   "mean_r_hi": 1.179747505155936,
+   "under_rate": 0.512087912087912,
+   "under_lo": 0.46607270311135324,
+   "under_hi": 0.5602576400702185,
+   "blowout_obs": 0.27292576419213976,
+   "blowout_implied": 0.3099410469255164,
+   "blowout_diff": -0.037015282733376655,
+   "blowout_diff_lo": -0.07546656727474728,
+   "blowout_diff_hi": -0.001304653043879928,
+   "fav_blowout_obs": 0.18995633187772926,
+   "fav_blowout_implied": 0.2236105052610771,
+   "fav_blowout_diff": -0.03365417338334783,
+   "fav_blowout_diff_lo": -0.06861440029796477,
+   "fav_blowout_diff_hi": -0.0009582630236144461
+  },
+  {
+   "threshold": 8,
+   "side": "underdog",
+   "b2b": true,
+   "spread_bucket": "< 8",
+   "period": "confirmation",
+   "games": 648,
+   "mean_r": -0.09876543209876543,
+   "mean_r_lo": -1.4595733435939622,
+   "mean_r_hi": 1.2884084058766359,
+   "under_rate": 0.5069984447900466,
+   "under_lo": 0.47137776311859003,
+   "under_hi": 0.5438180377395869,
+   "blowout_obs": 0.3148148148148148,
+   "blowout_implied": 0.3098828746696969,
+   "blowout_diff": 0.0049319401451179395,
+   "blowout_diff_lo": -0.027870205313470984,
+   "blowout_diff_hi": 0.041483145063325115,
+   "fav_blowout_obs": 0.2330246913580247,
+   "fav_blowout_implied": 0.22402651702656357,
+   "fav_blowout_diff": 0.008998174331461141,
+   "fav_blowout_diff_lo": -0.022573598727055607,
+   "fav_blowout_diff_hi": 0.041995311297500115
+  },
+  {
+   "threshold": 8,
+   "side": "underdog",
+   "b2b": true,
+   "spread_bucket": ">= 8",
+   "period": "discovery",
+   "games": 212,
+   "mean_r": 3.8419811320754715,
+   "mean_r_lo": 1.6242707226877533,
+   "mean_r_hi": 6.099203192791189,
+   "under_rate": 0.4028436018957346,
+   "under_lo": 0.3463192904656319,
+   "under_hi": 0.4632087424770352,
+   "blowout_obs": 0.44339622641509435,
+   "blowout_implied": 0.4213680271608233,
+   "blowout_diff": 0.022028199254271102,
+   "blowout_diff_lo": -0.0373432826318205,
+   "blowout_diff_hi": 0.08671064416650821,
+   "fav_blowout_obs": 0.4009433962264151,
+   "fav_blowout_implied": 0.3883039779879502,
+   "fav_blowout_diff": 0.012639418238464921,
+   "fav_blowout_diff_lo": -0.04739640314684026,
+   "fav_blowout_diff_hi": 0.07868963905366262
+  },
+  {
+   "threshold": 8,
+   "side": "underdog",
+   "b2b": true,
+   "spread_bucket": ">= 8",
+   "period": "confirmation",
+   "games": 316,
+   "mean_r": 0.8275316455696202,
+   "mean_r_lo": -0.9767196261682244,
+   "mean_r_hi": 2.84859839955449,
+   "under_rate": 0.5079365079365079,
+   "under_lo": 0.4539724419545105,
+   "under_hi": 0.5585307346326837,
+   "blowout_obs": 0.4272151898734177,
+   "blowout_implied": 0.4419117356958613,
+   "blowout_diff": -0.014696545822443606,
+   "blowout_diff_lo": -0.06989327905302692,
+   "blowout_diff_hi": 0.03668558075661374,
+   "fav_blowout_obs": 0.41139240506329117,
+   "fav_blowout_implied": 0.41242286330575173,
+   "fav_blowout_diff": -0.0010304582424606177,
+   "fav_blowout_diff_lo": -0.0574666564787662,
+   "fav_blowout_diff_hi": 0.05121577314760036
+  },
+  {
+   "threshold": 8,
+   "side": "underdog",
+   "b2b": false,
+   "spread_bucket": "< 8",
+   "period": "discovery",
+   "games": 2018,
+   "mean_r": -0.10678889990089198,
+   "mean_r_lo": -0.8600226118503416,
+   "mean_r_hi": 0.664214954966544,
+   "under_rate": 0.5099700897308076,
+   "under_lo": 0.4886211478040399,
+   "under_hi": 0.5295473620920913,
+   "blowout_obs": 0.28344895936570863,
+   "blowout_implied": 0.30806876276114914,
+   "blowout_diff": -0.024619803395440516,
+   "blowout_diff_lo": -0.04504717009861695,
+   "blowout_diff_hi": -0.006367006853631082,
+   "fav_blowout_obs": 0.19177403369672943,
+   "fav_blowout_implied": 0.21995617652995772,
+   "fav_blowout_diff": -0.028182142833228306,
+   "fav_blowout_diff_lo": -0.04543897817337245,
+   "fav_blowout_diff_hi": -0.010022700377890475
+  },
+  {
+   "threshold": 8,
+   "side": "underdog",
+   "b2b": false,
+   "spread_bucket": "< 8",
+   "period": "confirmation",
+   "games": 2809,
+   "mean_r": 0.5642577429690281,
+   "mean_r_lo": -0.10661852738700987,
+   "mean_r_hi": 1.220712651097934,
+   "under_rate": 0.4949892627057981,
+   "under_lo": 0.4768701287699085,
+   "under_hi": 0.5136236156539956,
+   "blowout_obs": 0.28088287646849414,
+   "blowout_implied": 0.30889932232789286,
+   "blowout_diff": -0.028016445859398734,
+   "blowout_diff_lo": -0.04499825816535638,
+   "blowout_diff_hi": -0.0076228652996799835,
+   "fav_blowout_obs": 0.18761124955500177,
+   "fav_blowout_implied": 0.22160200002991573,
+   "fav_blowout_diff": -0.03399075047491397,
+   "fav_blowout_diff_lo": -0.04850054380260099,
+   "fav_blowout_diff_hi": -0.01853531403725806
+  },
+  {
+   "threshold": 8,
+   "side": "underdog",
+   "b2b": false,
+   "spread_bucket": ">= 8",
+   "period": "discovery",
+   "games": 658,
+   "mean_r": 1.1990881458966565,
+   "mean_r_lo": -0.1421538218936683,
+   "mean_r_hi": 2.6823427894758094,
+   "under_rate": 0.47692307692307695,
+   "under_lo": 0.4375694788226669,
+   "under_hi": 0.514049909607438,
+   "blowout_obs": 0.3799392097264438,
+   "blowout_implied": 0.41610450465937965,
+   "blowout_diff": -0.036165294932935896,
+   "blowout_diff_lo": -0.0712443067613111,
+   "blowout_diff_hi": -0.0009412233663278068,
+   "fav_blowout_obs": 0.34498480243161095,
+   "fav_blowout_implied": 0.3820746775456659,
+   "fav_blowout_diff": -0.03708987511405485,
+   "fav_blowout_diff_lo": -0.07131709089074374,
+   "fav_blowout_diff_hi": -0.0014408725197702216
+  },
+  {
+   "threshold": 8,
+   "side": "underdog",
+   "b2b": false,
+   "spread_bucket": ">= 8",
+   "period": "confirmation",
+   "games": 1104,
+   "mean_r": 1.3781702898550725,
+   "mean_r_lo": 0.19445742841479358,
+   "mean_r_hi": 2.538073100996262,
+   "under_rate": 0.48,
+   "under_lo": 0.44793291259519147,
+   "under_hi": 0.5133659754224271,
+   "blowout_obs": 0.41938405797101447,
+   "blowout_implied": 0.43607572712508974,
+   "blowout_diff": -0.01669166915407519,
+   "blowout_diff_lo": -0.04255275198091709,
+   "blowout_diff_hi": 0.010050540104270924,
+   "fav_blowout_obs": 0.38768115942028986,
+   "fav_blowout_implied": 0.40543245848347403,
+   "fav_blowout_diff": -0.017751299063184168,
+   "fav_blowout_diff_lo": -0.04525366412484709,
+   "fav_blowout_diff_hi": 0.009306111243486143
+  },
+  {
+   "threshold": 6,
+   "side": "favourite",
+   "b2b": true,
+   "spread_bucket": "< 6",
+   "period": "discovery",
+   "games": 304,
+   "mean_r": -0.9555921052631579,
+   "mean_r_lo": -3.188462441314554,
+   "mean_r_hi": 1.3412191712073411,
+   "under_rate": 0.528052805280528,
+   "under_lo": 0.4684376119255518,
+   "under_hi": 0.584165941932031,
+   "blowout_obs": 0.2894736842105263,
+   "blowout_implied": 0.2979389802622004,
+   "blowout_diff": -0.008465296051674091,
+   "blowout_diff_lo": -0.055611634394074315,
+   "blowout_diff_hi": 0.04090633745972658,
+   "fav_blowout_obs": 0.1875,
+   "fav_blowout_implied": 0.20017976225576148,
+   "fav_blowout_diff": -0.012679762255761498,
+   "fav_blowout_diff_lo": -0.053575017075467746,
+   "fav_blowout_diff_hi": 0.03301343858707891
+  },
+  {
+   "threshold": 6,
+   "side": "favourite",
+   "b2b": true,
+   "spread_bucket": "< 6",
+   "period": "confirmation",
+   "games": 421,
+   "mean_r": -0.2695961995249406,
+   "mean_r_lo": -1.8987419664268586,
+   "mean_r_hi": 1.5407219452120628,
+   "under_rate": 0.5035799522673031,
+   "under_lo": 0.4577961766873293,
+   "under_hi": 0.5476298701298702,
+   "blowout_obs": 0.3159144893111639,
+   "blowout_implied": 0.297933729216881,
+   "blowout_diff": 0.01798076009428289,
+   "blowout_diff_lo": -0.030111645405610912,
+   "blowout_diff_hi": 0.06604280601338683,
+   "fav_blowout_obs": 0.18527315914489312,
+   "fav_blowout_implied": 0.19999113448728356,
+   "fav_blowout_diff": -0.014717975342390478,
+   "fav_blowout_diff_lo": -0.05330296645405554,
+   "fav_blowout_diff_hi": 0.02135315925905289
+  },
+  {
+   "threshold": 6,
+   "side": "favourite",
+   "b2b": true,
+   "spread_bucket": ">= 6",
+   "period": "discovery",
+   "games": 211,
+   "mean_r": -0.06635071090047394,
+   "mean_r_lo": -2.455622576475657,
+   "mean_r_hi": 2.3316751700680274,
+   "under_rate": 0.5120772946859904,
+   "under_lo": 0.4480945878848064,
+   "under_hi": 0.5771183853459974,
+   "blowout_obs": 0.3459715639810427,
+   "blowout_implied": 0.38757939893299514,
+   "blowout_diff": -0.04160783495195245,
+   "blowout_diff_lo": -0.10349188625636213,
+   "blowout_diff_hi": 0.022904672520564003,
+   "fav_blowout_obs": 0.2796208530805687,
+   "fav_blowout_implied": 0.3444925174263614,
+   "fav_blowout_diff": -0.06487166434579263,
+   "fav_blowout_diff_lo": -0.12365707153978092,
+   "fav_blowout_diff_hi": -0.004145636383845294
+  },
+  {
+   "threshold": 6,
+   "side": "favourite",
+   "b2b": true,
+   "spread_bucket": ">= 6",
+   "period": "confirmation",
+   "games": 323,
+   "mean_r": 1.9504643962848298,
+   "mean_r_lo": 0.0061129580198980935,
+   "mean_r_hi": 3.9231326219512193,
+   "under_rate": 0.4658385093167702,
+   "under_lo": 0.4159006267599237,
+   "under_hi": 0.5150215049776606,
+   "blowout_obs": 0.37770897832817335,
+   "blowout_implied": 0.40150384879721013,
+   "blowout_diff": -0.023794870469036753,
+   "blowout_diff_lo": -0.07096870431824638,
+   "blowout_diff_hi": 0.03262258758000158,
+   "fav_blowout_obs": 0.34365325077399383,
+   "fav_blowout_implied": 0.36163369813127627,
+   "fav_blowout_diff": -0.01798044735728246,
+   "fav_blowout_diff_lo": -0.06620797350768075,
+   "fav_blowout_diff_hi": 0.03300063599075868
+  },
+  {
+   "threshold": 6,
+   "side": "favourite",
+   "b2b": false,
+   "spread_bucket": "< 6",
+   "period": "discovery",
+   "games": 1575,
+   "mean_r": 0.19142857142857142,
+   "mean_r_lo": -0.6178970490751861,
+   "mean_r_hi": 1.020038436851666,
+   "under_rate": 0.5063938618925832,
+   "under_lo": 0.4836425781040501,
+   "under_hi": 0.5279116094373751,
+   "blowout_obs": 0.2723809523809524,
+   "blowout_implied": 0.29829390150140883,
+   "blowout_diff": -0.025912949120456486,
+   "blowout_diff_lo": -0.04828042137738936,
+   "blowout_diff_hi": -0.0055727409157274345,
+   "fav_blowout_obs": 0.17333333333333334,
+   "fav_blowout_implied": 0.20123619094798303,
+   "fav_blowout_diff": -0.027902857614649713,
+   "fav_blowout_diff_lo": -0.046398039585833224,
+   "fav_blowout_diff_hi": -0.010961470750318334
+  },
+  {
+   "threshold": 6,
+   "side": "favourite",
+   "b2b": false,
+   "spread_bucket": "< 6",
+   "period": "confirmation",
+   "games": 2206,
+   "mean_r": 0.42656391659111514,
+   "mean_r_lo": -0.29655678212873227,
+   "mean_r_hi": 1.1291367283854177,
+   "under_rate": 0.4990867579908676,
+   "under_lo": 0.47927936176595587,
+   "under_hi": 0.5194011412237355,
+   "blowout_obs": 0.2728921124206709,
+   "blowout_implied": 0.2991029536437535,
+   "blowout_diff": -0.026210841223082572,
+   "blowout_diff_lo": -0.04463982003810053,
+   "blowout_diff_hi": -0.0051913586918194915,
+   "fav_blowout_obs": 0.17225747960108795,
+   "fav_blowout_implied": 0.20315578139335397,
+   "fav_blowout_diff": -0.030898301792266002,
+   "fav_blowout_diff_lo": -0.04790920927635703,
+   "fav_blowout_diff_hi": -0.013833225888445027
+  },
+  {
+   "threshold": 6,
+   "side": "favourite",
+   "b2b": false,
+   "spread_bucket": ">= 6",
+   "period": "discovery",
+   "games": 1256,
+   "mean_r": 0.8853503184713376,
+   "mean_r_lo": -0.02800231848109219,
+   "mean_r_hi": 1.9908050711656036,
+   "under_rate": 0.4751602564102564,
+   "under_lo": 0.44837678392989827,
+   "under_hi": 0.500866745844739,
+   "blowout_obs": 0.3590764331210191,
+   "blowout_implied": 0.3858255975545875,
+   "blowout_diff": -0.02674916443356844,
+   "blowout_diff_lo": -0.05138569371970911,
+   "blowout_diff_hi": -0.0018522260145347042,
+   "fav_blowout_obs": 0.3160828025477707,
+   "fav_blowout_implied": 0.34197546748386504,
+   "fav_blowout_diff": -0.025892664936094364,
+   "fav_blowout_diff_lo": -0.04999076103805487,
+   "fav_blowout_diff_hi": -0.0002760801126023464
+  },
+  {
+   "threshold": 6,
+   "side": "favourite",
+   "b2b": false,
+   "spread_bucket": ">= 6",
+   "period": "confirmation",
+   "games": 1927,
+   "mean_r": 0.9582252205500779,
+   "mean_r_lo": 0.16117641557993143,
+   "mean_r_hi": 1.7692985077913224,
+   "under_rate": 0.4908901613742842,
+   "under_lo": 0.4684827759268751,
+   "under_hi": 0.5135053304937837,
+   "blowout_obs": 0.38090295796574986,
+   "blowout_implied": 0.40199120473849503,
+   "blowout_diff": -0.021088246772745144,
+   "blowout_diff_lo": -0.04201211725868172,
+   "blowout_diff_hi": -0.0004877862796680612,
+   "fav_blowout_obs": 0.3461338868707836,
+   "fav_blowout_implied": 0.36139421599290705,
+   "fav_blowout_diff": -0.015260329122123483,
+   "fav_blowout_diff_lo": -0.03616957942503947,
+   "fav_blowout_diff_hi": 0.005553241442127656
+  },
+  {
+   "threshold": 6,
+   "side": "underdog",
+   "b2b": true,
+   "spread_bucket": "< 6",
+   "period": "discovery",
+   "games": 335,
+   "mean_r": 0.15522388059701492,
+   "mean_r_lo": -1.851570108317599,
+   "mean_r_hi": 2.1125881390078063,
+   "under_rate": 0.4984984984984985,
+   "under_lo": 0.4450961349446311,
+   "under_hi": 0.5519482276158834,
+   "blowout_obs": 0.2746268656716418,
+   "blowout_implied": 0.29892730709922305,
+   "blowout_diff": -0.02430044142758122,
+   "blowout_diff_lo": -0.07036344390504633,
+   "blowout_diff_hi": 0.017553131785403644,
+   "fav_blowout_obs": 0.1761194029850746,
+   "fav_blowout_implied": 0.20237066265275178,
+   "fav_blowout_diff": -0.02625125966767717,
+   "fav_blowout_diff_lo": -0.06756772956076194,
+   "fav_blowout_diff_hi": 0.01318127445417862
+  },
+  {
+   "threshold": 6,
+   "side": "underdog",
+   "b2b": true,
+   "spread_bucket": "< 6",
+   "period": "confirmation",
+   "games": 481,
+   "mean_r": -0.24324324324324326,
+   "mean_r_lo": -1.8737399137937374,
+   "mean_r_hi": 1.3142858589335977,
+   "under_rate": 0.4989517819706499,
+   "under_lo": 0.45779968288911604,
+   "under_hi": 0.5441154499151103,
+   "blowout_obs": 0.30353430353430355,
+   "blowout_implied": 0.2995173542751419,
+   "blowout_diff": 0.004016949259161618,
+   "blowout_diff_lo": -0.03648502216262765,
+   "blowout_diff_hi": 0.04523967386372267,
+   "fav_blowout_obs": 0.20374220374220375,
+   "fav_blowout_implied": 0.20419266337731348,
+   "fav_blowout_diff": -0.00045045963510975407,
+   "fav_blowout_diff_lo": -0.03607602973879933,
+   "fav_blowout_diff_hi": 0.03604532856745534
+  },
+  {
+   "threshold": 6,
+   "side": "underdog",
+   "b2b": true,
+   "spread_bucket": ">= 6",
+   "period": "discovery",
+   "games": 335,
+   "mean_r": 1.4432835820895522,
+   "mean_r_lo": -0.3892015628130635,
+   "mean_r_hi": 3.211793778801843,
+   "under_rate": 0.45645645645645644,
+   "under_lo": 0.40682409230924604,
+   "under_hi": 0.5033977970352624,
+   "blowout_obs": 0.37910447761194027,
+   "blowout_implied": 0.3914697712589293,
+   "blowout_diff": -0.01236529364698903,
+   "blowout_diff_lo": -0.06043851067793552,
+   "blowout_diff_hi": 0.03797592503010183,
+   "fav_blowout_obs": 0.3373134328358209,
+   "fav_blowout_implied": 0.3490742768786474,
+   "fav_blowout_diff": -0.011760844042826532,
+   "fav_blowout_diff_lo": -0.05843649097750483,
+   "fav_blowout_diff_hi": 0.041012682952998314
+  },
+  {
+   "threshold": 6,
+   "side": "underdog",
+   "b2b": true,
+   "spread_bucket": ">= 6",
+   "period": "confirmation",
+   "games": 483,
+   "mean_r": 0.6511387163561076,
+   "mean_r_lo": -0.9032631087382756,
+   "mean_r_hi": 2.2686525168380003,
+   "under_rate": 0.5155925155925156,
+   "under_lo": 0.47322427501950437,
+   "under_hi": 0.5588442643868827,
+   "blowout_obs": 0.3995859213250518,
+   "blowout_implied": 0.40658460426400106,
+   "blowout_diff": -0.006998682938949258,
+   "blowout_diff_lo": -0.05195224113504905,
+   "blowout_diff_hi": 0.036893496342632864,
+   "fav_blowout_obs": 0.37888198757763975,
+   "fav_blowout_implied": 0.3670354798205858,
+   "fav_blowout_diff": 0.011846507757053946,
+   "fav_blowout_diff_lo": -0.03208838624382222,
+   "fav_blowout_diff_hi": 0.054721894803044395
+  },
+  {
+   "threshold": 6,
+   "side": "underdog",
+   "b2b": false,
+   "spread_bucket": "< 6",
+   "period": "discovery",
+   "games": 1544,
+   "mean_r": -0.02655440414507772,
+   "mean_r_lo": -0.904531397885775,
+   "mean_r_hi": 0.8183205086738016,
+   "under_rate": 0.5123859191655802,
+   "under_lo": 0.4879170110161564,
+   "under_hi": 0.533974968808484,
+   "blowout_obs": 0.27525906735751293,
+   "blowout_implied": 0.29808659131229803,
+   "blowout_diff": -0.02282752395478509,
+   "blowout_diff_lo": -0.04507776534585286,
+   "blowout_diff_hi": -0.0026213552893683445,
+   "fav_blowout_obs": 0.17551813471502592,
+   "fav_blowout_implied": 0.20078204435243066,
+   "fav_blowout_diff": -0.025263909637404748,
+   "fav_blowout_diff_lo": -0.04275765228451346,
+   "fav_blowout_diff_hi": -0.007152692174087106
+  },
+  {
+   "threshold": 6,
+   "side": "underdog",
+   "b2b": false,
+   "spread_bucket": "< 6",
+   "period": "confirmation",
+   "games": 2146,
+   "mean_r": 0.44012115563839704,
+   "mean_r_lo": -0.31769523955501117,
+   "mean_r_hi": 1.1602658498476457,
+   "under_rate": 0.5,
+   "under_lo": 0.47919232637014597,
+   "under_hi": 0.5211620506816391,
+   "blowout_obs": 0.2744641192917055,
+   "blowout_implied": 0.2987806935377837,
+   "blowout_diff": -0.024316574246078193,
+   "blowout_diff_lo": -0.0432940458269012,
+   "blowout_diff_hi": -0.004126107125887972,
+   "fav_blowout_obs": 0.16775396085740912,
+   "fav_blowout_implied": 0.20230253974296245,
+   "fav_blowout_diff": -0.03454857888555331,
+   "fav_blowout_diff_lo": -0.05052684443011725,
+   "fav_blowout_diff_hi": -0.018150806039592866
+  },
+  {
+   "threshold": 6,
+   "side": "underdog",
+   "b2b": false,
+   "spread_bucket": ">= 6",
+   "period": "discovery",
+   "games": 1132,
+   "mean_r": 0.5428445229681979,
+   "mean_r_lo": -0.45861079829829826,
+   "mean_r_hi": 1.6386330599863073,
+   "under_rate": 0.4875222816399287,
+   "under_lo": 0.45742950688226647,
+   "under_hi": 0.5150552689756817,
+   "blowout_obs": 0.3507067137809187,
+   "blowout_implied": 0.3844821822718044,
+   "blowout_diff": -0.03377546849088569,
+   "blowout_diff_lo": -0.060044173494955375,
+   "blowout_diff_hi": -0.0057394549685250715,
+   "fav_blowout_obs": 0.3030035335689046,
+   "fav_blowout_implied": 0.340343838853666,
+   "fav_blowout_diff": -0.03734030528476137,
+   "fav_blowout_diff_lo": -0.06331608979086822,
+   "fav_blowout_diff_hi": -0.009930702118989776
+  },
+  {
+   "threshold": 6,
+   "side": "underdog",
+   "b2b": false,
+   "spread_bucket": ">= 6",
+   "period": "confirmation",
+   "games": 1767,
+   "mean_r": 1.22354272778721,
+   "mean_r_lo": 0.30207494911337435,
+   "mean_r_hi": 2.124141344581881,
+   "under_rate": 0.47956867196367764,
+   "under_lo": 0.4542406783385833,
+   "under_hi": 0.5049330741133498,
+   "blowout_obs": 0.37521222410865873,
+   "blowout_implied": 0.4006465369740047,
+   "blowout_diff": -0.025434312865345934,
+   "blowout_diff_lo": -0.046132676557555596,
+   "blowout_diff_hi": -0.004610946100094045,
+   "fav_blowout_obs": 0.33672891907187325,
+   "fav_blowout_implied": 0.3598959830002214,
+   "fav_blowout_diff": -0.02316706392834818,
+   "fav_blowout_diff_lo": -0.044206683953071355,
+   "fav_blowout_diff_hi": -0.0027630216374769554
+  },
+  {
+   "threshold": 10,
+   "side": "favourite",
+   "b2b": true,
+   "spread_bucket": "< 10",
+   "period": "discovery",
+   "games": 440,
+   "mean_r": -0.7329545454545454,
+   "mean_r_lo": -2.629743481770011,
+   "mean_r_hi": 1.0947428688557774,
+   "under_rate": 0.5308924485125858,
+   "under_lo": 0.4804392260883133,
+   "under_hi": 0.5781187424909892,
+   "blowout_obs": 0.3,
+   "blowout_implied": 0.315742481489249,
+   "blowout_diff": -0.015742481489249,
+   "blowout_diff_lo": -0.05782610065780792,
+   "blowout_diff_hi": 0.026346312416573998,
+   "fav_blowout_obs": 0.20454545454545456,
+   "fav_blowout_implied": 0.2321555069392131,
+   "fav_blowout_diff": -0.027610052393758574,
+   "fav_blowout_diff_lo": -0.06712010533743994,
+   "fav_blowout_diff_hi": 0.012294147394003046
+  },
+  {
+   "threshold": 10,
+   "side": "favourite",
+   "b2b": true,
+   "spread_bucket": "< 10",
+   "period": "confirmation",
+   "games": 618,
+   "mean_r": 0.37540453074433655,
+   "mean_r_lo": -1.116751236151141,
+   "mean_r_hi": 1.9188856476945453,
+   "under_rate": 0.49512987012987014,
+   "under_lo": 0.45605739599383666,
+   "under_hi": 0.5333389261744966,
+   "blowout_obs": 0.3300970873786408,
+   "blowout_implied": 0.31753736778538233,
+   "blowout_diff": 0.012559719593258413,
+   "blowout_diff_lo": -0.02446039528209591,
+   "blowout_diff_hi": 0.05203577234464562,
+   "fav_blowout_obs": 0.22653721682847897,
+   "fav_blowout_implied": 0.23475888257610278,
+   "fav_blowout_diff": -0.008221665747623811,
+   "fav_blowout_diff_lo": -0.039357671338140665,
+   "fav_blowout_diff_hi": 0.024765831495865427
+  },
+  {
+   "threshold": 10,
+   "side": "favourite",
+   "b2b": true,
+   "spread_bucket": ">= 10",
+   "period": "discovery",
+   "games": 75,
+   "mean_r": 0.24,
+   "mean_r_lo": -3.7018341856805663,
+   "mean_r_hi": 4.067924099017109,
+   "under_rate": 0.4657534246575342,
+   "under_lo": 0.35714285714285715,
+   "under_hi": 0.5833333333333334,
+   "blowout_obs": 0.38666666666666666,
+   "blowout_implied": 0.44568015092401786,
+   "blowout_diff": -0.059013484257351104,
+   "blowout_diff_lo": -0.16311660615530885,
+   "blowout_diff_hi": 0.05415889755078245,
+   "fav_blowout_obs": 0.3466666666666667,
+   "fav_blowout_implied": 0.4185886113261329,
+   "fav_blowout_diff": -0.07192194465946625,
+   "fav_blowout_diff_lo": -0.1738825084276102,
+   "fav_blowout_diff_hi": 0.0324405609072343
+  },
+  {
+   "threshold": 10,
+   "side": "favourite",
+   "b2b": true,
+   "spread_bucket": ">= 10",
+   "period": "confirmation",
+   "games": 126,
+   "mean_r": 2.257936507936508,
+   "mean_r_lo": -0.7286370689655172,
+   "mean_r_hi": 5.105516194331984,
+   "under_rate": 0.448,
+   "under_lo": 0.3700787401574803,
+   "under_hi": 0.5312570382882883,
+   "blowout_obs": 0.40476190476190477,
+   "blowout_implied": 0.4672837291304721,
+   "blowout_diff": -0.06252182436856732,
+   "blowout_diff_lo": -0.1436161566187257,
+   "blowout_diff_hi": 0.016963550354986204,
+   "fav_blowout_obs": 0.3888888888888889,
+   "fav_blowout_implied": 0.4438330371707707,
+   "fav_blowout_diff": -0.05494414828188185,
+   "fav_blowout_diff_lo": -0.14040960685310747,
+   "fav_blowout_diff_hi": 0.027641428116148805
+  },
+  {
+   "threshold": 10,
+   "side": "favourite",
+   "b2b": false,
+   "spread_bucket": "< 10",
+   "period": "discovery",
+   "games": 2428,
+   "mean_r": 0.21890444810543658,
+   "mean_r_lo": -0.47135618735617424,
+   "mean_r_hi": 0.931770387159718,
+   "under_rate": 0.5,
+   "under_lo": 0.47980473516724975,
+   "under_hi": 0.5182052179430368,
+   "blowout_obs": 0.2903624382207578,
+   "blowout_implied": 0.3179975924272273,
+   "blowout_diff": -0.02763515420646949,
+   "blowout_diff_lo": -0.04553966803246455,
+   "blowout_diff_hi": -0.010447626080715262,
+   "fav_blowout_obs": 0.207166392092257,
+   "fav_blowout_implied": 0.23663891047431393,
+   "fav_blowout_diff": -0.029472518382056948,
+   "fav_blowout_diff_lo": -0.04672773612900265,
+   "fav_blowout_diff_hi": -0.013675186325031128
+  },
+  {
+   "threshold": 10,
+   "side": "favourite",
+   "b2b": false,
+   "spread_bucket": "< 10",
+   "period": "confirmation",
+   "games": 3378,
+   "mean_r": 0.49304322084073415,
+   "mean_r_lo": -0.1598818714816931,
+   "mean_r_hi": 1.112246747089875,
+   "under_rate": 0.4994047619047619,
+   "under_lo": 0.482645742088292,
+   "under_hi": 0.5152534930310443,
+   "blowout_obs": 0.2898164594434577,
+   "blowout_implied": 0.3186213291685454,
+   "blowout_diff": -0.02880486972508777,
+   "blowout_diff_lo": -0.04397233955886414,
+   "blowout_diff_hi": -0.012361228039291688,
+   "fav_blowout_obs": 0.20751924215512138,
+   "fav_blowout_implied": 0.23792908461502904,
+   "fav_blowout_diff": -0.03040984245990767,
+   "fav_blowout_diff_lo": -0.04424060235906051,
+   "fav_blowout_diff_hi": -0.015869059321985124
+  },
+  {
+   "threshold": 10,
+   "side": "favourite",
+   "b2b": false,
+   "spread_bucket": ">= 10",
+   "period": "discovery",
+   "games": 403,
+   "mean_r": 2.1885856079404467,
+   "mean_r_lo": 0.5431308508649574,
+   "mean_r_hi": 4.0160627028379,
+   "under_rate": 0.4472361809045226,
+   "under_lo": 0.39998659517426277,
+   "under_hi": 0.49052464897904946,
+   "blowout_obs": 0.43424317617866004,
+   "blowout_implied": 0.4523863299751192,
+   "blowout_diff": -0.01814315379645907,
+   "blowout_diff_lo": -0.06551647266255528,
+   "blowout_diff_hi": 0.028049620945282135,
+   "fav_blowout_obs": 0.4143920595533499,
+   "fav_blowout_implied": 0.4265729857845498,
+   "fav_blowout_diff": -0.01218092623119983,
+   "fav_blowout_diff_lo": -0.05941812689908458,
+   "fav_blowout_diff_hi": 0.03496646288943737
+  },
+  {
+   "threshold": 10,
+   "side": "favourite",
+   "b2b": false,
+   "spread_bucket": ">= 10",
+   "period": "confirmation",
+   "games": 755,
+   "mean_r": 1.486092715231788,
+   "mean_r_lo": 0.18229174123848885,
+   "mean_r_hi": 2.893092507472149,
+   "under_rate": 0.4766977363515313,
+   "under_lo": 0.4370748605112425,
+   "under_hi": 0.5153212496716396,
+   "blowout_obs": 0.4728476821192053,
+   "blowout_implied": 0.47437790375874644,
+   "blowout_diff": -0.0015302216395411286,
+   "blowout_diff_lo": -0.03580031281634878,
+   "blowout_diff_hi": 0.03414092919794727,
+   "fav_blowout_obs": 0.45827814569536424,
+   "fav_blowout_implied": 0.4514488213807982,
+   "fav_blowout_diff": 0.006829324314566026,
+   "fav_blowout_diff_lo": -0.02787486692587456,
+   "fav_blowout_diff_hi": 0.0433490897157186
+  },
+  {
+   "threshold": 10,
+   "side": "underdog",
+   "b2b": true,
+   "spread_bucket": "< 10",
+   "period": "discovery",
+   "games": 551,
+   "mean_r": 0.08257713248638839,
+   "mean_r_lo": -1.5359622342831296,
+   "mean_r_hi": 1.6278386318090725,
+   "under_rate": 0.4927007299270073,
+   "under_lo": 0.4529655990510083,
+   "under_hi": 0.5352565551537071,
+   "blowout_obs": 0.2867513611615245,
+   "blowout_implied": 0.32115945988801087,
+   "blowout_diff": -0.03440809872648643,
+   "blowout_diff_lo": -0.06884248115341962,
+   "blowout_diff_hi": -0.0003528794916476738,
+   "fav_blowout_obs": 0.20871143375680581,
+   "fav_blowout_implied": 0.2421182165144659,
+   "fav_blowout_diff": -0.03340678275766012,
+   "fav_blowout_diff_lo": -0.06591552105471941,
+   "fav_blowout_diff_hi": -0.002176727001693929
+  },
+  {
+   "threshold": 10,
+   "side": "underdog",
+   "b2b": true,
+   "spread_bucket": "< 10",
+   "period": "confirmation",
+   "games": 757,
+   "mean_r": -0.14332892998678995,
+   "mean_r_lo": -1.4665233837689133,
+   "mean_r_hi": 1.1926725158446856,
+   "under_rate": 0.511968085106383,
+   "under_lo": 0.4777702702702703,
+   "under_hi": 0.5454545454545454,
+   "blowout_obs": 0.3249669749009247,
+   "blowout_implied": 0.3198559725100927,
+   "blowout_diff": 0.005111002390832038,
+   "blowout_diff_lo": -0.025969732699566293,
+   "blowout_diff_hi": 0.03740675676564949,
+   "fav_blowout_obs": 0.2523117569352708,
+   "fav_blowout_implied": 0.24027890331324733,
+   "fav_blowout_diff": 0.012032853622023474,
+   "fav_blowout_diff_lo": -0.016166123957460508,
+   "fav_blowout_diff_hi": 0.04224744879054424
+  },
+  {
+   "threshold": 10,
+   "side": "underdog",
+   "b2b": true,
+   "spread_bucket": ">= 10",
+   "period": "discovery",
+   "games": 119,
+   "mean_r": 4.117647058823529,
+   "mean_r_lo": 1.0981681034482758,
+   "mean_r_hi": 7.219051116333723,
+   "under_rate": 0.4067796610169492,
+   "under_lo": 0.3245599512025096,
+   "under_hi": 0.4910791256157635,
+   "blowout_obs": 0.5126050420168067,
+   "blowout_implied": 0.45650553656879833,
+   "blowout_diff": 0.05609950544800826,
+   "blowout_diff_lo": -0.02916664973354189,
+   "blowout_diff_hi": 0.1496598827714199,
+   "fav_blowout_obs": 0.4789915966386555,
+   "fav_blowout_implied": 0.431318633979395,
+   "fav_blowout_diff": 0.04767296265926037,
+   "fav_blowout_diff_lo": -0.03198821519755492,
+   "fav_blowout_diff_hi": 0.13648722807986477
+  },
+  {
+   "threshold": 10,
+   "side": "underdog",
+   "b2b": true,
+   "spread_bucket": ">= 10",
+   "period": "confirmation",
+   "games": 207,
+   "mean_r": 1.4782608695652173,
+   "mean_r_lo": -0.9930398387396598,
+   "mean_r_hi": 4.2586237674260445,
+   "under_rate": 0.49029126213592233,
+   "under_lo": 0.41709221730049806,
+   "under_hi": 0.557614487327189,
+   "blowout_obs": 0.4492753623188406,
+   "blowout_implied": 0.4749625124430707,
+   "blowout_diff": -0.02568715012422999,
+   "blowout_diff_lo": -0.08726125864257199,
+   "blowout_diff_hi": 0.03912922605963485,
+   "fav_blowout_obs": 0.43478260869565216,
+   "fav_blowout_implied": 0.45219168130291065,
+   "fav_blowout_diff": -0.01740907260725849,
+   "fav_blowout_diff_lo": -0.08048637336866654,
+   "fav_blowout_diff_hi": 0.04638586940448238
+  },
+  {
+   "threshold": 10,
+   "side": "underdog",
+   "b2b": false,
+   "spread_bucket": "< 10",
+   "period": "discovery",
+   "games": 2317,
+   "mean_r": 0.07056538627535607,
+   "mean_r_lo": -0.6010537517614495,
+   "mean_r_hi": 0.8013216904498103,
+   "under_rate": 0.5075987841945289,
+   "under_lo": 0.4877413695529145,
+   "under_hi": 0.5266930135210994,
+   "blowout_obs": 0.2930513595166163,
+   "blowout_implied": 0.316817429378629,
+   "blowout_diff": -0.023766069862012712,
+   "blowout_diff_lo": -0.042418108414486684,
+   "blowout_diff_hi": -0.0062274074171083426,
+   "fav_blowout_obs": 0.20630125161847215,
+   "fav_blowout_implied": 0.23448448872914,
+   "fav_blowout_diff": -0.028183237110667808,
+   "fav_blowout_diff_lo": -0.04548027519065968,
+   "fav_blowout_diff_hi": -0.011069484041015008
+  },
+  {
+   "threshold": 10,
+   "side": "underdog",
+   "b2b": false,
+   "spread_bucket": "< 10",
+   "period": "confirmation",
+   "games": 3239,
+   "mean_r": 0.6193269527631985,
+   "mean_r_lo": -0.041861665204824164,
+   "mean_r_hi": 1.2534202667630663,
+   "under_rate": 0.4956575682382134,
+   "under_lo": 0.47819073454697253,
+   "under_hi": 0.5134400543349136,
+   "blowout_obs": 0.2892868169188021,
+   "blowout_implied": 0.3181259561693648,
+   "blowout_diff": -0.02883913925056272,
+   "blowout_diff_lo": -0.04426666423892129,
+   "blowout_diff_hi": -0.011273456930992064,
+   "fav_blowout_obs": 0.20067922198209323,
+   "fav_blowout_implied": 0.2367750254564592,
+   "fav_blowout_diff": -0.03609580347436597,
+   "fav_blowout_diff_lo": -0.04943741580023675,
+   "fav_blowout_diff_hi": -0.022137071749918184
+  },
+  {
+   "threshold": 10,
+   "side": "underdog",
+   "b2b": false,
+   "spread_bucket": ">= 10",
+   "period": "discovery",
+   "games": 359,
+   "mean_r": 1.1420612813370474,
+   "mean_r_lo": -0.5634706510809452,
+   "mean_r_hi": 2.8800217734393265,
+   "under_rate": 0.46458923512747874,
+   "under_lo": 0.4143646408839779,
+   "under_hi": 0.5101655990186724,
+   "blowout_obs": 0.3983286908077994,
+   "blowout_implied": 0.4496198981826946,
+   "blowout_diff": -0.05129120737489505,
+   "blowout_diff_lo": -0.10006139983162281,
+   "blowout_diff_hi": -0.00364214939547081,
+   "fav_blowout_obs": 0.3788300835654596,
+   "fav_blowout_implied": 0.423331870966812,
+   "fav_blowout_diff": -0.04450178740135232,
+   "fav_blowout_diff_lo": -0.09211468158811868,
+   "fav_blowout_diff_hi": 0.0012793695305605727
+  },
+  {
+   "threshold": 10,
+   "side": "underdog",
+   "b2b": false,
+   "spread_bucket": ">= 10",
+   "period": "confirmation",
+   "games": 674,
+   "mean_r": 1.6327893175074184,
+   "mean_r_lo": 0.1432901012425831,
+   "mean_r_hi": 3.1859975888887395,
+   "under_rate": 0.4671641791044776,
+   "under_lo": 0.425864056263545,
+   "under_hi": 0.5068747917769024,
+   "blowout_obs": 0.46735905044510384,
+   "blowout_implied": 0.4728721470809754,
+   "blowout_diff": -0.005513096635871552,
+   "blowout_diff_lo": -0.040521361764245575,
+   "blowout_diff_hi": 0.03315074404779851,
+   "fav_blowout_obs": 0.45252225519287836,
+   "fav_blowout_implied": 0.44979695073637577,
+   "fav_blowout_diff": 0.0027253044565025905,
+   "fav_blowout_diff_lo": -0.03270109144018716,
+   "fav_blowout_diff_hi": 0.03999901567572483
+  }
+ ],
+ "step2": {
+  "discovery": {
+   "coefs": {
+    "abs_spread": {
+     "coef": 0.09478677982621894,
+     "lo": -0.10746956226031894,
+     "hi": 0.310530380004253,
+     "p_two_sided": 0.3516483516483517
+    },
+    "total_c": {
+     "coef": -0.03284955059460896,
+     "lo": -0.11143653149681203,
+     "hi": 0.05163236961025465,
+     "p_two_sided": 0.44555444555444557
+    },
+    "FB": {
+     "coef": -1.6368214000218575,
+     "lo": -5.005003246391294,
+     "hi": 1.7007353415831366,
+     "p_two_sided": 0.3116883116883117
+    },
+    "UB": {
+     "coef": -0.7245519127756962,
+     "lo": -3.7176278466685204,
+     "hi": 2.3022840032416676,
+     "p_two_sided": 0.6813186813186813
+    },
+    "FB_x_abs_spread": {
+     "coef": 0.11320064648053119,
+     "lo": -0.34762024054508966,
+     "hi": 0.6254165267907624,
+     "p_two_sided": 0.6333666333666333
+    },
+    "UB_x_abs_spread": {
+     "coef": 0.2278657180114242,
+     "lo": -0.18107014855935366,
+     "hi": 0.6442270665667935,
+     "p_two_sided": 0.26173826173826176
+    }
+   },
+   "wald": 3.402994780554861,
+   "wald_p": 0.49278062583042326,
+   "df": 4,
+   "n": 3346
+  },
+  "confirmation": {
+   "coefs": {
+    "abs_spread": {
+     "coef": 0.1122110653488876,
+     "lo": -0.047117616382977345,
+     "hi": 0.2768683794743849,
+     "p_two_sided": 0.16983016983016982
+    },
+    "total_c": {
+     "coef": -0.045188393106164904,
+     "lo": -0.11143165845183595,
+     "hi": 0.025858309503938883,
+     "p_two_sided": 0.1918081918081918
+    },
+    "FB": {
+     "coef": -1.1584638749706704,
+     "lo": -3.6928460154142306,
+     "hi": 1.6085866716028308,
+     "p_two_sided": 0.4035964035964036
+    },
+    "UB": {
+     "coef": -1.1094642810778084,
+     "lo": -3.273209331790605,
+     "hi": 1.2521438141328638,
+     "p_two_sided": 0.3516483516483517
+    },
+    "FB_x_abs_spread": {
+     "coef": 0.22586246485600836,
+     "lo": -0.1549129756355218,
+     "hi": 0.5680627558876132,
+     "p_two_sided": 0.23776223776223776
+    },
+    "UB_x_abs_spread": {
+     "coef": 0.06284805404216419,
+     "lo": -0.2693900336924434,
+     "hi": 0.38092740834959343,
+     "p_two_sided": 0.6753246753246753
+    }
+   },
+   "wald": 3.0829978703154857,
+   "wald_p": 0.5440332589415575,
+   "df": 4,
+   "n": 4877
+  }
+ },
+ "step2_reading": {
+  "discovery_wald_p": 0.49278062583042326,
+  "confirmation_wald_p": 0.5440332589415575,
+  "H_B2B_supported_raw": false,
+  "holm": "pending: family of 8 incomplete"
+ },
+ "sensitivity": {
+  "2021-22..2025-26": {
+   "coefs": {
+    "abs_spread": {
+     "coef": 0.10718820597168423,
+     "lo": -0.027702170987370142,
+     "hi": 0.25589412154195396,
+     "p_two_sided": 0.14585414585414586
+    },
+    "total_c": {
+     "coef": -0.0302381334303555,
+     "lo": -0.08831123366517529,
+     "hi": 0.03239395272874146,
+     "p_two_sided": 0.2997002997002997
+    },
+    "FB": {
+     "coef": -1.2535887799024035,
+     "lo": -3.500130420034609,
+     "hi": 1.2292019917751118,
+     "p_two_sided": 0.3256743256743257
+    },
+    "UB": {
+     "coef": -0.6920375934587779,
+     "lo": -2.696185766352076,
+     "hi": 1.4498934600541282,
+     "p_two_sided": 0.5074925074925075
+    },
+    "FB_x_abs_spread": {
+     "coef": 0.2606326033828782,
+     "lo": -0.09096045696312599,
+     "hi": 0.5770972272397825,
+     "p_two_sided": 0.13786213786213786
+    },
+    "UB_x_abs_spread": {
+     "coef": 0.0378343935438484,
+     "lo": -0.2450480898335651,
+     "hi": 0.3344818444104966,
+     "p_two_sided": 0.8091908091908092
+    }
+   },
+   "wald": 3.431884352416333,
+   "wald_p": 0.488310767680745,
+   "df": 4,
+   "n": 6089
+  }
+ },
+ "step3": {
+  "lpm": {
+   "discovery": {
+    "favbl_obs": {
+     "coefs": {
+      "abs_spread": {
+       "coef": 0.02333855504379902,
+       "lo": 0.018621848366112026,
+       "hi": 0.02804592657895744,
+       "p_two_sided": 0.000999000999000999
+      },
+      "total_c": {
+       "coef": 0.0003372932678863226,
+       "lo": -0.0012014987595970435,
+       "hi": 0.0020465906708227954,
+       "p_two_sided": 0.6233766233766234
+      },
+      "FB": {
+       "coef": 0.03927292761119383,
+       "lo": -0.02455898958887344,
+       "hi": 0.1064992797163452,
+       "p_two_sided": 0.22977022977022976
+      },
+      "UB": {
+       "coef": -0.05404717860589787,
+       "lo": -0.12525191694911872,
+       "hi": 0.016503354412972827,
+       "p_two_sided": 0.11788211788211789
+      },
+      "FB_x_abs_spread": {
+       "coef": -0.008908055130845745,
+       "lo": -0.01935630907890953,
+       "hi": 0.001670506836476925,
+       "p_two_sided": 0.10989010989010989
+      },
+      "UB_x_abs_spread": {
+       "coef": 0.010625015737056731,
+       "lo": -7.53446670537542e-05,
+       "hi": 0.021422992317297503,
+       "p_two_sided": 0.055944055944055944
+      }
+     },
+     "wald": 6.746812565013087,
+     "wald_p": 0.14988842314945558,
+     "df": 4,
+     "n": 3346
+    },
+    "bl_obs": {
+     "coefs": {
+      "abs_spread": {
+       "coef": 0.013276007313868275,
+       "lo": 0.007787074500231974,
+       "hi": 0.018491066900574896,
+       "p_two_sided": 0.000999000999000999
+      },
+      "total_c": {
+       "coef": 0.0008278609527858715,
+       "lo": -0.0009705140885329985,
+       "hi": 0.002793381131817838,
+       "p_two_sided": 0.41358641358641357
+      },
+      "FB": {
+       "coef": 0.04532098927832427,
+       "lo": -0.029433674872172744,
+       "hi": 0.11767569360294294,
+       "p_two_sided": 0.24575424575424576
+      },
+      "UB": {
+       "coef": -0.05801781475406539,
+       "lo": -0.13663661091988366,
+       "hi": 0.023731638128122984,
+       "p_two_sided": 0.1258741258741259
+      },
+      "FB_x_abs_spread": {
+       "coef": -0.007727555336292146,
+       "lo": -0.018898439282606677,
+       "hi": 0.004011674565023948,
+       "p_two_sided": 0.1998001998001998
+      },
+      "UB_x_abs_spread": {
+       "coef": 0.010926006781506592,
+       "lo": -0.00026851422145080715,
+       "hi": 0.022700754130320685,
+       "p_two_sided": 0.059940059940059943
+      }
+     },
+     "wald": 5.312676632264699,
+     "wald_p": 0.2566925715993124,
+     "df": 4,
+     "n": 3346
+    }
+   },
+   "confirmation": {
+    "favbl_obs": {
+     "coefs": {
+      "abs_spread": {
+       "coef": 0.027221936243353017,
+       "lo": 0.023884117356723033,
+       "hi": 0.031055710677003127,
+       "p_two_sided": 0.000999000999000999
+      },
+      "total_c": {
+       "coef": 0.0003989993237479102,
+       "lo": -0.0010722130776290807,
+       "hi": 0.0018462423827527161,
+       "p_two_sided": 0.5514485514485514
+      },
+      "FB": {
+       "coef": 0.026501569289312316,
+       "lo": -0.03243059327365957,
+       "hi": 0.08732865338617839,
+       "p_two_sided": 0.3856143856143856
+      },
+      "UB": {
+       "coef": 0.03935967913055638,
+       "lo": -0.013590179206206802,
+       "hi": 0.09857563828012927,
+       "p_two_sided": 0.15384615384615385
+      },
+      "FB_x_abs_spread": {
+       "coef": -0.004449938172592047,
+       "lo": -0.012891383366269804,
+       "hi": 0.003987589061573948,
+       "p_two_sided": 0.3196803196803197
+      },
+      "UB_x_abs_spread": {
+       "coef": -0.0006397274081175923,
+       "lo": -0.00869177633761749,
+       "hi": 0.006571016757085664,
+       "p_two_sided": 0.8511488511488512
+      }
+     },
+     "wald": 5.928300663423196,
+     "wald_p": 0.20456719169553506,
+     "df": 4,
+     "n": 4877
+    },
+    "bl_obs": {
+     "coefs": {
+      "abs_spread": {
+       "coef": 0.017796272545366473,
+       "lo": 0.014178755642686317,
+       "hi": 0.02173192369032975,
+       "p_two_sided": 0.000999000999000999
+      },
+      "total_c": {
+       "coef": 0.0008801306454876809,
+       "lo": -0.0007511408423508068,
+       "hi": 0.002538727122972535,
+       "p_two_sided": 0.2517482517482518
+      },
+      "FB": {
+       "coef": 0.07793612073385743,
+       "lo": 0.008654595055098496,
+       "hi": 0.14593790044965704,
+       "p_two_sided": 0.03196803196803197
+      },
+      "UB": {
+       "coef": 0.017706734917443026,
+       "lo": -0.04076684842279075,
+       "hi": 0.07951254349655455,
+       "p_two_sided": 0.5194805194805194
+      },
+      "FB_x_abs_spread": {
+       "coef": -0.010194920707748668,
+       "lo": -0.019659011572024918,
+       "hi": -0.0012297980878246207,
+       "p_two_sided": 0.027972027972027972
+      },
+      "UB_x_abs_spread": {
+       "coef": 0.0007352171460787163,
+       "lo": -0.0077772383068684895,
+       "hi": 0.008656260685278491,
+       "p_two_sided": 0.8571428571428571
+      }
+     },
+     "wald": 6.883736537968721,
+     "wald_p": 0.142161264574931,
+     "df": 4,
+     "n": 4877
+    }
+   }
+  },
+  "cell": {
+   "discovery": {
+    "games": 137,
+    "fav_blowout_diff": {
+     "diff": -0.058017764615616994,
+     "lo": -0.1303883579689143,
+     "hi": 0.020434747130627276
+    },
+    "fav_blowout_obs": 0.32116788321167883,
+    "fav_blowout_implied": 0.3791856478272958,
+    "vs_rested_favourites_diff": {
+     "diff": -0.03922220198784891,
+     "lo": -0.11919773840740108,
+     "hi": 0.049855258308363695
+    }
+   },
+   "confirmation": {
+    "games": 219,
+    "fav_blowout_diff": {
+     "diff": -0.02448289453475138,
+     "lo": -0.08329478640943576,
+     "hi": 0.038323209234703934
+    },
+    "fav_blowout_obs": 0.3744292237442922,
+    "fav_blowout_implied": 0.3989121182790436,
+    "vs_rested_favourites_diff": {
+     "diff": -0.012358577243109145,
+     "lo": -0.07702899679747502,
+     "hi": 0.052223823669581504
+    }
+   }
+  }
+ },
+ "step3_reading": {
+  "mechanism_supported": false
+ },
+ "step4": {
+  "n": 6086,
+  "models": {
+   "2021-22..2025-26": {
+    "model_resid": {
+     "coefs": {
+      "abs_spread": {
+       "coef": 0.03131465341865771,
+       "lo": -0.11300335631172236,
+       "hi": 0.15842290188384836,
+       "p_two_sided": 0.6613386613386614
+      },
+      "total_c": {
+       "coef": 0.21990336175142458,
+       "lo": 0.1661871004762811,
+       "hi": 0.27910220452898554,
+       "p_two_sided": 0.000999000999000999
+      },
+      "FB": {
+       "coef": -1.113922488152279,
+       "lo": -3.484434609812896,
+       "hi": 1.1171651885861527,
+       "p_two_sided": 0.3516483516483517
+      },
+      "UB": {
+       "coef": -0.7452318917043383,
+       "lo": -2.7491171069776996,
+       "hi": 1.431358797839753,
+       "p_two_sided": 0.5114885114885115
+      },
+      "FB_x_abs_spread": {
+       "coef": 0.2434065308239864,
+       "lo": -0.07433910567714745,
+       "hi": 0.5600113339330308,
+       "p_two_sided": 0.12187812187812187
+      },
+      "UB_x_abs_spread": {
+       "coef": 0.05188935480350427,
+       "lo": -0.24863565284212777,
+       "hi": 0.3359559471466229,
+       "p_two_sided": 0.7252747252747253
+      }
+     },
+     "wald": 2.984970821225431,
+     "wald_p": 0.5603436397236052,
+     "df": 4,
+     "n": 6086
+    },
+    "model_lean": {
+     "coefs": {
+      "abs_spread": {
+       "coef": 0.0760870658181507,
+       "lo": 0.052909668780920516,
+       "hi": 0.09901520321217377,
+       "p_two_sided": 0.000999000999000999
+      },
+      "total_c": {
+       "coef": -0.25033911222714644,
+       "lo": -0.2632709534849089,
+       "hi": -0.2377175930788055,
+       "p_two_sided": 0.000999000999000999
+      },
+      "FB": {
+       "coef": -0.14052780409238338,
+       "lo": -0.5243956006983205,
+       "hi": 0.27047140935588054,
+       "p_two_sided": 0.5074925074925075
+      },
+      "UB": {
+       "coef": 0.05316789529117963,
+       "lo": -0.2947201647772949,
+       "hi": 0.40730295323814325,
+       "p_two_sided": 0.7752247752247752
+      },
+      "FB_x_abs_spread": {
+       "coef": 0.017104272392684902,
+       "lo": -0.03604512493673016,
+       "hi": 0.07582634300968003,
+       "p_two_sided": 0.5594405594405595
+      },
+      "UB_x_abs_spread": {
+       "coef": -0.014282953260023204,
+       "lo": -0.06491177271545208,
+       "hi": 0.03107563518185676,
+       "p_two_sided": 0.5554445554445554
+      }
+     },
+     "wald": 1.0890231428408421,
+     "wald_p": 0.8960098739316895,
+     "df": 4,
+     "n": 6086
+    },
+    "r": {
+     "coefs": {
+      "abs_spread": {
+       "coef": 0.10740171923680968,
+       "lo": -0.033152481086708076,
+       "hi": 0.2361537933122317,
+       "p_two_sided": 0.10989010989010989
+      },
+      "total_c": {
+       "coef": -0.030435750475722324,
+       "lo": -0.08718531831315426,
+       "hi": 0.030185492510326945,
+       "p_two_sided": 0.34965034965034963
+      },
+      "FB": {
+       "coef": -1.2544502922446539,
+       "lo": -3.577257751804837,
+       "hi": 1.0529336300591687,
+       "p_two_sided": 0.2757242757242757
+      },
+      "UB": {
+       "coef": -0.6920639964131571,
+       "lo": -2.7673056515548917,
+       "hi": 1.447533767358868,
+       "p_two_sided": 0.5354645354645354
+      },
+      "FB_x_abs_spread": {
+       "coef": 0.2605108032166703,
+       "lo": -0.057445023370621455,
+       "hi": 0.5765276063146985,
+       "p_two_sided": 0.0999000999000999
+      },
+      "UB_x_abs_spread": {
+       "coef": 0.037606401543480925,
+       "lo": -0.26001065920768884,
+       "hi": 0.31821708472431603,
+       "p_two_sided": 0.8011988011988012
+      }
+     },
+     "wald": 3.367725398154683,
+     "wald_p": 0.49827375875897795,
+     "df": 4,
+     "n": 6086
+    }
+   },
+   "confirmation 2022-23..2025-26": {
+    "model_resid": {
+     "coefs": {
+      "abs_spread": {
+       "coef": 0.026933934763125385,
+       "lo": -0.13573867620104488,
+       "hi": 0.1725667339364272,
+       "p_two_sided": 0.7692307692307693
+      },
+      "total_c": {
+       "coef": 0.21728524114215014,
+       "lo": 0.15318149082176896,
+       "hi": 0.28332283757806326,
+       "p_two_sided": 0.000999000999000999
+      },
+      "FB": {
+       "coef": -1.0266784300367435,
+       "lo": -3.575854019491239,
+       "hi": 1.446869028198991,
+       "p_two_sided": 0.42157842157842157
+      },
+      "UB": {
+       "coef": -1.0950686948230937,
+       "lo": -3.350331029543906,
+       "hi": 1.2427043758817715,
+       "p_two_sided": 0.3876123876123876
+      },
+      "FB_x_abs_spread": {
+       "coef": 0.2079806496532298,
+       "lo": -0.1384521290972238,
+       "hi": 0.5385560368869801,
+       "p_two_sided": 0.25774225774225773
+      },
+      "UB_x_abs_spread": {
+       "coef": 0.08147828773016724,
+       "lo": -0.21251640181119313,
+       "hi": 0.4077641117502633,
+       "p_two_sided": 0.6293706293706294
+      }
+     },
+     "wald": 2.4349079924972536,
+     "wald_p": 0.6563282021236461,
+     "df": 4,
+     "n": 4874
+    },
+    "model_lean": {
+     "coefs": {
+      "abs_spread": {
+       "coef": 0.08552295176492022,
+       "lo": 0.062415445234326745,
+       "hi": 0.10867830338006862,
+       "p_two_sided": 0.000999000999000999
+      },
+      "total_c": {
+       "coef": -0.2627262201788912,
+       "lo": -0.27649431074824493,
+       "hi": -0.25002825285202596,
+       "p_two_sided": 0.000999000999000999
+      },
+      "FB": {
+       "coef": -0.13290635541810475,
+       "lo": -0.5484766764282427,
+       "hi": 0.29075985719039177,
+       "p_two_sided": 0.5494505494505495
+      },
+      "UB": {
+       "coef": -0.014546645027673343,
+       "lo": -0.39286241850706877,
+       "hi": 0.3588905044530356,
+       "p_two_sided": 0.9470529470529471
+      },
+      "FB_x_abs_spread": {
+       "coef": 0.017738410213704182,
+       "lo": -0.040294998443478405,
+       "hi": 0.07797058538489784,
+       "p_two_sided": 0.5774225774225774
+      },
+      "UB_x_abs_spread": {
+       "coef": -0.01889369299877629,
+       "lo": -0.06963012637753632,
+       "hi": 0.02485446775413797,
+       "p_two_sided": 0.42957042957042957
+      }
+     },
+     "wald": 3.0066762472464257,
+     "wald_p": 0.5567087685617382,
+     "df": 4,
+     "n": 4874
+    },
+    "r": {
+     "coefs": {
+      "abs_spread": {
+       "coef": 0.11245688652804638,
+       "lo": -0.04238957787801573,
+       "hi": 0.25485528868121204,
+       "p_two_sided": 0.14785214785214784
+      },
+      "total_c": {
+       "coef": -0.04544097903674119,
+       "lo": -0.10676655820468779,
+       "hi": 0.020360983053982075,
+       "p_two_sided": 0.18981018981018982
+      },
+      "FB": {
+       "coef": -1.1595847854548507,
+       "lo": -3.6671335128022116,
+       "hi": 1.4038325875197577,
+       "p_two_sided": 0.38161838161838163
+      },
+      "UB": {
+       "coef": -1.1096153398507569,
+       "lo": -3.4849608151063616,
+       "hi": 1.2388897524421447,
+       "p_two_sided": 0.3776223776223776
+      },
+      "FB_x_abs_spread": {
+       "coef": 0.22571905986693414,
+       "lo": -0.11642902422034077,
+       "hi": 0.5539494191463444,
+       "p_two_sided": 0.2017982017982018
+      },
+      "UB_x_abs_spread": {
+       "coef": 0.06258459473138991,
+       "lo": -0.23819495878701433,
+       "hi": 0.3827224220418034,
+       "p_two_sided": 0.7252747252747253
+      }
+     },
+     "wald": 2.956263973048777,
+     "wald_p": 0.5651709985024889,
+     "df": 4,
+     "n": 4874
+    }
+   }
+  },
+  "cells": [
+   {
+    "period": "2021-22..2025-26",
+    "side": "favourite",
+    "b2b": true,
+    "spread_bucket": "< 8",
+    "games": 642,
+    "model_resid": {
+     "mean": 1.1165151613711588,
+     "lo": -0.3639139942885219,
+     "hi": 2.6794331262720408
+    }
+   },
+   {
+    "period": "2021-22..2025-26",
+    "side": "favourite",
+    "b2b": true,
+    "spread_bucket": ">= 8",
+    "games": 273,
+    "model_resid": {
+     "mean": 2.863479813719701,
+     "lo": 0.4906431721530655,
+     "hi": 5.220460887709493
+    }
+   },
+   {
+    "period": "2021-22..2025-26",
+    "side": "favourite",
+    "b2b": false,
+    "spread_bucket": "< 8",
+    "games": 3713,
+    "model_resid": {
+     "mean": 1.380348731578654,
+     "lo": 0.7595597756514754,
+     "hi": 2.004656844061471
+    }
+   },
+   {
+    "period": "2021-22..2025-26",
+    "side": "favourite",
+    "b2b": false,
+    "spread_bucket": ">= 8",
+    "games": 1458,
+    "model_resid": {
+     "mean": 1.636751160314469,
+     "lo": 0.6679206398779253,
+     "hi": 2.6078485240959783
+    }
+   },
+   {
+    "period": "2021-22..2025-26",
+    "side": "underdog",
+    "b2b": true,
+    "spread_bucket": "< 8",
+    "games": 821,
+    "model_resid": {
+     "mean": 0.8743123960782022,
+     "lo": -0.3680745169292735,
+     "hi": 2.182892994948942
+    }
+   },
+   {
+    "period": "2021-22..2025-26",
+    "side": "underdog",
+    "b2b": true,
+    "spread_bucket": ">= 8",
+    "games": 387,
+    "model_resid": {
+     "mean": 1.9048640976728568,
+     "lo": 0.08797114480480908,
+     "hi": 3.5843539685824903
+    }
+   },
+   {
+    "period": "2021-22..2025-26",
+    "side": "underdog",
+    "b2b": false,
+    "spread_bucket": "< 8",
+    "games": 3534,
+    "model_resid": {
+     "mean": 1.4499793709031192,
+     "lo": 0.8030023041803777,
+     "hi": 2.0969868422252955
+    }
+   },
+   {
+    "period": "2021-22..2025-26",
+    "side": "underdog",
+    "b2b": false,
+    "spread_bucket": ">= 8",
+    "games": 1344,
+    "model_resid": {
+     "mean": 1.8087282552712642,
+     "lo": 0.7930193302722178,
+     "hi": 2.767140612168825
+    }
+   },
+   {
+    "period": "confirmation 2022-23..2025-26",
+    "side": "favourite",
+    "b2b": true,
+    "spread_bucket": "< 8",
+    "games": 525,
+    "model_resid": {
+     "mean": 1.3327338065806296,
+     "lo": -0.24168789688419273,
+     "hi": 3.046049295692761
+    }
+   },
+   {
+    "period": "confirmation 2022-23..2025-26",
+    "side": "favourite",
+    "b2b": true,
+    "spread_bucket": ">= 8",
+    "games": 219,
+    "model_resid": {
+     "mean": 2.325086109834089,
+     "lo": -0.33438213797754673,
+     "hi": 4.905627697856441
+    }
+   },
+   {
+    "period": "confirmation 2022-23..2025-26",
+    "side": "favourite",
+    "b2b": false,
+    "spread_bucket": "< 8",
+    "games": 2929,
+    "model_resid": {
+     "mean": 1.6086571141495978,
+     "lo": 0.8974810866713802,
+     "hi": 2.3119702714425423
+    }
+   },
+   {
+    "period": "confirmation 2022-23..2025-26",
+    "side": "favourite",
+    "b2b": false,
+    "spread_bucket": ">= 8",
+    "games": 1201,
+    "model_resid": {
+     "mean": 1.6185301938039327,
+     "lo": 0.5504023011291381,
+     "hi": 2.7000874864555864
+    }
+   },
+   {
+    "period": "confirmation 2022-23..2025-26",
+    "side": "underdog",
+    "b2b": true,
+    "spread_bucket": "< 8",
+    "games": 648,
+    "model_resid": {
+     "mean": 1.0790294134560798,
+     "lo": -0.3556250560190154,
+     "hi": 2.5876553242886815
+    }
+   },
+   {
+    "period": "confirmation 2022-23..2025-26",
+    "side": "underdog",
+    "b2b": true,
+    "spread_bucket": ">= 8",
+    "games": 316,
+    "model_resid": {
+     "mean": 1.5109784580062486,
+     "lo": -0.3879235020504377,
+     "hi": 3.404799576553093
+    }
+   },
+   {
+    "period": "confirmation 2022-23..2025-26",
+    "side": "underdog",
+    "b2b": false,
+    "spread_bucket": "< 8",
+    "games": 2806,
+    "model_resid": {
+     "mean": 1.6793410106484186,
+     "lo": 0.9486583476902486,
+     "hi": 2.399828500136289
+    }
+   },
+   {
+    "period": "confirmation 2022-23..2025-26",
+    "side": "underdog",
+    "b2b": false,
+    "spread_bucket": ">= 8",
+    "games": 1104,
+    "model_resid": {
+     "mean": 1.7894741196396868,
+     "lo": 0.5968140616179423,
+     "hi": 2.85651220806993
+    }
+   }
+  ]
+ },
+ "layer_b_supported": false,
+ "layer_c_run": false,
+ "bet": {
+  "cells": [
+   {
+    "cell": "favourite on back-to-back, |spread| < 8",
+    "side": "over",
+    "discovery": {
+     "roi": -12.337662337662339,
+     "lo": -21.89939083166634,
+     "hi": -2.1847990211392316,
+     "bets": 378
+    },
+    "confirmation": {
+     "roi": -4.70995670995671,
+     "lo": -12.448149771801226,
+     "hi": 3.198902804165956,
+     "bets": 525
+    }
+   },
+   {
+    "cell": "favourite on back-to-back, |spread| < 8",
+    "side": "under",
+    "discovery": {
+     "roi": 3.3189033189033177,
+     "lo": -6.903767051962929,
+     "hi": 12.947607308036346,
+     "bets": 378
+    },
+    "confirmation": {
+     "roi": -4.346320346320347,
+     "lo": -12.289351828825518,
+     "hi": 3.374629409684756,
+     "bets": 525
+    }
+   },
+   {
+    "cell": "favourite on back-to-back, |spread| >= 8",
+    "side": "over",
+    "discovery": {
+     "roi": 1.7916390179163892,
+     "lo": -12.82237998833969,
+     "hi": 17.273460656990064,
+     "bets": 137
+    },
+    "confirmation": {
+     "roi": 4.192611041926109,
+     "lo": -7.659082893829849,
+     "hi": 15.378286368356445,
+     "bets": 219
+    }
+   },
+   {
+    "cell": "favourite on back-to-back, |spread| >= 8",
+    "side": "under",
+    "discovery": {
+     "roi": -10.74983410749834,
+     "lo": -26.064972724044804,
+     "hi": 3.790220030941125,
+     "bets": 137
+    },
+    "confirmation": {
+     "roi": -13.24200913242009,
+     "lo": -24.42603606155008,
+     "hi": -1.39040733556693,
+     "bets": 219
+    }
+   },
+   {
+    "cell": "underdog on back-to-back, |spread| < 8",
+    "side": "over",
+    "discovery": {
+     "roi": -6.808257244938468,
+     "lo": -15.921316646337576,
+     "hi": 1.9109993541811716,
+     "bets": 458
+    },
+    "confirmation": {
+     "roi": -5.836139169472502,
+     "lo": -12.79607994451554,
+     "hi": 0.9105812220566272,
+     "bets": 648
+    }
+   },
+   {
+    "cell": "underdog on back-to-back, |spread| < 8",
+    "side": "under",
+    "discovery": {
+     "roi": -2.2231044065105205,
+     "lo": -10.923023685720272,
+     "hi": 6.885930019698167,
+     "bets": 458
+    },
+    "confirmation": {
+     "roi": -3.1846240179573506,
+     "lo": -9.920251573726006,
+     "hi": 3.7858966184492924,
+     "bets": 648
+    }
+   },
+   {
+    "cell": "underdog on back-to-back, |spread| >= 8",
+    "side": "over",
+    "discovery": {
+     "roi": 13.936535162950253,
+     "lo": 2.4572851520328496,
+     "hi": 24.762889973803272,
+     "bets": 212
+    },
+    "confirmation": {
+     "roi": -6.041426927502878,
+     "lo": -15.604472987307648,
+     "hi": 4.228986373961149,
+     "bets": 316
+    }
+   },
+   {
+    "cell": "underdog on back-to-back, |spread| >= 8",
+    "side": "under",
+    "discovery": {
+     "roi": -22.98456260720411,
+     "lo": -33.85277068133106,
+     "hi": -11.473887169541154,
+     "bets": 212
+    },
+    "confirmation": {
+     "roi": -3.020713463751439,
+     "lo": -13.292789543268906,
+     "hi": 6.584231322336718,
+     "bets": 316
+    }
+   }
+  ],
+  "chosen": {
+   "cell": "underdog on back-to-back, |spread| >= 8",
+   "side": "over"
+  },
+  "discovery": {
+   "over chosen cell, opening @ -110": {
+    "roi": 13.936535162950253,
+    "lo": 2.4572851520328496,
+    "hi": 24.762889973803272,
+    "bets": 212
+   },
+   "over chosen cell, closing @ -110": {
+    "roi": 18.18181818181818,
+    "lo": 5.497748187395427,
+    "hi": 29.93806438826196,
+    "bets": 185
+   },
+   "over chosen cell, best book": {
+    "roi": 17.511552808764367,
+    "lo": 6.5558140213093825,
+    "hi": 28.864265806217364,
+    "bets": 212
+   },
+   "over, all games (control)": {
+    "roi": -3.9422920176058254,
+    "lo": -7.046430643969592,
+    "hi": -0.8859774991976158,
+    "bets": 3346
+   },
+   "under, all games (control)": {
+    "roi": -5.083410313535837,
+    "lo": -8.103590012323714,
+    "hi": -1.9796300224877,
+    "bets": 3346
+   }
+  },
+  "confirmation": {
+   "over chosen cell, opening @ -110": {
+    "roi": -6.041426927502878,
+    "lo": -15.604472987307648,
+    "hi": 4.228986373961149,
+    "bets": 316
+   },
+   "over chosen cell, closing @ -110": {
+    "roi": -3.308400460299195,
+    "lo": -12.988365800865804,
+    "hi": 6.8647801594259805,
+    "bets": 316
+   },
+   "over chosen cell, best book": {
+    "roi": -3.0905457351232624,
+    "lo": -12.997182140464398,
+    "hi": 7.067117922417808,
+    "bets": 316
+   },
+   "over, all games (control)": {
+    "roi": -3.386955468152926,
+    "lo": -6.039835736648896,
+    "hi": -0.759229396853452,
+    "bets": 4877
+   },
+   "under, all games (control)": {
+    "roi": -5.657352694465674,
+    "lo": -8.289225470995609,
+    "hi": -3.007342457029,
+    "bets": 4877
+   }
+  }
+ }
+}

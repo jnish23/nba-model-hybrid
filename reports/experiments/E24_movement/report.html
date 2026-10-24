@@ -1,0 +1,249 @@
+<title>Line Movement Test</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700&family=JetBrains+Mono:wght@400;500&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&display=swap">
+<style>
+/* Layout: one reading column, verdict first, then one section per registered step; each section = claim, chart or table, the caveat. */
+:root {
+  --bg: #f3f5f8; --surface: #ffffff; --ink: #14202e; --muted: #556373; --rule: #d6dde5; --wash: #e9edf2;
+  --under: #2a5db0; --over: #c4570a;
+  --good: #1b7442; --good-bg: #e1f2e8; --bad: #aa2a22; --bad-bg: #f8e4e2; --note-bg: #fdf3dc; --note-ink: #6b4b00;
+  --display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1319; --surface: #151c24; --ink: #e6ebf1; --muted: #98a6b5; --rule: #29333f; --wash: #1d2631;
+    --under: #7aa9f4; --over: #f19b58;
+    --good: #5cc88d; --good-bg: #16301f; --bad: #f2776e; --bad-bg: #3a1a18; --note-bg: #2f2713; --note-ink: #e8c872;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1319; --surface: #151c24; --ink: #e6ebf1; --muted: #98a6b5; --rule: #29333f; --wash: #1d2631;
+  --under: #7aa9f4; --over: #f19b58;
+  --good: #5cc88d; --good-bg: #16301f; --bad: #f2776e; --bad-bg: #3a1a18; --note-bg: #2f2713; --note-ink: #e8c872;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 17px; line-height: 1.55; margin: 0;
+  padding-block: 28px 72px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+main { max-width: 860px; margin: 0 auto; display: flex; flex-direction: column; gap: 44px; }
+section { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+h1, h2, h3 { font-family: var(--display); line-height: 1.15; margin: 0; text-wrap: balance; }
+h1 { font-size: clamp(30px, 6vw, 44px); letter-spacing: -0.01em; }
+h2 { font-size: 24px; }
+h3 { font-size: 17px; letter-spacing: 0.02em; }
+p { margin: 0; max-width: 68ch; }
+.eyebrow { font-family: var(--mono); font-size: 12.5px; color: var(--muted); letter-spacing: 0.04em; text-transform: uppercase; }
+.lede { font-size: 19px; max-width: 64ch; }
+a { color: var(--under); }
+code, .mono { font-family: var(--mono); font-size: 0.86em; }
+code { background: var(--wash); padding: 1px 5px; border-radius: 3px; overflow-wrap: anywhere; }
+.num { font-variant-numeric: tabular-nums; }
+.under { color: var(--under); } .over { color: var(--over); }
+
+.verdict { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 22px 22px 20px; display: flex; flex-direction: column; gap: 14px; }
+.verdict .tag { align-self: flex-start; font-family: var(--mono); font-size: 13px; font-weight: 500; letter-spacing: 0.05em; padding: 3px 10px; border-radius: 4px; background: var(--bad-bg); color: var(--bad); }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 0; border-top: 1px solid var(--rule); }
+.fact { padding: 14px 16px 4px 0; min-width: 0; }
+.fact + .fact { padding-left: 16px; border-left: 1px solid var(--rule); }
+@media (max-width: 680px) { .fact + .fact { border-left: 0; padding-left: 0; border-top: 1px solid var(--rule); margin-top: 10px; padding-top: 12px; } }
+.fact b { display: block; font-family: var(--display); font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.fact span { font-size: 15px; color: var(--muted); }
+
+.toc { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 15px; }
+.chartbox { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 14px 14px 8px; min-width: 0; }
+.chartbox h3 { font-size: 15px; margin-bottom: 2px; }
+.chartbox .sub { color: var(--muted); font-size: 14px; margin-bottom: 6px; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 14px; color: var(--muted); margin: 4px 0 2px; }
+.legend i { display: inline-block; width: 11px; height: 11px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+svg { display: block; width: 100%; height: auto; }
+svg text { font-family: var(--body); font-size: 12.5px; fill: var(--muted); font-variant-numeric: tabular-nums; }
+svg .grid { stroke: var(--rule); stroke-width: 1; }
+svg .zero { stroke: var(--ink); stroke-width: 1.2; }
+svg .ref { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 4 4; }
+svg .band { fill: var(--wash); }
+svg .lbl { fill: var(--ink); }
+
+.scroll { overflow-x: auto; max-width: 100%; border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 15px; font-variant-numeric: tabular-nums; }
+th, td { padding: 7px 12px; text-align: right; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; white-space: normal; min-width: 140px; }
+th { font-family: var(--display); font-size: 13px; font-weight: 600; color: var(--muted); background: var(--surface); }
+tr:last-child td { border-bottom: 0; }
+tr.hl td { background: var(--wash); }
+.pill { font-family: var(--mono); font-size: 12.5px; padding: 2px 8px; border-radius: 4px; font-weight: 500; white-space: nowrap; }
+.pill.fail { background: var(--bad-bg); color: var(--bad); }
+.pill.pass { background: var(--good-bg); color: var(--good); }
+.pill.info { background: var(--wash); color: var(--muted); }
+.note { background: var(--note-bg); color: var(--note-ink); border-radius: 6px; padding: 10px 14px; font-size: 15.5px; max-width: 72ch; }
+.note b { font-weight: 600; }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+ul.plain { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; max-width: 70ch; }
+
+.explorer { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+.controls { display: flex; flex-wrap: wrap; gap: 14px 24px; align-items: end; }
+.controls label { display: flex; flex-direction: column; gap: 4px; font-size: 14px; color: var(--muted); }
+select, input[type=range] { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--rule); border-radius: 5px; padding: 5px 8px; min-width: 150px; }
+input[type=range] { padding: 0; min-width: 220px; accent-color: var(--under); }
+.check { flex-direction: row !important; align-items: center; gap: 8px !important; }
+:focus-visible { outline: 2px solid var(--under); outline-offset: 2px; }
+footer { color: var(--muted); font-size: 14px; }
+</style>
+
+<main>
+<header style="display:flex;flex-direction:column;gap:12px">
+  <div class="eyebrow">Experiment E24 · totals · angle 8 of 8 · run 2026-10-23</div>
+  <h1>Line Movement Test</h1>
+  <p class="lede">Does the move from the opening line to the close carry information the close has not priced, as momentum (the move continues) or overreaction (it reverses)? First, what the odds tables actually contain.</p>
+  <nav class="toc" aria-label="Sections"><a href="#verify">What nba_odds is</a><a href="#verdict">Verdict</a><a href="#eff">1 · Efficiency</a><a href="#cross">2 · Cross-market</a><a href="#model">3 · Model</a><a href="#bets">4 · Betting at the close</a><a href="#forward">5 · Forward test</a><a href="#limits">Limits</a></nav>
+</header>
+
+<section id="verify">
+  <h2>What the odds tables are (verified before registering)</h2>
+  <ul class="plain">
+    <li><b>No timestamps.</b> <code>nba_odds</code> and <code>nba_odds_opening</code> have no time column, only the date and a status (Final, a tip time such as "19:00 ET", or an in-game string such as "02:45 4th"). The collector's own notes say the same.</li>
+    <li><b><code>nba_odds</code> is a scrape of the book prices shown on the day,</b> described in <code>odds_clean.py</code> as "scraped after the game" for completed games, so it is the last pre-game line as displayed afterwards, at an unknown time just before tip. In-game prices leaked in before: two windows (2019-10-22 to 2019-11-19 and 2021-10-19 to 2021-11-23) are set to missing and books more than 3 points (spread) or 6 points (total) from the median are dropped.</li>
+    <li><b>Evidence it is mostly a closing line.</b> The total's mean absolute error is 1.1% to 2.9% lower at the close than at the open in every season (the documented normal), and for the 16 games of 2026-27 that also have timestamped snapshots the two sources are identical to the half point.</li>
+    <li><b><code>nba_odds_opening</code> is SBR's opening line</b>, posted at an unknown time that can be a day or more before tip. So the open-to-close move is not a fixed-horizon number: its standard deviation is <span data-b="move_total_sd|2"></span> points for totals (<span data-b="share_total_moved|pct0"></span> of totals and <span data-b="share_spread_moved|pct0"></span> of spreads move at all).</li>
+    <li><b><code>odds_snapshots</code> is now filling</b> (hourly collector since 2026-10-19; 6,273 rows, 18 games so far; its "opening" rows mean first seen by the collector). Too few games for a test yet; the forward test below is registered for it. Several sources (SBR, The Odds API) feed it, so the book set can change between fetches.</li>
+  </ul>
+  <p>What this means: the historical test asks whether the last displayed pre-game line has already priced everything that moved the line since an early opening. It does not say what you could do at a fixed time. If some in-game price stayed within the filters it would make the close look better than it was, which should push the slope toward overreaction, the opposite of the result below.</p>
+</section>
+
+<section id="verdict">
+  <div class="verdict">
+    <span class="tag">H_MOVE NOT SUPPORTED AT THE REGISTERED THRESHOLD · SMALL MOMENTUM</span>
+    <p class="lede">The closing total keeps about 15% of the open-to-close move to come: when the total rises by a point from the open, the game finishes about 0.15 points above the close. The sign is the same in both periods and the pooled estimate is significant, but the registered rule needs confirmation p &lt; 0.05 on its own and it is p = <span data-b="step1_reading.confirmation_p_two_sided|3"></span>. The effect is too small to beat the vig at the close.</p>
+    <div class="facts">
+      <div class="fact"><b class="num over"><span data-b="D.d.coef|s3"></span> / <span data-b="D.c.coef|s3"></span></b><span>slope of (actual − close) on the total's move, discovery and confirmation (intervals <span data-b="D.d.lo|s2"></span> to <span data-b="D.d.hi|s2"></span> and <span data-b="D.c.lo|s2"></span> to <span data-b="D.c.hi|s2"></span>). All seasons pooled: <span data-b="D.p.coef|s3"></span> (<span data-b="D.p.lo|s2"></span> to <span data-b="D.p.hi|s2"></span>, p = <span data-b="D.p.p_two_sided|3"></span>).</span></div>
+      <div class="fact"><b class="num"><span data-b="D.sp.coef|s3"></span></b><span>the same slope for the spread (pooled, interval <span data-b="D.sp.lo|s2"></span> to <span data-b="D.sp.hi|s2"></span>): the closing spread is efficient.</span></div>
+      <div class="fact"><b class="num"><span data-b="D.bc.roi|roi"></span></b><span>return per bet for the best discovery rule (bet <b><span data-b="bet.chosen.direction|raw"></span></b> when the total moved at least <span data-b="bet.chosen.cutoff|raw"></span> points) in confirmation, priced at the closing quotes (interval <span data-b="D.bc.lo|roi"></span> to <span data-b="D.bc.hi|roi"></span>).</span></div>
+    </div>
+  </div>
+</section>
+
+<section id="eff">
+  <h2>1 · Efficiency of the close</h2>
+  <p>Regression of actual total − closing total on the total's move (close − open). Zero means the close is efficient, positive momentum, negative overreaction. Two-sided, registered primary on the first column.</p>
+  <div class="chartbox"><h3>Slope on the total's move, by sample and specification</h3><div class="sub">95% intervals from resampling game days. Above zero is momentum.</div><div id="c-slope"></div></div>
+  <div class="scroll"><table id="t-eff"></table></div>
+  <p>All variants are positive and similar: with controls and season dummies, without the 1% largest moves, and using each book's own move (<span data-b="perbook_available|int"></span> games). The opening error moves with the move about one for one (slope near 1.15, as it must: that is the news the market priced). The spread slope is near zero in every sample.</p>
+  <div class="scroll"><table id="t-sens"></table></div>
+</section>
+
+<section id="cross">
+  <h2>2 · Cross-market: does a big spread move predict the total's error?</h2>
+  <div class="scroll"><table id="t-cross"></table></div>
+  <p>A large spread move (mostly injury news) predicts a total error in discovery (<span data-b="D.cd.coef|s2"></span> per point of |move|, p = <span data-b="D.cd.p_two_sided|3"></span>) and does not in confirmation (<span data-b="D.cc.coef|s2"></span>, p = <span data-b="D.cc.p_two_sided|2"></span>). The signed spread move flips sign between periods. Not replicated, so not supported.</p>
+</section>
+
+<section id="model">
+  <h2>3 · Relevance to the model</h2>
+  <p>The model prices off the opening line and the noon information, so movement is not an input. Its residual (actual − prediction) rises with the move by <span data-b="D.m.coef|2"></span> points per point of move (interval <span data-b="D.m.lo|2"></span> to <span data-b="D.m.hi|2"></span>): the move is the news the model does not have, and the close has largely priced it. That is why opening-line bets are exposed to line movement, and it is the reason the earlier reports flag the opening-line caveat.</p>
+</section>
+
+<section id="bets">
+  <h2>4 · Betting at the close, with the closing prices</h2>
+  <p>Bets are placed at the close after a move of at least c points, c in {2, 3, 4, 5, 6}, with the move or against it. Priced at the closing over and under quotes (the book nearest the consensus line, best price on ties); mean payout <span data-b="quote_check.mean_over_payout|3"></span> per unit on the over and <span data-b="quote_check.mean_under_payout|3"></span> on the under, about -109. The "-110" column uses the consensus line at -110.</p>
+  <div class="scroll"><table id="t-grid"></table></div>
+  <div class="scroll" style="margin-top:8px"><table id="t-ctl"></table></div>
+  <p>Going with the move loses 1% to 5% per bet (at the chosen cutoff of 2 points about two points better than betting every game), and going against it loses 3% to 8%. The slope is real but about 15% of a move of 2 to 5 points is under a point of total, well inside the vig.</p>
+</section>
+
+<section id="forward">
+  <h2>5 · Forward test on the timestamped snapshots (registered)</h2>
+  <ul class="plain">
+    <li>Source: <code>odds_snapshots</code>, pre-game 'current' rows, consensus across kept books. <b>Close</b> = the last pre-tip snapshot; <b>T4</b> = the last snapshot at or before 4 hours before the scheduled start. Movement = close − T4, computed as the median of each book's own change so that a change in the book set is not read as movement.</li>
+    <li>Test: actual total − close on that movement, two-sided; supported iff the 95% interval excludes 0 at the single decisive evaluation at <b>1,000 games</b> (about one season of collection); looks at 250 and 500 decide nothing. The same for the spread.</li>
+    <li>This is the version that could be acted on, since T4 is a time you can bet before. The collector's reliability (missing fetches, source switches) is reported before any result.</li>
+    <li>Status: 18 games collected over 4 days. The scoring script is not written yet.</li>
+  </ul>
+</section>
+
+<section id="limits">
+  <h2>Limits</h2>
+  <ul class="plain">
+    <li>The close is a scraped price of unknown time; the move is open (unknown, early) to close, not a fixed horizon.</li>
+    <li>Holm across the 8 angles is pending; the confirmation p of <span data-b="step1_reading.confirmation_p_two_sided|3"></span> is near 0.05 but is not a registered pass. The pooled p of <span data-b="D.p.p_two_sided|3"></span> was not the registered criterion and uses the same games.</li>
+    <li>The combination grid has 10 cells; the chosen rule is the least bad on discovery and still loses.</li>
+    <li>Script: <code>experiments/e24_movement.py</code>; numbers: <code>reports/experiments/E24_movement/results.json</code>.</li>
+  </ul>
+</section>
+<footer>Day-cluster bootstrap, 1,000 draws, seed 20261017. Games: regular season 2019-20 to 2025-26 with both an open and a close line.</footer>
+</main>
+
+<script>
+const R = {"games": 7782, "games_by_season": {"2019-20": 776, "2020-21": 1160, "2021-22": 960, "2022-23": 1215, "2023-24": 1214, "2024-25": 1227, "2025-26": 1230}, "move_total_sd": 3.358238020663166, "move_home_sd": 2.116980611441656, "err_total_sd": 17.979309061968358, "share_total_moved": 0.94011822153688, "share_spread_moved": 0.8690567977383706, "perbook_available": 7782, "step1": {"discovery": {"primary": {"move_total": {"coef": 0.17974963534341298, "lo": -0.03291127027598741, "hi": 0.39170068321315193, "se": 0.10831937589008657, "p_two_sided": 0.10589410589410589}, "n": 2896}, "controls": {"move_total": {"coef": 0.19791622834254005, "lo": -0.014877885699343606, "hi": 0.4016298104712066, "se": 0.10625196330881384, "p_two_sided": 0.07992007992007992}, "abs_spread": {"coef": 0.33442170109954766, "lo": 0.16660137780632925, "hi": 0.5063482651677313, "se": 0.0866701243268883, "p_two_sided": 0.000999000999000999}, "n": 2896}, "trimmed_1pct": {"move_total": {"coef": 0.2178260140034002, "lo": -0.0055846464512034205, "hi": 0.44292605749884867, "se": 0.11441599590562554, "p_two_sided": 0.055944055944055944}, "n": 2874}, "per_book_move": {"move_total_perbook": {"coef": 0.1731369851978621, "lo": -0.03777492659952365, "hi": 0.3828690336020169, "se": 0.10730713270447463, "p_two_sided": 0.11988011988011989}, "n": 2896}, "spread": {"move_home": {"coef": 0.020413376425242144, "lo": -0.21053100253172138, "hi": 0.2420719574518911, "se": 0.11545993877132972, "p_two_sided": 0.8511488511488512}, "n": 2896}, "open_error_total_vs_move": {"move_total": {"coef": 1.1797496353434131, "lo": 0.9670887297240126, "hi": 1.3917006832131518, "se": 0.10831937589008653, "p_two_sided": 0.000999000999000999}, "n": 2896}}, "confirmation": {"primary": {"move_total": {"coef": 0.14118876679585055, "lo": -0.01639441052331829, "hi": 0.2953896107599194, "se": 0.07953674012327491, "p_two_sided": 0.06793206793206794}, "n": 4886}, "controls": {"move_total": {"coef": 0.14630584726898924, "lo": -0.009914783528193687, "hi": 0.3014363987615542, "se": 0.07942632201269079, "p_two_sided": 0.06393606393606394}, "abs_spread": {"coef": 0.1362194439729426, "lo": 0.0247756230730766, "hi": 0.24704443668029852, "se": 0.056701227961026, "p_two_sided": 0.00999000999000999}, "n": 4886}, "trimmed_1pct": {"move_total": {"coef": 0.13367580141126423, "lo": -0.03089267751801997, "hi": 0.3011231054183251, "se": 0.08469790381029212, "p_two_sided": 0.1018981018981019}, "n": 4830}, "per_book_move": {"move_total_perbook": {"coef": 0.13771194073108436, "lo": -0.019435573100573443, "hi": 0.2929614751800718, "se": 0.07969312456138909, "p_two_sided": 0.07992007992007992}, "n": 4886}, "spread": {"move_home": {"coef": 0.04261105672400072, "lo": -0.1347848683044632, "hi": 0.21266477503838424, "se": 0.08863511309766517, "p_two_sided": 0.6653346653346653}, "n": 4886}, "open_error_total_vs_move": {"move_total": {"coef": 1.1411887667958507, "lo": 0.9836055894766818, "hi": 1.2953896107599194, "se": 0.07953674012327491, "p_two_sided": 0.000999000999000999}, "n": 4886}}, "registered pooled": {"primary": {"move_total": {"coef": 0.15184536825001954, "lo": 0.031333386925920935, "hi": 0.2694268156583112, "se": 0.06073811957458936, "p_two_sided": 0.02197802197802198}, "n": 7782}, "controls": {"move_total": {"coef": 0.1585900049929837, "lo": 0.04109084191516491, "hi": 0.27691137168804525, "se": 0.06015829841144907, "p_two_sided": 0.017982017982017984}, "abs_spread": {"coef": 0.19743609414089314, "lo": 0.107511712014238, "hi": 0.29229607844874356, "se": 0.047138868988394284, "p_two_sided": 0.000999000999000999}, "n": 7782}, "trimmed_1pct": {"move_total": {"coef": 0.15950384809996596, "lo": 0.02387185956558302, "hi": 0.287189028412709, "se": 0.06717274715487907, "p_two_sided": 0.01998001998001998}, "n": 7704}, "per_book_move": {"move_total_perbook": {"coef": 0.14737874272879978, "lo": 0.02598639675868476, "hi": 0.2667135085578338, "se": 0.06140997749978293, "p_two_sided": 0.02197802197802198}, "n": 7782}, "spread": {"move_home": {"coef": 0.03547384700964549, "lo": -0.10015591323411364, "hi": 0.17334904739042736, "se": 0.06977167362870944, "p_two_sided": 0.5954045954045954}, "n": 7782}, "open_error_total_vs_move": {"move_total": {"coef": 1.1518453682500196, "lo": 1.031333386925921, "hi": 1.269426815658311, "se": 0.06073811957458932, "p_two_sided": 0.000999000999000999}, "n": 7782}}}, "step1_reading": {"same_sign": true, "confirmation_p_two_sided": 0.06793206793206794, "supported": false, "direction": "momentum", "confirmation_slope": 0.14118876679585055, "discovery_slope": 0.17974963534341298, "detectable_slope_conf_80pct": 0.22270287234516975, "holm": "pending: family of 8 incomplete"}, "step2": {"discovery_q75_abs_spread_move": 2.0, "discovery": {"continuous": {"move_total": {"coef": 0.22289127455590574, "lo": -0.0005776986837964466, "hi": 0.4420820986413231, "se": 0.11292341768497947, "p_two_sided": 0.05194805194805195}, "move_home": {"coef": -0.16932287506653723, "lo": -0.4920300023882223, "hi": 0.1472701758735258, "se": 0.1630867801688133, "p_two_sided": 0.31368631368631367}, "abs_move_home": {"coef": 0.6450343057995346, "lo": 0.1705121638952863, "hi": 1.0962615004433056, "se": 0.23616054503776002, "p_two_sided": 0.015984015984015984}, "n": 2896}, "indicator": {"move_total": {"coef": 0.19297503662324642, "lo": -0.018932290201720176, "hi": 0.40775594376266305, "se": 0.10884903927662837, "p_two_sided": 0.07792207792207792}, "move_home": {"coef": -0.18502261920363214, "lo": -0.5204195593225925, "hi": 0.14489687554599784, "se": 0.16972358032362, "p_two_sided": 0.27972027972027974}, "big_move_home": {"coef": 1.1369566544920362, "lo": -0.4755055884564175, "hi": 2.5709781918313395, "se": 0.7771642296652441, "p_two_sided": 0.16383616383616384}, "n": 2896}}, "confirmation": {"continuous": {"move_total": {"coef": 0.14449911187176173, "lo": -0.014496001434137477, "hi": 0.29720987304657437, "se": 0.07951680471446732, "p_two_sided": 0.06393606393606394}, "move_home": {"coef": 0.2707217729753071, "lo": 0.039245441818178836, "hi": 0.497775567830631, "se": 0.11697197092154392, "p_two_sided": 0.02197802197802198}, "abs_move_home": {"coef": 0.018138980104277797, "lo": -0.32283271796195556, "hi": 0.32826952667973647, "se": 0.16609751138818676, "p_two_sided": 0.903096903096903}, "n": 4886}, "indicator": {"move_total": {"coef": 0.14115745980977518, "lo": -0.017434290307451993, "hi": 0.29246049586271355, "se": 0.07905479239034835, "p_two_sided": 0.06593406593406594}, "move_home": {"coef": 0.2696594382083851, "lo": 0.04207771000081853, "hi": 0.49833511480621645, "se": 0.11639219510341783, "p_two_sided": 0.02197802197802198}, "big_move_home": {"coef": -0.17394964168177912, "lo": -1.2640724893843482, "hi": 0.8500059294751634, "se": 0.5393057190968142, "p_two_sided": 0.7152847152847153}, "n": 4886}}}, "step3": {"n": 5844, "model_resid_on_move_total": {"move_total": {"coef": 1.0566632538826457, "lo": 0.9242758593897455, "hi": 1.2026093272554683, "se": 0.07100343568003133, "p_two_sided": 0.000999000999000999}, "n": 5844}, "model_resid_on_move_total_confirmation": {"move_total": {"coef": 1.0660190734834554, "lo": 0.9213543002753863, "hi": 1.2238137729419358, "se": 0.07715802874146671, "p_two_sided": 0.000999000999000999}, "n": 4884}}, "quote_check": {"mean_over_payout": 0.9164708865687387, "mean_under_payout": 0.9206777482627205, "share_with_quotes": 1.0}, "bet": {"grid": [{"direction": "with the move", "cutoff": 2, "discovery": {"quoted": {"roi": -1.6312872218535006, "lo": -6.093556063345706, "hi": 2.7516133726630394, "bets": 1561}, "naive": {"roi": -2.0092015607710683, "lo": -6.534937517037741, "hi": 2.458999698542824, "bets": 1561}}, "confirmation": {"quoted": {"roi": -2.3588819616114853, "lo": -5.915978784596343, "hi": 0.9157836028254197, "bets": 2857}, "naive": {"roi": -2.9433289846310497, "lo": -6.484701918321714, "hi": 0.35318839534161733, "bets": 2857}}}, {"direction": "with the move", "cutoff": 3, "discovery": {"quoted": {"roi": -2.8235132542014982, "lo": -8.671978307102425, "hi": 2.751830179818286, "bets": 977}, "naive": {"roi": -3.4521261747464416, "lo": -9.346572144092317, "hi": 2.1353065539112004, "bets": 977}}, "confirmation": {"quoted": {"roi": -1.4091762715699172, "lo": -5.978561067671033, "hi": 2.9158681771837403, "bets": 1971}, "naive": {"roi": -1.9556293528896262, "lo": -6.43481510537578, "hi": 2.28497759857321, "bets": 1971}}}, {"direction": "with the move", "cutoff": 4, "discovery": {"quoted": {"roi": -3.9718106192186102, "lo": -12.15474968513488, "hi": 4.110374644359093, "bets": 566}, "naive": {"roi": -4.7060713138451655, "lo": -12.829758060073548, "hi": 3.3052825053752013, "bets": 566}}, "confirmation": {"quoted": {"roi": -3.245960214735017, "lo": -8.295417950341713, "hi": 2.151689996821318, "bets": 1281}, "naive": {"roi": -3.7754595131644315, "lo": -8.835641706875563, "hi": 1.6660404751633808, "bets": 1281}}}, {"direction": "with the move", "cutoff": 5, "discovery": {"quoted": {"roi": -3.704754365333765, "lo": -14.284477659992461, "hi": 7.316918264575743, "bets": 317}, "naive": {"roi": -4.531115572125036, "lo": -15.09314922035152, "hi": 6.183191170423035, "bets": 317}}, "confirmation": {"quoted": {"roi": -0.5963046533242252, "lo": -7.267802081102498, "hi": 5.985761001428361, "bets": 810}, "naive": {"roi": -0.9876543209876539, "lo": -7.591473793203718, "hi": 5.5670302079457885, "bets": 810}}}, {"direction": "with the move", "cutoff": 6, "discovery": {"quoted": {"roi": -5.468132722552055, "lo": -19.60053951443424, "hi": 8.99898793904281, "bets": 164}, "naive": {"roi": -5.709534368070952, "lo": -19.800953236707425, "hi": 8.729680915111379, "bets": 164}}, "confirmation": {"quoted": {"roi": -1.5304909228386874, "lo": -9.88372615577172, "hi": 6.514342504159365, "bets": 501}, "naive": {"roi": -1.687534022863364, "lo": -10.00219941348974, "hi": 6.290219454992182, "bets": 501}}}, {"direction": "against the move", "cutoff": 2, "discovery": {"quoted": {"roi": -7.324359501696449, "lo": -11.714103019181044, "hi": -2.79929085367127, "bets": 1561}, "naive": {"roi": -7.023469803738862, "lo": -11.487068495060445, "hi": -2.493796788982015, "bets": 1561}}, "confirmation": {"quoted": {"roi": -5.434102859062703, "lo": -8.763915125344134, "hi": -1.848444487781003, "bets": 2857}, "naive": {"roi": -6.083940560664398, "lo": -9.376893507504377, "hi": -2.4991447393219355, "bets": 2857}}}, {"direction": "against the move", "cutoff": 3, "discovery": {"quoted": {"roi": -6.166792818218574, "lo": -11.728920737680767, "hi": -0.27585892181901484, "bets": 977}, "naive": {"roi": -5.601563226947056, "lo": -11.190391029379605, "hi": 0.32084081848277135, "bets": 977}}, "confirmation": {"quoted": {"roi": -6.391409609827919, "lo": -10.539850035114776, "hi": -1.8525972410760958, "bets": 1971}, "naive": {"roi": -7.089156404224897, "lo": -11.346470383876524, "hi": -2.5873986414802475, "bets": 1971}}}, {"direction": "against the move", "cutoff": 4, "discovery": {"quoted": {"roi": -5.021039960662847, "lo": -12.979126206289799, "hi": 2.861999646054866, "bets": 566}, "naive": {"roi": -4.368776100224863, "lo": -12.377991110938018, "hi": 3.7717554847061727, "bets": 566}}, "confirmation": {"quoted": {"roi": -4.4780483999635186, "lo": -10.076616073903216, "hi": 0.6804517064031325, "bets": 1281}, "naive": {"roi": -5.265772478887233, "lo": -10.698407796601584, "hi": -0.21518052994016829, "bets": 1281}}}, {"direction": "against the move", "cutoff": 5, "discovery": {"quoted": {"roi": -4.907860124920709, "lo": -15.888196805780447, "hi": 5.66441229124832, "bets": 317}, "naive": {"roi": -4.531115572125037, "lo": -15.273362362866964, "hi": 6.002980431485657, "bets": 317}}, "confirmation": {"quoted": {"roi": -8.04344875727479, "lo": -14.76304333601893, "hi": -1.391214374665448, "bets": 810}, "naive": {"roi": -8.058361391694726, "lo": -14.579937739233642, "hi": -1.432092750992455, "bets": 810}}}, {"direction": "against the move", "cutoff": 6, "discovery": {"quoted": {"roi": -3.136370249544022, "lo": -17.576638583076374, "hi": 11.035456679242698, "bets": 164}, "naive": {"roi": -3.3813747228381383, "lo": -17.820590006020467, "hi": 10.710044145798332, "bets": 164}}, "confirmation": {"quoted": {"roi": -7.369749368065137, "lo": -15.265688026587846, "hi": 1.0304294673404428, "bets": 501}, "naive": {"roi": -7.403375068045726, "lo": -15.381128545901277, "hi": 0.9112903225806432, "bets": 501}}}], "chosen": {"direction": "with the move", "cutoff": 2}, "chosen_result": {"discovery": {"quoted": {"roi": -1.6312872218535006, "lo": -6.093556063345706, "hi": 2.7516133726630394, "bets": 1561}, "naive": {"roi": -2.0092015607710683, "lo": -6.534937517037741, "hi": 2.458999698542824, "bets": 1561}}, "confirmation": {"quoted": {"roi": -2.3588819616114853, "lo": -5.915978784596343, "hi": 0.9157836028254197, "bets": 2857}, "naive": {"roi": -2.9433289846310497, "lo": -6.484701918321714, "hi": 0.35318839534161733, "bets": 2857}}}, "controls": {"discovery": {"over, all games, quoted": {"roi": 0.07826989570443843, "lo": -3.250252355232696, "hi": 3.602161422475441, "bets": 2896}, "over, all games, naive": {"roi": -0.03139126067302854, "lo": -3.351978621794502, "hi": 3.5077678635802108, "bets": 2896}, "under, all games, quoted": {"roi": -8.80438395768213, "lo": -12.344586079727131, "hi": -5.515744290619374, "bets": 2896}, "under, all games, naive": {"roi": -8.996735308890004, "lo": -12.517688225690984, "hi": -5.658242272912214, "bets": 2896}}, "confirmation": {"over, all games, quoted": {"roi": -2.8802327858175616, "lo": -5.505300078251996, "hi": -0.27415903967778715, "bets": 4886}, "over, all games, naive": {"roi": -3.3639712722807276, "lo": -6.005218170303763, "hi": -0.7570046246720721, "bets": 4886}, "under, all games, quoted": {"roi": -5.026619016060871, "lo": -7.648572499291033, "hi": -2.33638013954568, "bets": 4886}, "under, all games, naive": {"roi": -5.669259107654523, "lo": -8.271963013321717, "hi": -3.0350340935694726, "bets": 4886}}}}, "sensitivity": {"2021-22..2025-26": {"move_total": {"coef": 0.1342089340173984, "lo": -0.0024268087480060576, "hi": 0.2711467552161305, "se": 0.06978917448064709, "p_two_sided": 0.053946053946053944}, "n": 5846}, "2021-22 only": {"move_total": {"coef": 0.09353503991701505, "lo": -0.22630980041853088, "hi": 0.42324587481780207, "se": 0.16570297837661555, "p_two_sided": 0.5634365634365635}, "n": 960}, "excluding games within 14 days of the contamination windows (discovery)": {"move_total": {"coef": 0.2030620751854148, "lo": -0.011451482530470026, "hi": 0.4175392054898291, "se": 0.10943640000517835, "p_two_sided": 0.059940059940059943}, "n": 2693}}};
+const fmt = {
+  '2': v => v.toFixed(2), '3': v => v.toFixed(3), 's2': v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(2), 's3': v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(3),
+  'int': v => Math.round(v).toLocaleString('en-US'), 'roi': v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1) + '%', 'pct0': v => (v * 100).toFixed(0) + '%', 'raw': v => String(v)
+};
+const path = (o, p) => p.split('.').reduce((a, k) => (a == null ? a : a[k]), o);
+const s1 = R.step1, bet = R.bet;
+R.D = { d: s1.discovery.primary.move_total, c: s1.confirmation.primary.move_total, p: s1['registered pooled'].primary.move_total, sp: s1['registered pooled'].spread.move_home,
+  bc: bet.chosen_result.confirmation.quoted, cd: R.step2.discovery.continuous.abs_move_home, cc: R.step2.confirmation.continuous.abs_move_home, m: R.step3.model_resid_on_move_total.move_total };
+document.querySelectorAll('[data-b]').forEach(el => { const [p, f] = el.dataset.b.split('|'); const v = path(R, p); el.textContent = v == null ? '?' : (f ? fmt[f](v) : String(v)); });
+function table(id, head, rows, hl) {
+  const t = document.getElementById(id);
+  t.innerHTML = '<thead><tr>' + head.map(h => `<th>${h}</th>`).join('') + '</tr></thead><tbody>' + rows.map((r, i) => `<tr class="${hl && hl(i) ? 'hl' : ''}">` + r.map(c => `<td>${c}</td>`).join('') + '</tr>').join('') + '</tbody>';
+}
+const ci = (lo, hi, f) => `${f(lo)} to ${f(hi)}`;
+const cc = (c, f = fmt.s3) => `${f(c.coef)} (${ci(c.lo, c.hi, fmt.s2)}), p = ${fmt['3'](c.p_two_sided)}`;
+const pers = ['discovery', 'confirmation', 'registered pooled'];
+table('t-eff', ['Sample', 'Games', 'Total move, primary', 'With |spread| and season dummies', 'Without the largest 1%', "Each book's own move", 'Spread move, toward home', 'Opening error on the move'],
+  pers.map(p => [p, fmt.int(s1[p].primary.n), cc(s1[p].primary.move_total), cc(s1[p].controls.move_total), cc(s1[p].trimmed_1pct.move_total), cc(s1[p].per_book_move.move_total_perbook), cc(s1[p].spread.move_home), `${fmt.s2(s1[p].open_error_total_vs_move.move_total.coef)}`]), i => i === 0 || i === 1);
+table('t-sens', ['Sensitivity (primary slope)', 'Games', 'Slope (95%), p'], Object.keys(R.sensitivity).map(k => [k, fmt.int(R.sensitivity[k].n), cc(R.sensitivity[k].move_total)]));
+table('t-cross', ['Period', 'Total move', 'Spread move toward home', '|Spread move|'], ['discovery', 'confirmation'].map(p => [p, cc(R.step2[p].continuous.move_total), cc(R.step2[p].continuous.move_home), cc(R.step2[p].continuous.abs_move_home)]));
+const rc = r => `${fmt.roi(r.roi)} (${ci(r.lo, r.hi, fmt.roi)}), ${fmt.int(r.bets)} bets`;
+table('t-grid', ['Rule', 'Discovery, quoted price', 'Confirmation, quoted price', 'Confirmation, -110'], bet.grid.map(g => [`${g.direction}, move ≥ ${g.cutoff}`, rc(g.discovery.quoted), rc(g.confirmation.quoted), fmt.roi(g.confirmation.naive.roi)]), i => bet.grid[i].direction === bet.chosen.direction && bet.grid[i].cutoff === bet.chosen.cutoff);
+table('t-ctl', ['Context: every game', 'Discovery', 'Confirmation'], ['over, all games, quoted', 'under, all games, quoted'].map(k => [k, rc(bet.controls.discovery[k]), rc(bet.controls.confirmation[k])]));
+
+const NS = 'http://www.w3.org/2000/svg';
+function ticks(lo, hi, n) {
+  const raw = (hi - lo) / n, p = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / p;
+  const step = (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p, out = [];
+  for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) out.push(+v.toFixed(10));
+  return out;
+}
+function dotChart(el, o) {
+  const W = 720, H = o.h || 290, m = { l: 58, r: 16, t: o.bands ? 30 : 14, b: 44 }, n = o.cats.length, S = o.series.length;
+  let lo = Infinity, hi = -Infinity;
+  o.series.forEach(s => s.pts.forEach(p => { lo = Math.min(lo, p.lo); hi = Math.max(hi, p.hi); }));
+  (o.refs || []).forEach(r => { lo = Math.min(lo, r.y); hi = Math.max(hi, r.y); });
+  if (o.zero) { lo = Math.min(lo, 0); hi = Math.max(hi, 0); }
+  const tk = ticks(lo, hi, 5); lo = Math.min(lo, tk[0]); hi = Math.max(hi, tk[tk.length - 1]);
+  const pad = (hi - lo) * 0.03; lo -= pad; hi += pad;
+  const bw = (W - m.l - m.r) / n, cx = i => m.l + (i + 0.5) * bw, y = v => m.t + (hi - v) / (hi - lo) * (H - m.t - m.b);
+  const step = Math.min(20, bw / (S + 1));
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${o.label}">`;
+  (o.bands || []).forEach(b => { s += `<rect class="band" x="${cx(b.from) - bw / 2}" y="${m.t}" width="${(b.to - b.from + 1) * bw}" height="${H - m.t - m.b}"/><text x="${cx(b.from) - bw / 2 + 6}" y="${m.t - 8}">${b.label}</text>`; });
+  tk.forEach(v => { s += `<line class="grid" x1="${m.l}" x2="${W - m.r}" y1="${y(v)}" y2="${y(v)}"/><text x="${m.l - 8}" y="${y(v) + 4}" text-anchor="end">${o.yFmt(v)}</text>`; });
+  if (o.zero) s += `<line class="zero" x1="${m.l}" x2="${W - m.r}" y1="${y(0)}" y2="${y(0)}"/>`;
+  (o.refs || []).forEach(r => { s += `<line class="ref" x1="${m.l}" x2="${W - m.r}" y1="${y(r.y)}" y2="${y(r.y)}"/><text x="${W - m.r - 4}" y="${y(r.y) - 4}" text-anchor="end">${r.label}</text>`; });
+  o.cats.forEach((cat, i) => { s += `<text x="${cx(i)}" y="${H - m.b + 18}" text-anchor="middle">${cat}</text>`; });
+  if (o.xTitle) s += `<text class="lbl" x="${m.l + (W - m.l - m.r) / 2}" y="${H - 6}" text-anchor="middle">${o.xTitle}</text>`;
+  o.series.forEach((se, si) => {
+    const off = (si - (S - 1) / 2) * step;
+    se.pts.forEach((p, i) => {
+      if (!p) return;
+      const x = cx(i) + off, col = `var(${se.color})`;
+      s += `<g><title>${se.name} · ${o.cats[i]}: ${o.yFmt(p.y, 2)} (${o.yFmt(p.lo, 2)} to ${o.yFmt(p.hi, 2)})</title><line x1="${x}" x2="${x}" y1="${y(p.lo)}" y2="${y(p.hi)}" stroke="${col}" stroke-width="2"/>` +
+        `<line x1="${x - 3}" x2="${x + 3}" y1="${y(p.lo)}" y2="${y(p.lo)}" stroke="${col}" stroke-width="2"/><line x1="${x - 3}" x2="${x + 3}" y1="${y(p.hi)}" y2="${y(p.hi)}" stroke="${col}" stroke-width="2"/>` +
+        `<circle cx="${x}" cy="${y(p.y)}" r="4.2" fill="${se.hollow ? 'var(--surface)' : col}" stroke="${col}" stroke-width="2"/></g>`;
+    });
+  });
+  s += '</svg>';
+  const lg = o.series.length > 1 ? `<div class="legend">${o.series.map(se => `<span><i style="background:${se.hollow ? 'var(--surface)' : `var(${se.color})`};border:2px solid var(${se.color})"></i>${se.name}</span>`).join('')}</div>` : '';
+  document.getElementById(el).innerHTML = lg + s;
+}
+const pctT = (v, d) => (v * 100).toFixed(d === 2 ? 1 : 0) + '%';
+const sgn = (v, d) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(d === 2 ? 2 : 1);
+
+
+const vars = [['primary', 'move_total', 'Primary', '--over'], ['controls', 'move_total', 'With controls', '--under'], ['trimmed_1pct', 'move_total', 'Without top 1%', '--muted'], ['per_book_move', 'move_total_perbook', "Each book's move", '--ink']];
+dotChart('c-slope', { label: 'Slope by sample and specification', cats: ['discovery', 'confirmation', 'pooled'], zero: true, yFmt: (v, d) => sgn(v, 2), xTitle: 'Sample', h: 290,
+  series: vars.map(([k, f, n, col]) => ({ name: n, color: col, hollow: false, pts: pers.map(p => { const c = s1[p][k][f]; return { y: c.coef, lo: c.lo, hi: c.hi }; }) })) });
+</script>
