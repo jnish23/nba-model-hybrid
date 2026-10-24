@@ -1,0 +1,134 @@
+<main>
+<header style="display:flex;flex-direction:column;gap:12px">
+  <div class="eyebrow">Experiment E18 · totals model · angle 4 of 8 · run 2026-10-23</div>
+  <h1>Totals Calibration by Level</h1>
+  <p class="lede">The model under-predicts high totals. Two simple corrections fitted on the calibration block cut total error out of sample in all seven seasons. They mostly move the model toward the market line; they do not beat it.</p>
+  <nav class="toc" aria-label="Sections"><a href="#verdict">Verdict</a><a href="#bias">1 · The bias</a><a href="#fixes">2-3 · The fixes</a><a href="#robust">Era checks</a><a href="#market">Against the market</a><a href="#rules">Rules and limits</a></nav>
+</header>
+
+<section id="verdict">
+  <div class="verdict">
+    <span class="tag" style="background:var(--good-bg);color:var(--good)">TWO FIXES MEET THE REGISTERED RULE</span>
+    <p class="lede">The registered keep rule (E1 to E13's main criterion: better in at least 5 of 7 seasons and a pooled interval below zero, plus era checks) is met by the linear correction (b) and the level-dependent shrinkage (c). Isotonic (a) is not kept. Under your stricter wording, with each season's own interval excluding zero in at least 5 of 7, neither (b) nor (c) qualifies.</p>
+    <div class="facts">
+      <div class="fact"><b class="num"><span data-b="D.bias242.bias|s1"></span></b><span>points: mean actual − predicted total when the opening total is above 242 (<span data-b="D.bias242.games|int"></span> games, interval <span data-b="D.bias242.lo|s1"></span> to <span data-b="D.bias242.hi|s1"></span>). Positive means the model is too low.</span></div>
+      <div class="fact"><b class="num"><span data-b="D.cdiff.diff|s3"></span></b><span>change in total MAE for fix (c), interval <span data-b="D.cdiff.lo|s3"></span> to <span data-b="D.cdiff.hi|s3"></span>; <span data-b="D.cdiff2|raw"></span>. Fix (b): <span data-b="D.bdiff.diff|s3"></span>.</span></div>
+      <div class="fact"><b class="num"><span data-b="exploratory.mae_c_same_games|2"></span></b><span>MAE of fix (c), against <span data-b="exploratory.market_line_mae_same_games|2"></span> for the market line itself and <span data-b="exploratory.baseline_mae_same_games|2"></span> for the baseline. The fix gets to the market's level, not past it.</span></div>
+    </div>
+  </div>
+  <div class="note" style="background:var(--good-bg);color:var(--good)"><b>Decision (2026-10-23):</b> the registered rule governs. Fixes (b) and (c) are kept as candidates; isotonic (a) is not. The deployed model and the retrain are unchanged.</div>
+  <div class="note"><b>No fresh holdout.</b> E1's tail analysis had already reported the bias above 242 on these same seven folds, and E1 to E13 used all of them. What is new here is evaluating three fixes forward, each fitted only on the calibration block of the fold before. Which fixes to try was chosen knowing the bias exists, so treat a winner as a candidate; its real out-of-sample evidence would be the 2026-27 season. Nothing has been changed in the deployed model.</div>
+</section>
+
+<section id="bias">
+  <h2>1 · The bias</h2>
+  <p>Residual = actual − predicted total, 2019-20 to 2025-26 walk-forward predictions (8,916 games). The model's predictions never exceed 242, so for the model's own predicted total the high end is empty; the bias is visible only against the market's opening total.</p>
+  <div class="chartbox">
+    <h3>Mean residual by decile of the opening total</h3>
+    <div class="sub">Pooled deciles (edges from all seven seasons; 95% intervals from resampling game days) and within-season deciles (point estimates only). Higher decile means a higher opening total.</div>
+    <div id="c-dec"></div>
+  </div>
+  <div class="scroll"><table id="t-high"></table></div>
+  <p>The bias is not confined to one era: it is present in every season with enough games above 242 (the early seasons have very few: 10, 12 and 3 games). Regressing the residual on the opening total gives <span data-b="step1.level_regression.without season dummies.slope_per_total_point|3"></span> points per total point without season dummies and <span data-b="step1.level_regression.with season dummies.slope_per_total_point|3"></span> with them (interval <span data-b="step1.level_regression.with season dummies.lo|3"></span> to <span data-b="step1.level_regression.with season dummies.hi|3"></span>). The level effect survives a season control, so it is not only an era shift. The same check on the deployed model's out-of-sample files (2021-22 to 2025-26, exploratory) gives <span data-b="D.dep.slope|3"></span> (interval <span data-b="D.dep.lo|3"></span> to <span data-b="D.dep.hi|3"></span>), with a mean bias of <span data-b="D.depHigh.mean|s1"></span> above 242 over <span data-b="exploratory.deployed_oos_2021_26.games_above_242|int"></span> games.</p>
+</section>
+
+<section id="fixes">
+  <h2>2-3 · The three fixes, evaluated forward</h2>
+  <p>Each fix is fitted on the calibration block of that season's fold (the last 20% of the training window) and applied to the next season's games. Differences are paired by game and negative means lower error than the baseline.</p>
+  <div class="scroll"><table id="t-fix"></table></div>
+  <div class="chartbox">
+    <h3>Change in total MAE against the baseline, by season</h3>
+    <div class="sub">Points, 95% intervals from resampling game days. Below zero is better.</div>
+    <div id="c-seasons"></div>
+  </div>
+  <p>Both fixes lower error in every season, and the shrinkage (c) helps about twice as much as the linear fix (b). Isotonic (a) leaves overall error unchanged; it helps the games with a total above 242 but nothing else. The cover log loss improves by <span data-b="D.cll.diff|s3"></span> for (c) (interval <span data-b="D.cll.lo|s3"></span> to <span data-b="D.cll.hi|s3"></span>). The count of 5%-edge total bets falls from <span data-b="variants.baseline.bets_5pct.n|int"></span> to <span data-b="variants.c.bets_5pct.n|int"></span> for (c): shrinking toward the line removes most of the disagreements the baseline bet on.</p>
+  <h3>What the fits look like</h3>
+  <div class="scroll"><table id="t-params"></table></div>
+</section>
+
+<section id="robust">
+  <h2>Era checks</h2>
+  <p>High totals cluster in recent seasons, so a level correction can really be an era correction. Two registered variants test that: R1 refits each fix on only the later half of the calibration block, and R2 replaces the level with the opening total minus the previous 365 days' mean (past lines only). A fix is kept only if both give a lower pooled MAE.</p>
+  <div class="scroll"><table id="t-rob"></table></div>
+  <p>Both fixes survive both checks with almost the same gains. Isotonic fails R1 (it gets worse).</p>
+</section>
+
+<section id="market">
+  <h2>Against the market</h2>
+  <div class="scroll"><table id="t-mkt"></table></div>
+  <p>The baseline is worse than the market line itself on the same games (<span data-b="exploratory.baseline_mae_same_games|2"></span> against <span data-b="exploratory.market_line_mae_same_games|2"></span>), which E1 already noted. Fix (c) brings the model to <span data-b="exploratory.mae_c_same_games|2"></span>, equal to the line within noise. What the correction does is stop the model from making large errors where it ignores the line at high totals; it does not give the model new information about the game. So it is worth having if you rely on the model's total, and it is not a betting edge.</p>
+</section>
+
+<section id="rules">
+  <h2>Rules and limits</h2>
+  <div class="scroll"><table id="t-rules"></table></div>
+  <ul class="plain" style="margin-top:8px">
+    <li>The registered rule is the E1 to E13 main criterion as written in <code>PREREGISTRATION.md</code>; your sentence asked for each season's own interval to exclude zero in at least 5 of 7. I registered the first and report the second; they disagree here, and it is your call which one governs.</li>
+    <li>The fix would still need to be built into the retrain (<code>team/tuning.py</code> and the live path) and re-run; this experiment only evaluates post-hoc corrections of saved predictions.</li>
+    <li>Holm input: 3 × the smallest one-sided p = <span data-b="holm_input_p|3"></span> (the bootstrap floor is 0.001, so the p-value is at its smallest possible value); Holm across the 8 angles is pending.</li>
+    <li>Script: <code>experiments/e18_calibration.py</code>; numbers: <code>reports/experiments/E18_calibration/results.json</code>.</li>
+  </ul>
+</section>
+<footer>Day-cluster bootstrap, 1,000 draws, seed 20261017. Residual = actual − predicted total; MAE differences are paired by game.</footer>
+</main>
+
+<script>
+const R = __R__;
+const fmt = {
+  '2': v => v.toFixed(2), '3': v => v.toFixed(3), 's1': v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1), 's2': v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(2), 's3': v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(3),
+  'pct1': v => (v * 100).toFixed(1) + '%', 'int': v => Math.round(v).toLocaleString('en-US'), 'raw': v => String(v)
+};
+const path = (o, p) => p.split('.').reduce((a, k) => (a == null ? a : a[k]), o);
+const SEAS = ['2019-20', '2020-21', '2021-22', '2022-23', '2023-24', '2024-25', '2025-26'];
+const V = R.variants;
+R.D = { bias242: R.step1.above_242.odds_total, cdiff: V.c.paired_mae, cdiff2: `${V.c.seasons_better} of 7 seasons better, ${V.c.seasons_ci_excludes_zero_in_favor} with their own interval below zero`, bdiff: V.b.paired_mae,
+  cll: V.c.paired_cover_logloss, dep: R.exploratory.deployed_oos_2021_26.level_slope_with_season_dummies, depHigh: R.exploratory.deployed_oos_2021_26.bias_above_242 };
+document.querySelectorAll('[data-b]').forEach(el => { const [p, f] = el.dataset.b.split('|'); const v = path(R, p); el.textContent = v == null ? '?' : (f ? fmt[f](v) : String(v)); });
+function table(id, head, rows, hl) {
+  const t = document.getElementById(id);
+  t.innerHTML = '<thead><tr>' + head.map(h => `<th>${h}</th>`).join('') + '</tr></thead><tbody>' + rows.map((r, i) => `<tr class="${hl && hl(i) ? 'hl' : ''}">` + r.map(c => `<td>${c}</td>`).join('') + '</tr>').join('') + '</tbody>';
+}
+const ci = (lo, hi, f) => `${f(lo)} to ${f(hi)}`;
+const pill = (ok, t) => `<span class="pill ${ok ? 'pass' : 'fail'}">${ok ? '✓' : '✗'} ${t || (ok ? 'passes' : 'fails')}</span>`;
+const pd = x => `${fmt.s3(x.diff)} (${ci(x.lo, x.hi, fmt.s3)})`;
+
+const ab = R.step1.above_242.odds_total;
+table('t-high', ['Season', 'Mean total', 'Games above 242', 'Share of games', 'Mean residual (95%)'], [...SEAS.map(s => {
+  const d = ab.by_season[s]; return [s, R.step1.mean_total_by_season[s].toFixed(1), d.games, (d.share_of_season * 100).toFixed(1) + '%', d.bias == null ? 'none' : `${fmt.s1(d.bias)} (${ci(d.lo, d.hi, fmt.s1)})`]; }),
+  ['All seasons', '', ab.games, '', `${fmt.s1(ab.bias)} (${ci(ab.lo, ab.hi, fmt.s1)})`]], i => i === 7);
+
+const names = { a: 'Isotonic of actual on prediction', b: 'Linear in the opening total', c: 'Level-dependent shrinkage toward the line' };
+table('t-fix', ['Fix', 'Total MAE', 'Paired MAE change (95%)', 'Seasons better', 'Seasons with own interval below 0', 'Cover log loss change', 'MAE change, total > 242', 'Mean residual > 242', '5%-edge bets', 'Registered verdict'], [
+  ['Baseline', V.baseline.mae.toFixed(3), '', '', '', '', '', fmt.s1(V.baseline.bias_above_242), fmt.int(V.baseline.bets_5pct.n), ''],
+  ...['a', 'b', 'c'].map(k => [names[k], V[k].mae.toFixed(3), pd(V[k].paired_mae), `${V[k].seasons_better} of 7`, `${V[k].seasons_ci_excludes_zero_in_favor} of 7`, fmt.s3(V[k].paired_cover_logloss.diff),
+    V[k].paired_mae_above_242 ? pd(V[k].paired_mae_above_242) : '', fmt.s1(V[k].bias_above_242), fmt.int(V[k].bets_5pct.n), `<span class="pill ${R.keep[k].verdict === 'KEEP' ? 'pass' : 'fail'}">${R.keep[k].verdict}</span>`])], i => i === 0);
+
+const prm = R.exploratory.fit_parameters;
+table('t-params', ['Fold (test season)', '(b) intercept', '(b) slope per total point', '(c) weight at the mean total', '(c) weight change per total point'], SEAS.map(s => [s, fmt.s2(prm.b[s].intercept), fmt.s3(prm.b[s].slope_per_total_point), fmt['2'](prm.c[s].w0), fmt.s3(prm.c[s].w1)]));
+
+table('t-rob', ['Fix and fitting variant', 'Total MAE', 'Paired MAE change (95%)', 'Seasons better'],
+  [['a', ''], ['a', '_R1'], ['b', ''], ['b', '_R1'], ['b', '_R2'], ['c', ''], ['c', '_R1'], ['c', '_R2']].map(([k, s]) => [`(${k}) ${names[k]}${s === '_R1' ? ', later half of the calibration block' : s === '_R2' ? ', era-adjusted level' : ''}`, V[k + s].mae.toFixed(3), pd(V[k + s].paired_mae), `${V[k + s].seasons_better} of 7`]),
+  i => [0, 2, 5].includes(i));
+
+const e = R.exploratory;
+table('t-mkt', ['Games with both numbers', 'All games', 'Opening total above 242'], [
+  ['Market opening line, MAE', e.market_line_mae_same_games.toFixed(3), e.market_line_mae_above_242.toFixed(3)],
+  ['Baseline model, MAE', e.baseline_mae_same_games.toFixed(3), e.baseline_mae_above_242.toFixed(3)],
+  ['Baseline + fix (c), MAE', e.mae_c_same_games.toFixed(3), (V.baseline.mae_above_242 + V.c.paired_mae_above_242.diff).toFixed(3)]]);
+
+const rk = R.keep;
+table('t-rules', ['Registered condition', '(a) isotonic', '(b) linear', '(c) shrinkage'], [
+  ['Better in at least 5 of 7 seasons', ...['a', 'b', 'c'].map(k => pill(rk[k].seasons_better >= 5, `${rk[k].seasons_better} of 7`))],
+  ['Pooled paired interval entirely below 0', ...['a', 'b', 'c'].map(k => pill(rk[k].pooled_ci_below_zero))],
+  ['Era checks R1 and R2 both negative', ...['a', 'b', 'c'].map(k => pill(rk[k].robustness_R1_negative && (rk[k].robustness_R2_negative === null || rk[k].robustness_R2_negative)))],
+  ['Registered verdict', ...['a', 'b', 'c'].map(k => pill(rk[k].verdict === 'KEEP', rk[k].verdict))],
+  ['Your wording: own interval below 0 in at least 5 of 7 seasons', ...['a', 'b', 'c'].map(k => pill(rk[k].seasons_with_own_ci_excluding_zero >= 5, `${rk[k].seasons_with_own_ci_excluding_zero} of 7`))]], i => i === 3);
+
+__CHART_JS__
+const dec = R.step1.deciles.odds_total;
+dotChart('c-dec', { label: 'Residual by opening total decile', cats: dec.map(d => d.decile), zero: true, yFmt: (v, d) => sgn(v, d === 2 ? 2 : 1), xTitle: 'Decile of the opening total (10 = highest)', h: 290,
+  series: [{ name: 'Pooled deciles (95% interval)', color: '--over', hollow: false, pts: dec.map(d => ({ y: d.bias, lo: d.lo, hi: d.hi })) },
+           { name: 'Within-season deciles (point only)', color: '--under', hollow: true, pts: dec.map(d => ({ y: d.within_season_bias, lo: d.within_season_bias, hi: d.within_season_bias })) }] });
+dotChart('c-seasons', { label: 'MAE change by season', cats: SEAS.map(s => s.slice(2)), zero: true, yFmt: (v, d) => sgn(v, d === 2 ? 2 : 1), xTitle: 'Test season', h: 280,
+  series: [['b', '(b) linear', '--under'], ['c', '(c) shrinkage', '--over']].map(([k, n, col]) => ({ name: n, color: col, hollow: false, pts: SEAS.map(s => { const x = V[k].paired_mae_by_season[s]; return { y: x.diff, lo: x.lo, hi: x.hi }; }) })) });
+</script>

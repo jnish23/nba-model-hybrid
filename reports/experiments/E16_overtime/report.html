@@ -1,0 +1,288 @@
+<title>Overtime Close-Finish Test</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700&family=JetBrains+Mono:wght@400;500&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&display=swap">
+<style>
+/* Layout: one reading column, verdict first, then one section per registered step; each section = claim, chart or table, the caveat. */
+:root {
+  --bg: #f3f5f8; --surface: #ffffff; --ink: #14202e; --muted: #556373; --rule: #d6dde5; --wash: #e9edf2;
+  --under: #2a5db0; --over: #c4570a;
+  --good: #1b7442; --good-bg: #e1f2e8; --bad: #aa2a22; --bad-bg: #f8e4e2; --note-bg: #fdf3dc; --note-ink: #6b4b00;
+  --display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1319; --surface: #151c24; --ink: #e6ebf1; --muted: #98a6b5; --rule: #29333f; --wash: #1d2631;
+    --under: #7aa9f4; --over: #f19b58;
+    --good: #5cc88d; --good-bg: #16301f; --bad: #f2776e; --bad-bg: #3a1a18; --note-bg: #2f2713; --note-ink: #e8c872;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1319; --surface: #151c24; --ink: #e6ebf1; --muted: #98a6b5; --rule: #29333f; --wash: #1d2631;
+  --under: #7aa9f4; --over: #f19b58;
+  --good: #5cc88d; --good-bg: #16301f; --bad: #f2776e; --bad-bg: #3a1a18; --note-bg: #2f2713; --note-ink: #e8c872;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 17px; line-height: 1.55; margin: 0;
+  padding-block: 28px 72px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+main { max-width: 860px; margin: 0 auto; display: flex; flex-direction: column; gap: 44px; }
+section { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+h1, h2, h3 { font-family: var(--display); line-height: 1.15; margin: 0; text-wrap: balance; }
+h1 { font-size: clamp(30px, 6vw, 44px); letter-spacing: -0.01em; }
+h2 { font-size: 24px; }
+h3 { font-size: 17px; letter-spacing: 0.02em; }
+p { margin: 0; max-width: 68ch; }
+.eyebrow { font-family: var(--mono); font-size: 12.5px; color: var(--muted); letter-spacing: 0.04em; text-transform: uppercase; }
+.lede { font-size: 19px; max-width: 64ch; }
+a { color: var(--under); }
+code, .mono { font-family: var(--mono); font-size: 0.86em; }
+code { background: var(--wash); padding: 1px 5px; border-radius: 3px; overflow-wrap: anywhere; }
+.num { font-variant-numeric: tabular-nums; }
+.under { color: var(--under); } .over { color: var(--over); }
+
+.verdict { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 22px 22px 20px; display: flex; flex-direction: column; gap: 14px; }
+.verdict .tag { align-self: flex-start; font-family: var(--mono); font-size: 13px; font-weight: 500; letter-spacing: 0.05em; padding: 3px 10px; border-radius: 4px; background: var(--bad-bg); color: var(--bad); }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 0; border-top: 1px solid var(--rule); }
+.fact { padding: 14px 16px 4px 0; min-width: 0; }
+.fact + .fact { padding-left: 16px; border-left: 1px solid var(--rule); }
+@media (max-width: 680px) { .fact + .fact { border-left: 0; padding-left: 0; border-top: 1px solid var(--rule); margin-top: 10px; padding-top: 12px; } }
+.fact b { display: block; font-family: var(--display); font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.fact span { font-size: 15px; color: var(--muted); }
+
+.toc { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 15px; }
+.chartbox { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 14px 14px 8px; min-width: 0; }
+.chartbox h3 { font-size: 15px; margin-bottom: 2px; }
+.chartbox .sub { color: var(--muted); font-size: 14px; margin-bottom: 6px; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 14px; color: var(--muted); margin: 4px 0 2px; }
+.legend i { display: inline-block; width: 11px; height: 11px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+svg { display: block; width: 100%; height: auto; }
+svg text { font-family: var(--body); font-size: 12.5px; fill: var(--muted); font-variant-numeric: tabular-nums; }
+svg .grid { stroke: var(--rule); stroke-width: 1; }
+svg .zero { stroke: var(--ink); stroke-width: 1.2; }
+svg .ref { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 4 4; }
+svg .band { fill: var(--wash); }
+svg .lbl { fill: var(--ink); }
+
+.scroll { overflow-x: auto; max-width: 100%; border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 15px; font-variant-numeric: tabular-nums; }
+th, td { padding: 7px 12px; text-align: right; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; white-space: normal; min-width: 140px; }
+th { font-family: var(--display); font-size: 13px; font-weight: 600; color: var(--muted); background: var(--surface); }
+tr:last-child td { border-bottom: 0; }
+tr.hl td { background: var(--wash); }
+.pill { font-family: var(--mono); font-size: 12.5px; padding: 2px 8px; border-radius: 4px; font-weight: 500; white-space: nowrap; }
+.pill.fail { background: var(--bad-bg); color: var(--bad); }
+.pill.pass { background: var(--good-bg); color: var(--good); }
+.pill.info { background: var(--wash); color: var(--muted); }
+.note { background: var(--note-bg); color: var(--note-ink); border-radius: 6px; padding: 10px 14px; font-size: 15.5px; max-width: 72ch; }
+.note b { font-weight: 600; }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+ul.plain { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; max-width: 70ch; }
+
+.explorer { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+.controls { display: flex; flex-wrap: wrap; gap: 14px 24px; align-items: end; }
+.controls label { display: flex; flex-direction: column; gap: 4px; font-size: 14px; color: var(--muted); }
+select, input[type=range] { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--rule); border-radius: 5px; padding: 5px 8px; min-width: 150px; }
+input[type=range] { padding: 0; min-width: 220px; accent-color: var(--under); }
+.check { flex-direction: row !important; align-items: center; gap: 8px !important; }
+:focus-visible { outline: 2px solid var(--under); outline-offset: 2px; }
+footer { color: var(--muted); font-size: 14px; }
+</style>
+
+<main>
+<header style="display:flex;flex-direction:column;gap:12px">
+  <div class="eyebrow">Experiment E16 · totals · angle 2 of 8 · run 2026-10-23</div>
+  <h1>Overtime Close-Finish Test</h1>
+  <p class="lede">Do games likely to be close go over the opening total, through overtime and end-of-game fouling, while lopsided games go under? Registered in <code>PREREGISTRATION.md</code> before the run.</p>
+  <nav class="toc" aria-label="Sections">
+    <a href="#verdict">Verdict</a><a href="#size">Size check</a><a href="#decomp">Decomposition</a><a href="#primary">Registered regression</a><a href="#model">Model</a><a href="#bets">Betting</a><a href="#rules">Against the rules</a>
+  </nav>
+</header>
+
+<section id="verdict">
+  <div class="verdict">
+    <span class="tag">H_OT NOT SUPPORTED</span>
+    <p class="lede">Overtime does push close games over, but it is a small effect and plays against the spread theory: it makes the big-spread overs look <i>smaller</i>, not larger. In regulation time, close games run under the line and blowouts run over it.</p>
+    <div class="facts">
+      <div class="fact"><b class="num over"><span data-b="D.mu.point|s1"></span></b><span>points that one overtime game adds to (actual − opening total), against regulation games. Interval <span data-b="D.mu.lo|s1"></span> to <span data-b="D.mu.hi|s1"></span>. The plan assumed about 11.</span></div>
+      <div class="fact"><b class="num"><span data-b="D.ot.point|s3"></span></b><span>overtime's contribution to the |spread| slope (interval <span data-b="D.ot.lo|s3"></span> to <span data-b="D.ot.hi|s3"></span>). Negative: overtime works against the theory.</span></div>
+      <div class="fact"><b class="num"><span data-b="D.gapObs|s2"></span></b><span>points: mean r of 0-3 spreads minus 12+ spreads, all games. The theory predicts a positive gap; overtime alone would give <span data-b="step4.implied_gap_0_3_vs_12plus|s2"></span>.</span></div>
+    </div>
+  </div>
+  <div class="note"><b>This is a re-expression of data already seen.</b> E14 printed the overtime rate by spread bucket, overtime versus regulation mean r, and the all-games versus regulation-only slopes for every registered season, including the confirmation seasons. The 2022-26 seasons are therefore not untouched for this angle, and the registration says so. Treat the result as exploratory unless the forward sample in E15 is later scored for it. Holm correction is pending until all 8 angles are in; the raw confirmation p-value is <span data-b="step3_reading.confirmation_p_one_sided|3"></span> and the sign is wrong, so no correction could rescue it.</div>
+</section>
+
+<section id="size">
+  <h2>1 · Size check: how big can overtime be?</h2>
+  <p>About <span data-b="step4.ot_share_overall|pct1"></span> of games go to overtime, and they are more common when the spread is small. The share falls from <span data-b="D.b0.ot_share|pct1"></span> in the 0-3 bucket to <span data-b="D.b4.ot_share|pct1"></span> at 12+. Multiplying that gap by the overtime effect gives <span data-b="step4.implied_gap_0_3_vs_12plus|s2"></span> points, inside the 0.5 to 1 range you expected. The standard error for comparing two groups of 2,000 games is <span data-b="step4.se_two_groups_of_2000|2"></span> points (r has a standard deviation of <span data-b="step4.sd_r|1"></span>), so that gap is below what the data can resolve on its own.</p>
+  <div class="chartbox">
+    <h3>Mean of actual − opening total, by spread bucket</h3>
+    <div class="sub">Points, 2019-20 to 2025-26, 95% intervals from resampling game days. Overtime games are about 5% of each bucket.</div>
+    <div id="c-size"></div>
+  </div>
+  <div class="scroll"><table id="t-size"></table></div>
+  <p>The overtime effect is there (+0.8 points of gap), but the regulation games point the other way by 2.6 points: close games run under the line by about 1.3 points and games at 12+ run over it by about 1.4. Whatever sits in the 12+ over is not overtime, and the end-of-game fouling idea, which would show up inside regulation scoring, does not appear in the regulation data either.</p>
+</section>
+
+<section id="decomp">
+  <h2>2 · Decomposition: how much of the slope is overtime?</h2>
+  <p>The |spread| slope of r splits into an overtime term, (overtime minus regulation mean r) × (change in overtime probability per spread point), and a remainder from regulation games. The first column of numbers is a calculation from the fitted overtime model; the direct estimates are the plain regression slopes.</p>
+  <div class="scroll"><table id="t-decomp"></table></div>
+  <p>The overtime term (<span data-b="D.ot.point|s3"></span>) and the observed all-minus-regulation difference (<span data-b="D.diffDirect|s3"></span>) agree. Overtime is a suppressor of the positive slope, not its source. Removing overtime games makes the slope steeper, <span data-b="D.regSlope.slope|s3"></span> (interval <span data-b="D.regSlope.lo|s2"></span> to <span data-b="D.regSlope.hi|s2"></span>).</p>
+</section>
+
+<section id="primary">
+  <h2>3 · The registered regression</h2>
+  <p>As specified: regress r on the fitted overtime probability with |spread| and the opening total as controls. The registration warned that this cannot work, because the probability is a function of |spread| alone, so the coefficient is identified only through the curvature of the logistic link. The numbers confirm it.</p>
+  <div class="scroll"><table id="t-primary"></table></div>
+  <p>Coefficients are in the hundreds with intervals spanning zero by hundreds, and the sign flips between periods. The "regulation-only includes zero" condition is technically met, but only because the interval is wide enough to include everything, so it carries no information. The overtime logistic itself is fine: it passes the calibration check (no confirmation decile off by more than 2 points beyond its interval).</p>
+  <details>
+    <summary>Calibration of the overtime probability, by decile of predicted value</summary>
+    <div class="scroll" style="margin-top:8px"><table id="t-cal"></table></div>
+  </details>
+  <p style="margin-top:10px">Logistic slope: <span data-b="step1.slope_per_spread_point|3"></span> per spread point on the log-odds scale; margin sigma for the close-finish probability is <span data-b="sigma_margin_discovery|2"></span> points (you expected about 12).</p>
+</section>
+
+<section id="model">
+  <h2>4 · Does the deployed model use it?</h2>
+  <p>Same regression on the model's residual (actual − predicted total) and on its lean (predicted − opening total), 2021-22 to 2025-26. The coefficient is again unidentified (interval <span data-b="D.m.lo|0"></span> to <span data-b="D.m.hi|0"></span> for the residual), so this layer says nothing. What the model does with |spread| directly is covered in E14: roughly half of the market's positive slope is already inside its predictions.</p>
+  <p>Layer (c), the feature experiment, was not run: it needed both the market and model tests to support the idea.</p>
+</section>
+
+<section id="bets">
+  <h2>5 · Betting test</h2>
+  <p>Over bet at -110 when the overtime probability is at or above the cutoff, the cutoff being a discovery-season quantile in {0.5, 0.6, 0.7, 0.8, 0.9}. The rule picked q = <span data-b="bet_registered_over.q_chosen|raw"></span>, then applied that numeric cutoff to the confirmation seasons.</p>
+  <div class="scroll"><table id="t-bet"></table></div>
+  <div class="note"><b>Exploratory mirror.</b> Under when the overtime probability is low (the big-spread under bet from E14, re-cut by probability): <span data-b="D.mirC.roi|roi"></span> on confirmation (interval <span data-b="D.mirC.lo|roi"></span> to <span data-b="D.mirC.hi|roi"></span>). It loses for the same reason as before.</div>
+</section>
+
+<section id="rules">
+  <h2>6 · Against the registered rules</h2>
+  <div class="scroll"><table id="t-rules"></table></div>
+  <h3 style="margin-top:8px">Sensitivity: without 2019-20 and 2020-21</h3>
+  <div class="scroll"><table id="t-sens"></table></div>
+  <p>Dropping the two unusual seasons leaves the |spread| slope positive (discovery 2021-22 alone is too small to be significant, the pooled five seasons are). The overtime-probability coefficient is as unidentified as before.</p>
+  <h3>Limits</h3>
+  <ul class="plain">
+    <li>End-game fouling has no direct test here (no play-by-play); its only pre-game proxy is the close-finish probability, which has the same identification problem as the overtime one.</li>
+    <li>The decomposition and size check are additions to your plan, registered before the run. Everything else follows your steps.</li>
+    <li>Script: <code>experiments/e16_overtime.py</code>; numbers: <code>reports/experiments/E16_overtime/results.json</code>. Rerun: <code>.venv\Scripts\python.exe -m experiments.e16_overtime</code>.</li>
+  </ul>
+</section>
+<footer>Day-cluster bootstrap, 1,000 draws, seed 20261017. One-sided p = share of draws ≤ 0 for a positive hypothesis.</footer>
+</main>
+
+<script>
+const R = {"step1": {"intercept": -2.5712972298493177, "slope_per_spread_point": -0.05743323446451318}, "calibration": [{"period": "discovery (in-sample)", "bin": 1, "games": 330, "predicted": 0.03556920981605882, "observed": 0.03939393939393939, "lo": 0.02028936545240893, "hi": 0.06214432119604532, "gap_beyond_interval_pp": 0.0}, {"period": "discovery (in-sample)", "bin": 2, "games": 333, "predicted": 0.041888538411624064, "observed": 0.042042042042042045, "lo": 0.021501278520849727, "hi": 0.06481873822975517, "gap_beyond_interval_pp": 0.0}, {"period": "discovery (in-sample)", "bin": 3, "games": 403, "predicted": 0.04617975654778898, "observed": 0.03970223325062035, "lo": 0.02295627007148037, "hi": 0.05839741089504281, "gap_beyond_interval_pp": 0.0}, {"period": "discovery (in-sample)", "bin": 4, "games": 316, "predicted": 0.04940376636467421, "observed": 0.05063291139240506, "lo": 0.027210370553055058, "hi": 0.07602756892230576, "gap_beyond_interval_pp": 0.0}, {"period": "discovery (in-sample)", "bin": 5, "games": 375, "predicted": 0.05211426232212447, "observed": 0.056, "lo": 0.03439560332700174, "hi": 0.08157894736842106, "gap_beyond_interval_pp": 0.0}, {"period": "discovery (in-sample)", "bin": 6, "games": 372, "predicted": 0.055083863377394814, "observed": 0.06720430107526881, "lo": 0.042551453205395634, "hi": 0.09459741775201386, "gap_beyond_interval_pp": 0.0}, {"period": "discovery (in-sample)", "bin": 7, "games": 383, "predicted": 0.05805159940890878, "observed": 0.044386422976501305, "lo": 0.024689837620872103, "hi": 0.06487812062743942, "gap_beyond_interval_pp": 0.0}, {"period": "discovery (in-sample)", "bin": 8, "games": 219, "predicted": 0.060449291586011325, "observed": 0.0547945205479452, "lo": 0.0285515873015873, "hi": 0.08543109692607179, "gap_beyond_interval_pp": 0.0}, {"period": "discovery (in-sample)", "bin": 9, "games": 422, "predicted": 0.06306025767726542, "observed": 0.06398104265402843, "lo": 0.04302718822372387, "hi": 0.08696345975948196, "gap_beyond_interval_pp": 0.0}, {"period": "discovery (in-sample)", "bin": 10, "games": 481, "predicted": 0.06671924147096586, "observed": 0.06860706860706861, "lo": 0.047033064002977444, "hi": 0.09211540690934383, "gap_beyond_interval_pp": 0.0}, {"period": "confirmation (out-of-sample)", "bin": 1, "games": 701, "predicted": 0.03411853628592425, "observed": 0.025677603423680456, "lo": 0.014764161666880826, "hi": 0.036991302266198525, "gap_beyond_interval_pp": 0.0}, {"period": "confirmation (out-of-sample)", "bin": 2, "games": 497, "predicted": 0.0418505956495636, "observed": 0.04426559356136821, "lo": 0.027080523858921162, "hi": 0.06289118421400537, "gap_beyond_interval_pp": 0.0}, {"period": "confirmation (out-of-sample)", "bin": 3, "games": 551, "predicted": 0.04623056228861044, "observed": 0.05989110707803993, "lo": 0.03924793745123753, "hi": 0.08084714349365082, "gap_beyond_interval_pp": 0.0}, {"period": "confirmation (out-of-sample)", "bin": 4, "games": 467, "predicted": 0.049544866373178495, "observed": 0.055674518201284794, "lo": 0.034703410278153886, "hi": 0.07822502068204798, "gap_beyond_interval_pp": 0.0}, {"period": "confirmation (out-of-sample)", "bin": 5, "games": 495, "predicted": 0.05229262775866138, "observed": 0.03636363636363636, "lo": 0.022070987572887262, "hi": 0.05544829482948295, "gap_beyond_interval_pp": 0.0}, {"period": "confirmation (out-of-sample)", "bin": 6, "games": 558, "predicted": 0.055178800108532884, "observed": 0.05555555555555555, "lo": 0.036624164397128005, "hi": 0.07534486902186974, "gap_beyond_interval_pp": 0.0}, {"period": "confirmation (out-of-sample)", "bin": 7, "games": 530, "predicted": 0.058186970967667874, "observed": 0.04905660377358491, "lo": 0.032843922911735664, "hi": 0.06909808373515597, "gap_beyond_interval_pp": 0.0}, {"period": "confirmation (out-of-sample)", "bin": 8, "games": 226, "predicted": 0.06044929158601132, "observed": 0.05752212389380531, "lo": 0.02892363318499682, "hi": 0.08730245373258473, "gap_beyond_interval_pp": 0.0}, {"period": "confirmation (out-of-sample)", "bin": 9, "games": 550, "predicted": 0.06273538435825894, "observed": 0.08181818181818182, "lo": 0.0614504971461993, "hi": 0.10410223707453399, "gap_beyond_interval_pp": 0.0}, {"period": "confirmation (out-of-sample)", "bin": 10, "games": 688, "predicted": 0.06652034986886934, "observed": 0.056686046511627904, "lo": 0.03977774376764276, "hi": 0.07430532456566794, "gap_beyond_interval_pp": 0.0}], "calibration_passes_2pp": true, "sigma_margin_discovery": 13.543631372358378, "step3": {"p_ot": {"all games": {"discovery": {"coef": 303.3540864114756, "lo": -268.7628773262233, "hi": 945.9362576441058, "p_one_sided": 0.16183816183816183, "n": 3634}, "confirmation": {"coef": -71.62411709006028, "lo": -449.83703228899464, "hi": 321.67412637205075, "p_one_sided": 0.6323676323676324, "n": 5263}}, "regulation only": {"discovery": {"coef": 267.4339602736958, "lo": -287.2333562953336, "hi": 857.1471002466263, "p_one_sided": 0.1888111888111888, "n": 3440}, "confirmation": {"coef": 19.654418114124223, "lo": -383.8165136804607, "hi": 399.9935834261497, "p_one_sided": 0.4515484515484515, "n": 4992}}, "difference_all_minus_regulation_confirmation": {"diff": -91.27853520418451, "lo": -208.46993760678907, "hi": 32.75081651858816}}, "p_close": {"all games": {"discovery": {"coef": -94.27834666784578, "lo": -228.25820578643865, "hi": 23.147902371701385, "p_one_sided": 0.942057942057942, "n": 3634}, "confirmation": {"coef": 32.874497268467714, "lo": -58.394137418904165, "hi": 125.52399559425469, "p_one_sided": 0.2517482517482518, "n": 5263}}, "regulation only": {"discovery": {"coef": -87.30299312655258, "lo": -209.98631583160855, "hi": 24.137623066432766, "p_one_sided": 0.919080919080919, "n": 3440}, "confirmation": {"coef": 9.894315929826499, "lo": -80.33980943991405, "hi": 102.72051050842373, "p_one_sided": 0.42657342657342656, "n": 4992}}, "difference_all_minus_regulation_confirmation": {"diff": 22.980181338641216, "lo": -7.980359452479496, "hi": 52.993044645299186}}}, "step3_reading": {"H_OT_supported_raw": false, "positive_in_both_periods": false, "confirmation_p_one_sided": 0.6323676323676324, "regulation_only_includes_zero_or_small": true, "overtime_is_mechanism": false, "holm": "pending: family of 8 incomplete"}, "sensitivity_no_covid_seasons": {"discovery = 2021-22 only": {"p_ot all games": {"coef": -347.31369532942347, "lo": -1179.8623350191028, "hi": 555.9452912093798, "p_one_sided": 0.7472527472527473, "n": 1323}, "p_ot regulation only": {"coef": -247.08017730191324, "lo": -1066.501361945121, "hi": 602.071250524321, "p_one_sided": 0.6893106893106893, "n": 1264}, "abs_spread slope all games": {"slope": 0.14830001457515277, "lo": -0.1027974876261912, "hi": 0.39177939978367826, "n": 1323}, "abs_spread slope regulation only": {"slope": 0.1861042029761105, "lo": -0.05811802205614137, "hi": 0.41830248440874845, "n": 1264}}, "pooled 2021-22..2025-26": {"p_ot all games": {"coef": -107.6682326006744, "lo": -455.44547205828667, "hi": 251.46189528856107, "p_one_sided": 0.6973026973026973, "n": 6586}, "p_ot regulation only": {"coef": -14.82755485042344, "lo": -368.4364335828581, "hi": 334.1094085580925, "p_one_sided": 0.5164835164835165, "n": 6256}, "abs_spread slope all games": {"slope": 0.16583682061486577, "lo": 0.05670820018918374, "hi": 0.28462190891920186, "n": 6586}, "abs_spread slope regulation only": {"slope": 0.21171147302123566, "lo": 0.10135952646861733, "hi": 0.3246243479650047, "n": 6256}}}, "step4": {"buckets": [{"bucket": "0-3", "games": 2141, "mean_abs_spread": 1.6868285847734703, "ot_share": 0.06725829051844932, "ot_share_lo": 0.05670897595891409, "ot_share_hi": 0.07773229636992983, "mean_r_ot": 19.64236111111111, "mean_r_ot_lo": 16.385773291925467, "mean_r_ot_hi": 23.098455521472392, "mean_r_reg": -1.2626439659489235, "mean_r_reg_lo": -2.0399659484316968, "mean_r_reg_hi": -0.46078686187825035, "mean_r_all": 0.14339093881363849, "mean_r_all_lo": -0.6372146869024856, "mean_r_all_hi": 0.905494572971871}, {"bucket": "3-6", "games": 2805, "mean_abs_spread": 4.260606060606061, "ot_share": 0.05311942959001782, "ot_share_lo": 0.045013160873341465, "ot_share_hi": 0.061339957852136015, "mean_r_ot": 22.154362416107382, "mean_r_ot_lo": 19.132035697343454, "mean_r_ot_hi": 25.255798870837104, "mean_r_reg": -1.3429969879518073, "mean_r_reg_lo": -1.9357845261328883, "mean_r_reg_hi": -0.7155617025518343, "mean_r_all": -0.09483065953654189, "mean_r_all_lo": -0.7521476338179682, "mean_r_all_hi": 0.5372087630820567}, {"bucket": "6-9", "games": 2090, "mean_abs_spread": 7.144736842105263, "ot_share": 0.050239234449760764, "ot_share_lo": 0.04044209119364298, "ot_share_hi": 0.05943620844564241, "mean_r_ot": 20.947619047619046, "mean_r_ot_lo": 16.76896148423481, "mean_r_ot_hi": 25.08993421052631, "mean_r_reg": -0.6589420654911838, "mean_r_reg_lo": -1.471779372532692, "mean_r_reg_hi": 0.19717994361776298, "mean_r_all": 0.42655502392344496, "mean_r_all_lo": -0.4455784547149165, "mean_r_all_hi": 1.2605368582894556}, {"bucket": "9-12", "games": 1110, "mean_abs_spread": 10.12972972972973, "ot_share": 0.03963963963963964, "ot_share_lo": 0.028202439539914224, "ot_share_hi": 0.05116706320721372, "mean_r_ot": 20.931818181818183, "mean_r_ot_lo": 15.349873737373738, "mean_r_ot_hi": 26.096822849807445, "mean_r_reg": 0.33911819887429645, "mean_r_reg_lo": -0.7488288168172655, "mean_r_reg_hi": 1.424977527135899, "mean_r_all": 1.1554054054054055, "mean_r_all_lo": 0.16520175901495163, "mean_r_all_hi": 2.2008484203294367}, {"bucket": "12+", "games": 751, "mean_abs_spread": 14.05525965379494, "ot_share": 0.03062583222370173, "ot_share_lo": 0.01925333240766454, "ot_share_hi": 0.04382993593806592, "mean_r_ot": 21.76086956521739, "mean_r_ot_lo": 13.793484848484848, "mean_r_ot_hi": 29.24222222222222, "mean_r_reg": 1.3777472527472527, "mean_r_reg_lo": -0.0236827245865627, "mean_r_reg_hi": 2.7279825143868965, "mean_r_all": 2.0019973368841546, "mean_r_all_lo": 0.6475070476520192, "mean_r_all_hi": 3.2900213650548493}], "mu_ot": 20.968817204301075, "mu_reg": -0.715370018975332, "ot_minus_reg_mean_r": 21.684187223276407, "ot_share_overall": 0.05226480836236934, "implied_gap_0_3_vs_12plus": 0.7943450841121716, "observed_mean_r_gap_0_3_minus_12plus": -1.858606398070516, "observed_mean_r_gap_regulation": -2.640391218696176, "se_two_groups_of_2000": 0.5837863940603812, "sd_r": 18.46094672247398}, "step5": {"discovery logistic, pooled mean r (registered)": {"ot_contribution_to_slope": {"point": -0.06285996909470089, "lo": -0.11513569733667732, "hi": -0.01248967000361114}, "dp_ds": {"point": -0.002898885185201927, "lo": -0.005227762303192871, "hi": -0.0005732881998454045}, "mu_ot_minus_mu_reg": {"point": 21.684187223276407, "lo": 19.753422040977647, "hi": 23.44537657399084}}, "confirmation logistic and mean r": {"ot_contribution_to_slope": {"point": -0.06413420114561773, "lo": -0.10031600305166943, "hi": -0.031725622334769346}, "dp_ds": {"point": -0.0029633353594056416, "lo": -0.0045521253018942585, "hi": -0.0015098453644779959}, "mu_ot_minus_mu_reg": {"point": 21.64257276587189, "lo": 19.33033641919241, "hi": 24.060185917575403}}, "discovery logistic and mean r": {"ot_contribution_to_slope": {"point": -0.0630602483472723, "lo": -0.11629121226713134, "hi": -0.01172714514480093}, "dp_ds": {"point": -0.002898885185201927, "lo": -0.005227762303192871, "hi": -0.0005732881998454045}, "mu_ot_minus_mu_reg": {"point": 21.75327559338288, "lo": 18.345160695166687, "hi": 24.74007416209464}}, "direct slopes, registered seasons": {"all games": {"slope": 0.18018864651190106, "lo": 0.0849155310824901, "hi": 0.2804720992996182, "n": 8897}, "regulation only": {"slope": 0.2394730874264484, "lo": 0.14333728127792214, "hi": 0.33845746942938654, "n": 8432}}}, "step6": {"2021-22..2025-26": {"model_resid": {"coef": -92.06787913979964, "lo": -449.22512483074894, "hi": 280.6871161767739, "p_one_sided": 0.6973026973026973, "n": 6583}, "model_lean": {"coef": -17.691653022288808, "lo": -80.52672196958785, "hi": 41.95054049434035, "p_one_sided": 0.7162837162837162, "n": 6583}, "r": {"coef": -109.75953216215333, "lo": -455.8918698748191, "hi": 254.63540068096256, "p_one_sided": 0.7282717282717283, "n": 6583}}, "confirmation 2022-23..2025-26": {"model_resid": {"coef": -80.14337351991513, "lo": -476.25886486376936, "hi": 319.8241040780379, "p_one_sided": 0.6503496503496503, "n": 5260}, "model_lean": {"coef": 5.918672803998847, "lo": -57.19694215201852, "hi": 69.77532603012301, "p_one_sided": 0.4255744255744256, "n": 5260}, "r": {"coef": -74.22470071587875, "lo": -466.7060973867301, "hi": 309.9390234480235, "p_one_sided": 0.6423576423576424, "n": 5260}}}, "step6_supported": false, "bet_registered_over": {"q_chosen": 0.8, "cutoff": 0.062100991812145664, "grid": [{"q": 0.5, "cutoff_p_ot": 0.054245478441851576, "discovery": {"roi": -7.4151208408001175, "lo": -11.580984120046626, "hi": -3.4325420339895523, "bets": 1877}, "confirmation": {"roi": -5.521516101453407, "lo": -8.736168492749352, "hi": -1.8000744132244755, "bets": 2552}}, {"q": 0.6, "cutoff_p_ot": 0.05726853295786968, "discovery": {"roi": -7.176079734219269, "lo": -11.723889426677635, "hi": -2.890390891224252, "bets": 1505}, "confirmation": {"roi": -6.948117078508252, "lo": -10.871453280785794, "hi": -2.5880691159270586, "bets": 1994}}, {"q": 0.7, "cutoff_p_ot": 0.06044929158601133, "discovery": {"roi": -3.7433155080213902, "lo": -8.97025202087114, "hi": 1.3380149760147866, "bets": 1122}, "confirmation": {"roi": -5.750124192747144, "lo": -10.192340790040808, "hi": -0.682058240479791, "bets": 1464}}, {"q": 0.8, "cutoff_p_ot": 0.062100991812145664, "discovery": {"roi": -1.6611295681063125, "lo": -7.362260293918564, "hi": 4.589409828919901, "bets": 903}, "confirmation": {"roi": -4.662946100749009, "lo": -9.567297014271253, "hi": 0.9473407666001684, "bets": 1238}}, {"q": 0.9, "cutoff_p_ot": 0.06553149349952972, "discovery": {"roi": -2.3247023247023253, "lo": -10.633706006381708, "hi": 6.067345301063646, "bets": 481}, "confirmation": {"roi": -6.72568710359408, "lo": -13.48258123931062, "hi": 0.6962823434079091, "bets": 688}}], "discovery": {"over all games (control)": {"roi": -4.3027968179316565, "lo": -7.543827194076244, "hi": -1.0756741158995669, "bets": 3634}, "over opening @ -110": {"roi": -1.6611295681063125, "lo": -7.362260293918564, "hi": 4.589409828919901, "bets": 903}, "over closing @ -110": {"roi": -1.6752577319587632, "lo": -7.947757456115986, "hi": 5.2483644827686255, "bets": 776}, "over best book": {"roi": 1.3757245052348501, "lo": -4.102542067756229, "hi": 7.234921602810358, "bets": 903}}, "confirmation": {"over all games (control)": {"roi": -3.6515640923773156, "lo": -6.097491269815362, "hi": -0.97110291610029, "bets": 5263}, "over opening @ -110": {"roi": -4.662946100749009, "lo": -9.567297014271253, "hi": 0.9473407666001684, "bets": 1238}, "over closing @ -110": {"roi": -5.844681634155319, "lo": -11.057093334353974, "hi": -0.5156455071903254, "bets": 1235}, "over best book": {"roi": -1.5980138640446038, "lo": -6.622938883894201, "hi": 3.6659990610439652, "bets": 1238}}}, "bet_mirror_exploratory": {"q_chosen": 0.5, "cutoff": 0.054245478441851576, "grid": [{"q": 0.5, "cutoff_p_ot": 0.054245478441851576, "discovery": {"roi": -7.7935606060606055, "lo": -12.043823303422725, "hi": -3.547947650389026, "bets": 1920}, "confirmation": {"roi": -6.886674968866749, "lo": -10.563574953663387, "hi": -3.3023582817938357, "bets": 2920}}, {"q": 0.6, "cutoff_p_ot": 0.0513733068670695, "discovery": {"roi": -7.80967911012754, "lo": -12.100944423781948, "hi": -3.199608024585017, "bets": 1561}, "confirmation": {"roi": -7.208063902624572, "lo": -11.313050075233493, "hi": -3.128877968095877, "bets": 2390}}, {"q": 0.7, "cutoff_p_ot": 0.04864538803110854, "discovery": {"roi": -9.732709151313802, "lo": -14.858121276573637, "hi": -4.836694784457867, "bets": 1204}, "confirmation": {"roi": -7.085561497326203, "lo": -11.841245717343174, "hi": -2.741965359716066, "bets": 1904}}, {"q": 0.8, "cutoff_p_ot": 0.04480996669898227, "discovery": {"roi": -14.52932365479894, "lo": -20.972605493956802, "hi": -8.265269542372385, "bets": 789}, "confirmation": {"roi": -8.416528925619836, "lo": -14.021631370862753, "hi": -3.4349859425579417, "bets": 1375}}, {"q": 0.9, "cutoff_p_ot": 0.04014261639390465, "discovery": {"roi": -12.530120481927709, "lo": -20.528993218870763, "hi": -4.444350893161915, "bets": 415}, "confirmation": {"roi": -11.238880451290953, "lo": -18.2693155421814, "hi": -4.265562981787082, "bets": 838}}], "discovery": {"under opening @ -110": {"roi": -7.7935606060606055, "lo": -12.043823303422725, "hi": -3.547947650389026, "bets": 1920}, "under closing @ -110": {"roi": -11.29101667563206, "lo": -16.061953716590878, "hi": -6.800051093629077, "bets": 1690}, "under best book": {"roi": -5.122623582300139, "lo": -9.392577967871079, "hi": -0.874953681866602, "bets": 1920}}, "confirmation": {"under opening @ -110": {"roi": -6.886674968866749, "lo": -10.563574953663387, "hi": -3.3023582817938357, "bets": 2920}, "under closing @ -110": {"roi": -7.819366098419921, "lo": -11.583302127640655, "hi": -4.14385659999247, "bets": 2917}, "under best book": {"roi": -3.816126787030506, "lo": -7.406248847265038, "hi": -0.2709389555988769, "bets": 2920}}}};
+const fmt = {
+  '0': v => v.toFixed(0), '1': v => v.toFixed(1), '2': v => v.toFixed(2), '3': v => v.toFixed(3), 's1': v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1),
+  's2': v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(2), 's3': v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(3), 'pct1': v => (v * 100).toFixed(1) + '%',
+  'int': v => Math.round(v).toLocaleString('en-US'), 'roi': v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1) + '%', 'raw': v => String(v)
+};
+const path = (o, p) => p.split('.').reduce((a, k) => (a == null ? a : a[k]), o);
+const B = R.step4.buckets, s5 = R.step5, DISC_LAB = 'discovery logistic, pooled mean r (registered)';
+const CONF = 'confirmation 2022-23..2025-26';
+R.D = { mu: s5[DISC_LAB].mu_ot_minus_mu_reg, ot: s5[DISC_LAB].ot_contribution_to_slope, b0: B[0], b4: B[4], gapObs: B[0].mean_r_all - B[4].mean_r_all,
+  regSlope: s5['direct slopes, registered seasons']['regulation only'], diffDirect: s5['direct slopes, registered seasons']['all games'].slope - s5['direct slopes, registered seasons']['regulation only'].slope,
+  m: R.step6[CONF].model_resid, mirC: R.bet_mirror_exploratory.confirmation['under opening @ -110'] };
+document.querySelectorAll('[data-b]').forEach(el => { const [p, f] = el.dataset.b.split('|'); const v = path(R, p); el.textContent = v == null ? '?' : (f ? fmt[f](v) : String(v)); });
+function table(id, head, rows, hl) {
+  const t = document.getElementById(id);
+  t.innerHTML = '<thead><tr>' + head.map(h => `<th>${h}</th>`).join('') + '</tr></thead><tbody>' + rows.map((r, i) => `<tr class="${hl && hl(i) ? 'hl' : ''}">` + r.map(c => `<td>${c}</td>`).join('') + '</tr>').join('') + '</tbody>';
+}
+const ci = (lo, hi, f) => `${f(lo)} to ${f(hi)}`;
+const pill = (ok, t) => `<span class="pill ${ok ? 'pass' : 'fail'}">${ok ? '✓' : '✗'} ${t || (ok ? 'passes' : 'fails')}</span>`;
+const pct = v => (v * 100).toFixed(1) + '%';
+const cc = x => `${fmt.s2(x.coef)} (${ci(x.lo, x.hi, fmt.s2)})`;
+
+table('t-size', ['|Spread| bucket', 'Games', 'Overtime share (95%)', 'Mean r, regulation', 'Mean r, overtime', 'Mean r, all games'],
+  B.map(b => [b.bucket, fmt.int(b.games), `${pct(b.ot_share)} (${pct(b.ot_share_lo)} to ${pct(b.ot_share_hi)})`, fmt.s2(b.mean_r_reg), fmt.s2(b.mean_r_ot), fmt.s2(b.mean_r_all)]));
+
+const dd = s5[DISC_LAB], dc = s5['confirmation logistic and mean r'], dr = s5['direct slopes, registered seasons'];
+const tri = x => `${fmt.s3(x.point)} (${ci(x.lo, x.hi, fmt.s3)})`;
+table('t-decomp', ['Quantity', 'Registered (discovery logistic, pooled means)', 'Confirmation only'], [
+  ['Overtime minus regulation mean r, points', `${fmt.s1(dd.mu_ot_minus_mu_reg.point)} (${ci(dd.mu_ot_minus_mu_reg.lo, dd.mu_ot_minus_mu_reg.hi, fmt.s1)})`, `${fmt.s1(dc.mu_ot_minus_mu_reg.point)} (${ci(dc.mu_ot_minus_mu_reg.lo, dc.mu_ot_minus_mu_reg.hi, fmt.s1)})`],
+  ['Change in overtime probability per spread point', tri(dd.dp_ds), tri(dc.dp_ds)],
+  ['Overtime term of the slope', tri(dd.ot_contribution_to_slope), tri(dc.ot_contribution_to_slope)],
+  ['Direct slope, all games (registered seasons)', cc2(dr['all games']), ''],
+  ['Direct slope, regulation only', cc2(dr['regulation only']), '']
+], i => i === 2);
+function cc2(x) { return `${fmt.s3(x.slope)} (${ci(x.lo, x.hi, fmt.s2)})`; }
+
+const s3 = R.step3;
+const rowP = (lab, k, g) => [lab, `${cc(s3[k][g].discovery)}`, `${cc(s3[k][g].confirmation)}`, fmt['3'](s3[k][g].confirmation.p_one_sided)];
+table('t-primary', ['Coefficient on the probability', 'Discovery (95%)', 'Confirmation (95%)', 'Confirmation one-sided p'], [
+  rowP('Overtime probability, all games', 'p_ot', 'all games'), rowP('Overtime probability, regulation only', 'p_ot', 'regulation only'),
+  rowP('Close-finish probability, all games', 'p_close', 'all games'), rowP('Close-finish probability, regulation only', 'p_close', 'regulation only')]);
+
+const cal = R.calibration;
+table('t-cal', ['Period', 'Decile', 'Games', 'Predicted', 'Observed (95%)'], cal.map(c => [c.period, c.bin, c.games, pct(c.predicted), `${pct(c.observed)} (${pct(c.lo)} to ${pct(c.hi)})`]));
+
+const rb = R.bet_registered_over, rc = r => `${fmt.roi(r.roi)} (${ci(r.lo, r.hi, fmt.roi)})`;
+table('t-bet', ['Strategy', 'Discovery: bets', 'Discovery: return (95%)', 'Confirmation: bets', 'Confirmation: return (95%)'],
+  Object.keys(rb.discovery).map(k => [k.replace('over', 'Over').replace('(control)', '(control, every game)'), fmt.int(rb.discovery[k].bets), rc(rb.discovery[k]), fmt.int(rb.confirmation[k].bets), rc(rb.confirmation[k])]), i => i === 1);
+
+const rd = R.step3_reading;
+table('t-rules', ['Registered condition', 'Value', 'Result'], [
+  ['P_OT coefficient positive in both periods', `${fmt.s2(s3.p_ot['all games'].discovery.coef)} / ${fmt.s2(s3.p_ot['all games'].confirmation.coef)}`, pill(rd.positive_in_both_periods)],
+  ['Confirmation one-sided p < 0.05', fmt['3'](rd.confirmation_p_one_sided), pill(rd.confirmation_p_one_sided < 0.05)],
+  ['H_OT supported (raw)', '', pill(rd.H_OT_supported_raw, rd.H_OT_supported_raw ? 'supported' : 'not supported')],
+  ['Overtime is the mechanism', 'needs H_OT supported', pill(rd.overtime_is_mechanism, rd.overtime_is_mechanism ? 'yes' : 'no')],
+  ['Model residual coefficient positive, p < 0.05 (layer b)', fmt['3'](R.step6[CONF].model_resid.p_one_sided), pill(R.step6_supported)],
+  ['Feature test (layer c)', '', '<span class="pill info">not run</span>'],
+  ['Holm across 8 angles', '', '<span class="pill info">pending</span>']
+], i => i === 2);
+
+const sv = R.sensitivity_no_covid_seasons;
+table('t-sens', ['Sample', 'P_OT coefficient, all games', '|Spread| slope, all games', '|Spread| slope, regulation only'],
+  Object.keys(sv).map(k => [k, cc(sv[k]['p_ot all games']), cc2(sv[k]['abs_spread slope all games']), cc2(sv[k]['abs_spread slope regulation only'])]));
+
+const NS = 'http://www.w3.org/2000/svg';
+function ticks(lo, hi, n) {
+  const raw = (hi - lo) / n, p = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / p;
+  const step = (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p, out = [];
+  for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) out.push(+v.toFixed(10));
+  return out;
+}
+function dotChart(el, o) {
+  const W = 720, H = o.h || 290, m = { l: 58, r: 16, t: o.bands ? 30 : 14, b: 44 }, n = o.cats.length, S = o.series.length;
+  let lo = Infinity, hi = -Infinity;
+  o.series.forEach(s => s.pts.forEach(p => { lo = Math.min(lo, p.lo); hi = Math.max(hi, p.hi); }));
+  (o.refs || []).forEach(r => { lo = Math.min(lo, r.y); hi = Math.max(hi, r.y); });
+  if (o.zero) { lo = Math.min(lo, 0); hi = Math.max(hi, 0); }
+  const tk = ticks(lo, hi, 5); lo = Math.min(lo, tk[0]); hi = Math.max(hi, tk[tk.length - 1]);
+  const pad = (hi - lo) * 0.03; lo -= pad; hi += pad;
+  const bw = (W - m.l - m.r) / n, cx = i => m.l + (i + 0.5) * bw, y = v => m.t + (hi - v) / (hi - lo) * (H - m.t - m.b);
+  const step = Math.min(20, bw / (S + 1));
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${o.label}">`;
+  (o.bands || []).forEach(b => { s += `<rect class="band" x="${cx(b.from) - bw / 2}" y="${m.t}" width="${(b.to - b.from + 1) * bw}" height="${H - m.t - m.b}"/><text x="${cx(b.from) - bw / 2 + 6}" y="${m.t - 8}">${b.label}</text>`; });
+  tk.forEach(v => { s += `<line class="grid" x1="${m.l}" x2="${W - m.r}" y1="${y(v)}" y2="${y(v)}"/><text x="${m.l - 8}" y="${y(v) + 4}" text-anchor="end">${o.yFmt(v)}</text>`; });
+  if (o.zero) s += `<line class="zero" x1="${m.l}" x2="${W - m.r}" y1="${y(0)}" y2="${y(0)}"/>`;
+  (o.refs || []).forEach(r => { s += `<line class="ref" x1="${m.l}" x2="${W - m.r}" y1="${y(r.y)}" y2="${y(r.y)}"/><text x="${W - m.r - 4}" y="${y(r.y) - 4}" text-anchor="end">${r.label}</text>`; });
+  o.cats.forEach((cat, i) => { s += `<text x="${cx(i)}" y="${H - m.b + 18}" text-anchor="middle">${cat}</text>`; });
+  if (o.xTitle) s += `<text class="lbl" x="${m.l + (W - m.l - m.r) / 2}" y="${H - 6}" text-anchor="middle">${o.xTitle}</text>`;
+  o.series.forEach((se, si) => {
+    const off = (si - (S - 1) / 2) * step;
+    se.pts.forEach((p, i) => {
+      if (!p) return;
+      const x = cx(i) + off, col = `var(${se.color})`;
+      s += `<g><title>${se.name} · ${o.cats[i]}: ${o.yFmt(p.y, 2)} (${o.yFmt(p.lo, 2)} to ${o.yFmt(p.hi, 2)})</title><line x1="${x}" x2="${x}" y1="${y(p.lo)}" y2="${y(p.hi)}" stroke="${col}" stroke-width="2"/>` +
+        `<line x1="${x - 3}" x2="${x + 3}" y1="${y(p.lo)}" y2="${y(p.lo)}" stroke="${col}" stroke-width="2"/><line x1="${x - 3}" x2="${x + 3}" y1="${y(p.hi)}" y2="${y(p.hi)}" stroke="${col}" stroke-width="2"/>` +
+        `<circle cx="${x}" cy="${y(p.y)}" r="4.2" fill="${se.hollow ? 'var(--surface)' : col}" stroke="${col}" stroke-width="2"/></g>`;
+    });
+  });
+  s += '</svg>';
+  const lg = o.series.length > 1 ? `<div class="legend">${o.series.map(se => `<span><i style="background:${se.hollow ? 'var(--surface)' : `var(${se.color})`};border:2px solid var(${se.color})"></i>${se.name}</span>`).join('')}</div>` : '';
+  document.getElementById(el).innerHTML = lg + s;
+}
+const pctT = (v, d) => (v * 100).toFixed(d === 2 ? 1 : 0) + '%';
+const sgn = (v, d) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(d === 2 ? 2 : 1);
+
+
+dotChart('c-size', { label: 'Mean r by bucket, regulation versus all', cats: B.map(b => b.bucket), zero: true, yFmt: (v, d) => sgn(v, d === 2 ? 2 : 1), xTitle: 'Opening |spread|, points', h: 280,
+  series: [['mean_r_reg', 'Regulation only', '--under'], ['mean_r_all', 'All games', '--over']].map(([k, n, col]) => ({ name: n, color: col, hollow: false, pts: B.map(b => ({ y: b[k], lo: b[k + '_lo'], hi: b[k + '_hi'] })) })) });
+</script>

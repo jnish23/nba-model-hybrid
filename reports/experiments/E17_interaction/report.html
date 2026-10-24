@@ -1,0 +1,284 @@
+<title>Spread and Total Interaction</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700&family=JetBrains+Mono:wght@400;500&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&display=swap">
+<style>
+/* Layout: one reading column, verdict first, then one section per registered step; each section = claim, chart or table, the caveat. */
+:root {
+  --bg: #f3f5f8; --surface: #ffffff; --ink: #14202e; --muted: #556373; --rule: #d6dde5; --wash: #e9edf2;
+  --under: #2a5db0; --over: #c4570a;
+  --good: #1b7442; --good-bg: #e1f2e8; --bad: #aa2a22; --bad-bg: #f8e4e2; --note-bg: #fdf3dc; --note-ink: #6b4b00;
+  --display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1319; --surface: #151c24; --ink: #e6ebf1; --muted: #98a6b5; --rule: #29333f; --wash: #1d2631;
+    --under: #7aa9f4; --over: #f19b58;
+    --good: #5cc88d; --good-bg: #16301f; --bad: #f2776e; --bad-bg: #3a1a18; --note-bg: #2f2713; --note-ink: #e8c872;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1319; --surface: #151c24; --ink: #e6ebf1; --muted: #98a6b5; --rule: #29333f; --wash: #1d2631;
+  --under: #7aa9f4; --over: #f19b58;
+  --good: #5cc88d; --good-bg: #16301f; --bad: #f2776e; --bad-bg: #3a1a18; --note-bg: #2f2713; --note-ink: #e8c872;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 17px; line-height: 1.55; margin: 0;
+  padding-block: 28px 72px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+main { max-width: 860px; margin: 0 auto; display: flex; flex-direction: column; gap: 44px; }
+section { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+h1, h2, h3 { font-family: var(--display); line-height: 1.15; margin: 0; text-wrap: balance; }
+h1 { font-size: clamp(30px, 6vw, 44px); letter-spacing: -0.01em; }
+h2 { font-size: 24px; }
+h3 { font-size: 17px; letter-spacing: 0.02em; }
+p { margin: 0; max-width: 68ch; }
+.eyebrow { font-family: var(--mono); font-size: 12.5px; color: var(--muted); letter-spacing: 0.04em; text-transform: uppercase; }
+.lede { font-size: 19px; max-width: 64ch; }
+a { color: var(--under); }
+code, .mono { font-family: var(--mono); font-size: 0.86em; }
+code { background: var(--wash); padding: 1px 5px; border-radius: 3px; overflow-wrap: anywhere; }
+.num { font-variant-numeric: tabular-nums; }
+.under { color: var(--under); } .over { color: var(--over); }
+
+.verdict { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 22px 22px 20px; display: flex; flex-direction: column; gap: 14px; }
+.verdict .tag { align-self: flex-start; font-family: var(--mono); font-size: 13px; font-weight: 500; letter-spacing: 0.05em; padding: 3px 10px; border-radius: 4px; background: var(--bad-bg); color: var(--bad); }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 0; border-top: 1px solid var(--rule); }
+.fact { padding: 14px 16px 4px 0; min-width: 0; }
+.fact + .fact { padding-left: 16px; border-left: 1px solid var(--rule); }
+@media (max-width: 680px) { .fact + .fact { border-left: 0; padding-left: 0; border-top: 1px solid var(--rule); margin-top: 10px; padding-top: 12px; } }
+.fact b { display: block; font-family: var(--display); font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.fact span { font-size: 15px; color: var(--muted); }
+
+.toc { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 15px; }
+.chartbox { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 14px 14px 8px; min-width: 0; }
+.chartbox h3 { font-size: 15px; margin-bottom: 2px; }
+.chartbox .sub { color: var(--muted); font-size: 14px; margin-bottom: 6px; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 14px; color: var(--muted); margin: 4px 0 2px; }
+.legend i { display: inline-block; width: 11px; height: 11px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+svg { display: block; width: 100%; height: auto; }
+svg text { font-family: var(--body); font-size: 12.5px; fill: var(--muted); font-variant-numeric: tabular-nums; }
+svg .grid { stroke: var(--rule); stroke-width: 1; }
+svg .zero { stroke: var(--ink); stroke-width: 1.2; }
+svg .ref { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 4 4; }
+svg .band { fill: var(--wash); }
+svg .lbl { fill: var(--ink); }
+
+.scroll { overflow-x: auto; max-width: 100%; border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 15px; font-variant-numeric: tabular-nums; }
+th, td { padding: 7px 12px; text-align: right; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; white-space: normal; min-width: 140px; }
+th { font-family: var(--display); font-size: 13px; font-weight: 600; color: var(--muted); background: var(--surface); }
+tr:last-child td { border-bottom: 0; }
+tr.hl td { background: var(--wash); }
+.pill { font-family: var(--mono); font-size: 12.5px; padding: 2px 8px; border-radius: 4px; font-weight: 500; white-space: nowrap; }
+.pill.fail { background: var(--bad-bg); color: var(--bad); }
+.pill.pass { background: var(--good-bg); color: var(--good); }
+.pill.info { background: var(--wash); color: var(--muted); }
+.note { background: var(--note-bg); color: var(--note-ink); border-radius: 6px; padding: 10px 14px; font-size: 15.5px; max-width: 72ch; }
+.note b { font-weight: 600; }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+ul.plain { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; max-width: 70ch; }
+
+.explorer { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+.controls { display: flex; flex-wrap: wrap; gap: 14px 24px; align-items: end; }
+.controls label { display: flex; flex-direction: column; gap: 4px; font-size: 14px; color: var(--muted); }
+select, input[type=range] { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--rule); border-radius: 5px; padding: 5px 8px; min-width: 150px; }
+input[type=range] { padding: 0; min-width: 220px; accent-color: var(--under); }
+.check { flex-direction: row !important; align-items: center; gap: 8px !important; }
+:focus-visible { outline: 2px solid var(--under); outline-offset: 2px; }
+footer { color: var(--muted); font-size: 14px; }
+</style>
+
+<main>
+<header style="display:flex;flex-direction:column;gap:12px">
+  <div class="eyebrow">Experiment E17 · totals · angle 3 of 8 · run 2026-10-23</div>
+  <h1>Spread and Total Interaction</h1>
+  <p class="lede">Does the effect of a big spread on the over/under depend on how high the total is? Registered in <code>PREREGISTRATION.md</code> before the run; the interaction had not been looked at in either period.</p>
+  <nav class="toc" aria-label="Sections"><a href="#verdict">Verdict</a><a href="#grid">The 3×3 grid</a><a href="#reg">Regression</a><a href="#model">Model</a><a href="#bets">Betting</a><a href="#rules">Against the rules</a></nav>
+</header>
+
+<section id="verdict">
+  <div class="verdict">
+    <span class="tag">H_INT NOT SUPPORTED</span>
+    <p class="lede">The slope of r on |spread| is the same at low, middle and high totals: about <b class="num over"><span data-b="D.pooledMid|s2"></span></b> points per spread point everywhere. The product term is zero in both periods and its sign flips between them.</p>
+    <div class="facts">
+      <div class="fact"><b class="num"><span data-b="D.pc.coef|s3"></span></b><span>confirmation product coefficient (interval <span data-b="D.pc.lo|s3"></span> to <span data-b="D.pc.hi|s3"></span>), two-sided p = <span data-b="D.pc.p_two_sided|2"></span>. Discovery: <span data-b="D.pd.coef|s3"></span>.</span></div>
+      <div class="fact"><b class="num"><span data-b="D.slopeLo|s2"></span> / <span data-b="D.slopeHi|s2"></span></b><span>spread slope at the 16th and 84th percentile of the total (pooled seasons). The example in your idea needs the high-total slope to be clearly larger.</span></div>
+      <div class="fact"><b class="num"><span data-b="D.detect|2"></span></b><span>rough detection threshold for a change in the spread slope across the interquartile range of the total. A simulation (POWER_CHECK) shows the registered rule catches a 0.22 change 68% of the time and a 0.11 change 19%, so only a large interaction was testable.</span></div>
+    </div>
+  </div>
+  <div class="note"><b>Tercile drift.</b> The registered cutoffs come from the discovery seasons (<span data-b="definitions.tercile_cutoffs.0|1"></span> and <span data-b="definitions.tercile_cutoffs.1|1"></span>). Totals rose afterwards, so in the confirmation seasons only <span data-b="D.shLow|pct1"></span> of games fall in the low tercile and <span data-b="D.shHigh|pct1"></span> in the high one. The grid is read with that in mind; the within-season version at the bottom removes the drift and says the same thing. Holm correction is pending until all 8 angles are in; the raw p is far from 0.05.</div>
+</section>
+
+<section id="grid">
+  <h2>1 · The 3×3 grid</h2>
+  <p>Each cell shows the mean r with its 95% interval, the under rate and the number of games. Tercile cutoffs and spread edges (0-5, 5-10, 10+) were fixed before looking.</p>
+  <div class="cols">
+    <div class="chartbox"><h3>Discovery 2019-20 to 2021-22</h3><div class="sub">Mean of actual − opening total, by spread bucket, one series per total tercile.</div><div id="c-disc"></div></div>
+    <div class="chartbox"><h3>Confirmation 2022-23 to 2025-26</h3><div class="sub">Same cells. The low-total cells are small after the drift.</div><div id="c-conf"></div></div>
+  </div>
+  <h3>Discovery</h3><div class="scroll"><table id="t-grid-d"></table></div>
+  <h3>Confirmation</h3><div class="scroll"><table id="t-grid-c"></table></div>
+  <p>Five of the six tercile rows rise with the spread, which is the E14 effect (the exception is the low-total row in confirmation, which dips between 0-5 and 5-10 before its 10+ cell), and no tercile stands out. The 10+ cells are the thinnest (117 to 582 games per cell in confirmation), so their intervals are wide. The registered contrast, mean r in the (10+, high total) cell minus the (10+, low total) cell, is <span data-b="D.contrC.diff|s2"></span> in confirmation (interval <span data-b="D.contrC.lo|s2"></span> to <span data-b="D.contrC.hi|s2"></span>) and <span data-b="D.contrD.diff|s2"></span> in discovery (interval <span data-b="D.contrD.lo|s2"></span> to <span data-b="D.contrD.hi|s2"></span>). The point estimates say low-total blowouts go over <i>more</i>, but neither interval excludes zero.</p>
+  <details><summary>Within-season terciles (sensitivity, removes the drift)</summary>
+    <div class="scroll" style="margin-top:8px"><table id="t-grid-ws"></table></div></details>
+</section>
+
+<section id="reg">
+  <h2>2 · The registered regression</h2>
+  <p>r on |spread|, total (centred on the discovery mean), their product and season dummies, fitted separately in each period.</p>
+  <div class="scroll"><table id="t-reg"></table></div>
+  <div class="chartbox">
+    <h3>Slope of r on |spread|, evaluated at three totals</h3>
+    <div class="sub">16th, 50th and 84th percentile of the total in each period. 95% intervals from resampling game days. A flat line means no interaction.</div>
+    <div id="c-slopes"></div>
+  </div>
+  <p>The spread effect is positive at every total, and the interval for the high-total slope is not different from the low-total one. Centring on the within-season mean instead gives product coefficients of <span data-b="D.wsD|s3"></span> (discovery) and <span data-b="D.wsC|s3"></span> (confirmation), also null. Without 2019-20 and 2020-21: <span data-b="D.nc1|s3"></span> (2021-22 only) and <span data-b="D.nc2|s3"></span> (pooled 2021-22 to 2025-26).</p>
+</section>
+
+<section id="model">
+  <h2>3 · Does the deployed model use it?</h2>
+  <p>The same regression on the model's out-of-sample residual and lean, 2021-22 to 2025-26.</p>
+  <div class="scroll"><table id="t-model"></table></div>
+  <p>The residual's product coefficient is <span data-b="step3_reading.residual_product_coef|s3"></span> with p = <span data-b="step3_reading.p_two_sided|2"></span>: nothing to absorb. The feature test (layer c) was not run.</p>
+</section>
+
+<section id="bets">
+  <h2>4 · Betting test</h2>
+  <p>Each of the 9 cells on each side at -110, scored on the discovery seasons. The best cell with at least 150 bets was <b><span data-b="bet.chosen.side|raw"></span>, <span data-b="bet.chosen.total|raw"></span>, <span data-b="bet.chosen.spread|raw"></span> spread</b>, then applied unchanged to confirmation.</p>
+  <div class="scroll"><table id="t-bet"></table></div>
+  <details><summary>All 18 cell and side combinations</summary><div class="scroll" style="margin-top:8px"><table id="t-cells"></table></div></details>
+  <p style="margin-top:8px">With 18 combinations on 3,634 discovery games, the best looking one is the one that overfits: +7.0% in discovery became −2.4% in confirmation, and the interval spans zero in both.</p>
+</section>
+
+<section id="rules">
+  <h2>5 · Against the registered rules</h2>
+  <div class="scroll"><table id="t-rules"></table></div>
+  <h3 style="margin-top:8px">Limits</h3>
+  <ul class="plain">
+    <li>Power is weak for an interaction: the formula-based detection threshold is a slope change of about <span data-b="D.detect|2"></span> across the interquartile range of the total, and the simulation in <code>reports/experiments/POWER_CHECK/</code> found the registered rule catches that size about 68% of the time (false-positive rate 2.7%). A real but modest interaction is not ruled out.</li>
+    <li>The tercile cutoffs are the discovery ones as you specified; the confirmation distribution is skewed toward high totals, and the within-season version is an addition of mine.</li>
+    <li>Script: <code>experiments/e17_interaction.py</code>; numbers: <code>reports/experiments/E17_interaction/results.json</code>.</li>
+  </ul>
+</section>
+<footer>Day-cluster bootstrap, 1,000 draws, seed 20261017. Two-sided p = 2 × the smaller tail share of the draws.</footer>
+</main>
+
+<script>
+const R = {"definitions": {"discovery_mean_total": 222.38070996147496, "tercile_cutoffs": [218.5, 226.0], "abs_spread_edges": [0, 5, 10, "inf"]}, "grid": [{"period": "discovery", "total": "low total", "spread": "0-5", "games": 588, "share_of_period": 0.16180517336268574, "mean_r": -0.28316326530612246, "mean_r_lo": -1.5681187524801117, "mean_r_hi": 1.1051443522264068, "under_rate": 0.5224137931034483, "under_lo": 0.4807344380352466, "under_hi": 0.5596320921985816}, {"period": "discovery", "total": "low total", "spread": "5-10", "games": 444, "share_of_period": 0.12217941662080352, "mean_r": 0.9211711711711712, "mean_r_lo": -0.6375956655324767, "mean_r_hi": 2.7399034238181477, "under_rate": 0.4660633484162896, "under_lo": 0.4177763713080169, "under_hi": 0.5101158147986998}, {"period": "discovery", "total": "low total", "spread": "10+", "games": 126, "share_of_period": 0.03467253714914695, "mean_r": 3.0277777777777777, "mean_r_lo": 0.11121462005412129, "mean_r_hi": 6.165682727832512, "under_rate": 0.464, "under_lo": 0.37735849056603776, "under_hi": 0.545504313205043}, {"period": "discovery", "total": "mid total", "spread": "0-5", "games": 572, "share_of_period": 0.1574023115024766, "mean_r": -0.1896853146853147, "mean_r_lo": -1.836420043171291, "mean_r_hi": 1.4955765425436227, "under_rate": 0.5175438596491229, "under_lo": 0.4777463768115942, "under_hi": 0.5573599629265101}, {"period": "discovery", "total": "mid total", "spread": "5-10", "games": 495, "share_of_period": 0.13621353880022014, "mean_r": 0.39595959595959596, "mean_r_lo": -1.174952281007445, "mean_r_hi": 2.083859099510754, "under_rate": 0.48577235772357724, "under_lo": 0.4418144893899204, "under_hi": 0.5286073134574205}, {"period": "discovery", "total": "mid total", "spread": "10+", "games": 171, "share_of_period": 0.04705558613098514, "mean_r": 1.0058479532163742, "mean_r_lo": -1.4023373769338958, "mean_r_hi": 3.6596535326086954, "under_rate": 0.46107784431137727, "under_lo": 0.3792950418281983, "under_hi": 0.5366082317073171}, {"period": "discovery", "total": "high total", "spread": "0-5", "games": 554, "share_of_period": 0.15244909190974132, "mean_r": -0.990072202166065, "mean_r_lo": -2.5199208686050794, "mean_r_hi": 0.48962765957446786, "under_rate": 0.5108695652173914, "under_lo": 0.47233059878022055, "under_hi": 0.5498324742268041}, {"period": "discovery", "total": "high total", "spread": "5-10", "games": 485, "share_of_period": 0.13346175013758943, "mean_r": -0.2175257731958763, "mean_r_lo": -2.040364335545986, "mean_r_hi": 1.415573884499833, "under_rate": 0.5247933884297521, "under_lo": 0.48544289313457906, "under_hi": 0.568466074996158}, {"period": "discovery", "total": "high total", "spread": "10+", "games": 199, "share_of_period": 0.05476059438635113, "mean_r": 1.6381909547738693, "mean_r_lo": -1.1716227914712618, "mean_r_hi": 4.130343293117794, "under_rate": 0.4387755102040816, "under_lo": 0.3707851466155111, "under_hi": 0.5026752578825867}, {"period": "confirmation", "total": "low total", "spread": "0-5", "games": 332, "share_of_period": 0.0630818924567737, "mean_r": 0.7575301204819277, "mean_r_lo": -1.0872131147540984, "mean_r_hi": 2.3871220261895236, "under_rate": 0.44242424242424244, "under_lo": 0.3906421621804868, "under_hi": 0.4939740866610025}, {"period": "confirmation", "total": "low total", "spread": "5-10", "games": 260, "share_of_period": 0.049401482044461334, "mean_r": 0.5076923076923077, "mean_r_lo": -1.8184885031074622, "mean_r_hi": 2.753861804173682, "under_rate": 0.48846153846153845, "under_lo": 0.42528270277816554, "under_hi": 0.5519720430107526}, {"period": "confirmation", "total": "low total", "spread": "10+", "games": 117, "share_of_period": 0.0222306669200076, "mean_r": 4.064102564102564, "mean_r_lo": 0.9744426336375489, "mean_r_hi": 7.513166785206259, "under_rate": 0.4224137931034483, "under_lo": 0.33869781783681213, "under_hi": 0.5092881944444445}, {"period": "confirmation", "total": "mid total", "spread": "0-5", "games": 632, "share_of_period": 0.12008360250807525, "mean_r": -0.011867088607594937, "mean_r_lo": -1.433955040165846, "mean_r_hi": 1.4832735803112327, "under_rate": 0.512779552715655, "under_lo": 0.47373725313024395, "under_hi": 0.5500852654964173}, {"period": "confirmation", "total": "mid total", "spread": "5-10", "games": 533, "share_of_period": 0.10127303819114573, "mean_r": 0.9559099437148217, "mean_r_lo": -0.6634406909379784, "mean_r_hi": 2.3234584030100334, "under_rate": 0.4896810506566604, "under_lo": 0.4473600579839429, "under_hi": 0.5308885573885574}, {"period": "confirmation", "total": "mid total", "spread": "10+", "games": 219, "share_of_period": 0.04161124833745013, "mean_r": 1.3995433789954337, "mean_r_lo": -0.6466805403930131, "mean_r_hi": 3.496233159899656, "under_rate": 0.45871559633027525, "under_lo": 0.3922343398024606, "under_hi": 0.5215741555242787}, {"period": "confirmation", "total": "high total", "spread": "0-5", "games": 1379, "share_of_period": 0.26201786053581605, "mean_r": -0.09064539521392313, "mean_r_lo": -0.9992369316374661, "mean_r_hi": 0.9216662716211452, "under_rate": 0.5168128654970761, "under_lo": 0.490766855399056, "under_hi": 0.5412120869542422}, {"period": "confirmation", "total": "high total", "spread": "5-10", "games": 1209, "share_of_period": 0.2297168915067452, "mean_r": 0.7315963606286187, "mean_r_lo": -0.36519888012670615, "mean_r_hi": 1.767034008190156, "under_rate": 0.4975124378109453, "under_lo": 0.46821806864002347, "under_hi": 0.5268982855475216}, {"period": "confirmation", "total": "high total", "spread": "10+", "games": 582, "share_of_period": 0.11058331749952499, "mean_r": 1.2646048109965635, "mean_r_lo": -0.2379267357115458, "mean_r_hi": 2.8250938767946305, "under_rate": 0.48877374784110533, "under_lo": 0.44383189398451456, "under_hi": 0.5323123909249564}], "grid_within_season_terciles": [{"period": "discovery", "total": "low total", "spread": "0-5", "games": 578, "share_of_period": 0.15905338470005503, "mean_r": -0.26038062283737023, "mean_r_lo": -1.5849946751041826, "mean_r_hi": 1.0459089413021336, "under_rate": 0.5227272727272727, "under_lo": 0.48468190513562565, "under_hi": 0.5614783796626277}, {"period": "discovery", "total": "low total", "spread": "5-10", "games": 459, "share_of_period": 0.1263070996147496, "mean_r": 0.710239651416122, "mean_r_lo": -0.808034929795848, "mean_r_hi": 2.4593022780254383, "under_rate": 0.4692982456140351, "under_lo": 0.4230676328502415, "under_hi": 0.5117776806997697}, {"period": "discovery", "total": "low total", "spread": "10+", "games": 131, "share_of_period": 0.0360484314804623, "mean_r": 4.419847328244275, "mean_r_lo": 1.6160387323943664, "mean_r_hi": 7.359230795563466, "under_rate": 0.4307692307692308, "under_lo": 0.3491971207087486, "under_hi": 0.5076953125}, {"period": "discovery", "total": "mid total", "spread": "0-5", "games": 566, "share_of_period": 0.15575123830489818, "mean_r": -0.1704946996466431, "mean_r_lo": -1.7462754946395886, "mean_r_hi": 1.3409041539634134, "under_rate": 0.5142348754448398, "under_lo": 0.47387387387387386, "under_hi": 0.5555555555555556}, {"period": "discovery", "total": "mid total", "spread": "5-10", "games": 468, "share_of_period": 0.12878370941111722, "mean_r": 0.6677350427350427, "mean_r_lo": -1.0557544416812297, "mean_r_hi": 2.3616073233280273, "under_rate": 0.4881720430107527, "under_lo": 0.4385430514013515, "under_hi": 0.5355574712643678}, {"period": "discovery", "total": "mid total", "spread": "10+", "games": 171, "share_of_period": 0.04705558613098514, "mean_r": -0.23391812865497075, "mean_r_lo": -2.8389021517697985, "mean_r_hi": 2.3182416267942583, "under_rate": 0.49700598802395207, "under_lo": 0.42244261340899997, "under_hi": 0.5674490870786517}, {"period": "discovery", "total": "high total", "spread": "0-5", "games": 570, "share_of_period": 0.15685195376995048, "mean_r": -1.0114035087719297, "mean_r_lo": -2.572442850938666, "mean_r_hi": 0.547445841351596, "under_rate": 0.5140845070422535, "under_lo": 0.4753625492287496, "under_hi": 0.554760277229606}, {"period": "discovery", "total": "high total", "spread": "5-10", "games": 497, "share_of_period": 0.1367638965327463, "mean_r": -0.2796780684104628, "mean_r_lo": -2.0418316518169113, "mean_r_hi": 1.3268101875044729, "under_rate": 0.5191146881287726, "under_lo": 0.4788667852327816, "under_hi": 0.5600060240963856}, {"period": "discovery", "total": "high total", "spread": "10+", "games": 194, "share_of_period": 0.053384700055035775, "mean_r": 1.7551546391752577, "mean_r_lo": -1.188602180339985, "mean_r_hi": 4.385217453699507, "under_rate": 0.4293193717277487, "under_lo": 0.360453488372093, "under_hi": 0.49693858098506116}, {"period": "confirmation", "total": "low total", "spread": "0-5", "games": 806, "share_of_period": 0.15314459433783015, "mean_r": 0.5607940446650124, "mean_r_lo": -0.7107104342148423, "mean_r_hi": 1.7267259436063016, "under_rate": 0.48872180451127817, "under_lo": 0.4546470962506278, "under_hi": 0.5200539226855017}, {"period": "confirmation", "total": "low total", "spread": "5-10", "games": 625, "share_of_period": 0.11875356260687821, "mean_r": 1.2472, "mean_r_lo": -0.18480822458270105, "mean_r_hi": 2.576614090140948, "under_rate": 0.4784, "under_lo": 0.44272322573011774, "under_hi": 0.519084577235377}, {"period": "confirmation", "total": "low total", "spread": "10+", "games": 269, "share_of_period": 0.05111153334600038, "mean_r": 2.5780669144981414, "mean_r_lo": 0.4622565022146613, "mean_r_hi": 4.736909090909091, "under_rate": 0.458955223880597, "under_lo": 0.3992248062015504, "under_hi": 0.5198489010989011}, {"period": "confirmation", "total": "mid total", "spread": "0-5", "games": 729, "share_of_period": 0.13851415542466275, "mean_r": -0.3792866941015089, "mean_r_lo": -1.6958664617866572, "mean_r_hi": 0.8352101443030975, "under_rate": 0.5048409405255878, "under_lo": 0.4695290858725762, "under_hi": 0.5417415272141264}, {"period": "confirmation", "total": "mid total", "spread": "5-10", "games": 692, "share_of_period": 0.13148394451833556, "mean_r": 1.255057803468208, "mean_r_lo": -0.0929239421544172, "mean_r_hi": 2.652579286655373, "under_rate": 0.48554913294797686, "under_lo": 0.44999320652173913, "under_hi": 0.5218028603587945}, {"period": "confirmation", "total": "mid total", "spread": "10+", "games": 300, "share_of_period": 0.057001710051301537, "mean_r": 1.1016666666666666, "mean_r_lo": -1.0237055324386097, "mean_r_hi": 3.2957343112683666, "under_rate": 0.468013468013468, "under_lo": 0.4060243968801016, "under_hi": 0.5235141065830721}, {"period": "confirmation", "total": "high total", "spread": "0-5", "games": 808, "share_of_period": 0.15352460573817214, "mean_r": -0.06992574257425743, "mean_r_lo": -1.256041901370488, "mean_r_hi": 1.1888810405709818, "under_rate": 0.5217932752179327, "under_lo": 0.4867464548459324, "under_hi": 0.5558095010657101}, {"period": "confirmation", "total": "high total", "spread": "5-10", "games": 685, "share_of_period": 0.13015390461713852, "mean_r": -0.1781021897810219, "mean_r_lo": -1.7040857712765958, "mean_r_hi": 1.2389941786667833, "under_rate": 0.5175953079178885, "under_lo": 0.4805296983935811, "under_hi": 0.557026531492666}, {"period": "confirmation", "total": "high total", "spread": "10+", "games": 349, "share_of_period": 0.06631198935968079, "mean_r": 1.4154727793696276, "mean_r_lo": -0.49043269230769226, "mean_r_hi": 3.3954490836266533, "under_rate": 0.4885057471264368, "under_lo": 0.4342762725779967, "under_hi": 0.5432123067949839}], "tercile_shares": {"discovery": [0.3186571271326362, 0.3406714364336819, 0.3406714364336819], "confirmation": [0.13471404142124263, 0.2629678890366711, 0.6023180695420862]}, "step2": {"discovery": {"intercept": {"coef": -0.11473314835366914, "lo": -1.5193050165254338, "hi": 1.3442419194114446, "p_two_sided": 0.8571428571428571}, "abs_spread": {"coef": 0.1951251861994975, "lo": 0.03563832503101109, "hi": 0.36463812264234685, "p_two_sided": 0.025974025974025976}, "T": {"coef": -0.09133150980305055, "lo": -0.2362665038049865, "hi": 0.04226790099770484, "p_two_sided": 0.2057942057942058}, "abs_spread_x_T": {"coef": 0.008113019015679755, "lo": -0.013782174202706263, "hi": 0.03135840127534623, "p_two_sided": 0.4755244755244755}, "n": 3634, "spread_slope_at_total_percentiles": {"T at 16th percentile (214.5 total)": {"slope": 0.13118883642499427, "lo": -0.10577233612246768, "hi": 0.3770557907285285}, "T at 50th percentile (222.2 total)": {"slope": 0.19406473379651237, "lo": 0.03417296221677739, "hi": 0.36383661789905447}, "T at 84th percentile (230.5 total)": {"slope": 0.2609971406758703, "lo": -0.0034211244936932722, "hi": 0.5081395252037267}}}, "confirmation": {"intercept": {"coef": -0.14568773688647715, "lo": -1.3557369232748964, "hi": 1.0537260076105706, "p_two_sided": 0.8111888111888111}, "abs_spread": {"coef": 0.1848743782941002, "lo": 0.04582114117289287, "hi": 0.32225625446341627, "p_two_sided": 0.007992007992007992}, "T": {"coef": -0.0261554141145653, "lo": -0.1212122172331168, "hi": 0.07227413997802346, "p_two_sided": 0.6133866133866134}, "abs_spread_x_T": {"coef": -0.0030627195063326258, "lo": -0.016855829574056173, "hi": 0.009701574050301122, "p_two_sided": 0.6513486513486514}, "n": 5263, "spread_slope_at_total_percentiles": {"T at 16th percentile (219.0 total)": {"slope": 0.1952285446383626, "lo": 0.02834519488414485, "hi": 0.35703392804855383}, "T at 50th percentile (228.0 total)": {"slope": 0.16766406908136894, "lo": 0.03685634413829348, "hi": 0.2966116117356335}, "T at 84th percentile (236.5 total)": {"slope": 0.14163095327754163, "lo": -0.0332481217931313, "hi": 0.3100628031492271}}, "detectable": {"se_product": 0.006774847863356453, "iqr_total": 11.0, "min_detectable_slope_change_over_iqr": 0.2086653141913787}}, "registered pooled": {"intercept": {"coef": -0.008070163877060351, "lo": -1.2237373130852212, "hi": 1.1793418632314756, "p_two_sided": 0.9530469530469531}, "abs_spread": {"coef": 0.179807163029779, "lo": 0.07796342214915822, "hi": 0.286755393033698, "p_two_sided": 0.000999000999000999}, "T": {"coef": -0.04412764862609154, "lo": -0.12618635610825113, "hi": 0.03519907025382859, "p_two_sided": 0.3096903096903097}, "abs_spread_x_T": {"coef": -0.00021580931617294874, "lo": -0.011423424628448165, "hi": 0.011042348362365135, "p_two_sided": 0.9410589410589411}, "n": 8897, "spread_slope_at_total_percentiles": {"T at 16th percentile (216.5 total)": {"slope": 0.18107627502517637, "lo": 0.047100848384467334, "hi": 0.3254314255669663}, "T at 50th percentile (225.5 total)": {"slope": 0.17913399117961984, "lo": 0.07744759391066712, "hi": 0.2834855728401175}, "T at 84th percentile (234.5 total)": {"slope": 0.17719170733406328, "lo": 0.03269172663991427, "hi": 0.3221284713749704}}}, "contrast_10plus_top_minus_bottom_tercile": {"discovery": {"diff": -1.3895868230039083, "lo": -5.710611914117966, "hi": 2.408571117073156}, "confirmation": {"diff": -2.7994977531060004, "lo": -6.2942820025417445, "hi": 0.687322657696376}}}, "step2_reading": {"same_sign_both_periods": false, "confirmation_p_two_sided": 0.6513486513486514, "example_sign_positive_in_confirmation": false, "H_INT_supported_raw": false, "holm": "pending: family of 8 incomplete"}, "step2_sensitivity_within_season_total": {"discovery": {"coef": 0.007199675965431988, "lo": -0.014625701916898706, "hi": 0.03084230294919939, "p_two_sided": 0.5474525474525475}, "confirmation": {"coef": -0.004405987062651087, "lo": -0.01879910718253451, "hi": 0.00868276113111379, "p_two_sided": 0.5554445554445554}}, "sensitivity_no_covid_seasons": {"2021-22 only": {"coef": 0.0003301581754537543, "lo": -0.031102299393089356, "hi": 0.030644258698438967, "p_two_sided": 0.945054945054945}, "pooled 2021-22..2025-26": {"coef": -0.0023548542922963273, "lo": -0.014620962771143416, "hi": 0.00900537517689535, "p_two_sided": 0.6913086913086913}}, "step3": {"2021-22..2025-26 (all OOS)": {"model_resid": {"intercept": {"coef": 0.5697181226697832, "lo": -0.7072884351263146, "hi": 1.8104457172263804, "p_two_sided": 0.3936063936063936}, "abs_spread": {"coef": 0.08283710174370316, "lo": -0.04357956233966976, "hi": 0.2065229318326932, "p_two_sided": 0.1998001998001998}, "T": {"coef": 0.18540019394477733, "lo": 0.0885901425252871, "hi": 0.2740753438536712, "p_two_sided": 0.000999000999000999}, "abs_spread_x_T": {"coef": -0.0002122175453508609, "lo": -0.012629830061353636, "hi": 0.01244077968918475, "p_two_sided": 0.9050949050949051}, "n": 6583}, "model_lean": {"intercept": {"coef": -1.6025600003666596, "lo": -1.822879219260396, "hi": -1.3769246441776717, "p_two_sided": 0.000999000999000999}, "abs_spread": {"coef": 0.09253643635130043, "lo": 0.07285854908237224, "hi": 0.11424569758784142, "p_two_sided": 0.000999000999000999}, "T": {"coef": -0.2073977050558143, "lo": -0.22533144553470388, "hi": -0.18881525424271448, "p_two_sided": 0.000999000999000999}, "abs_spread_x_T": {"coef": -0.002135804216540699, "lo": -0.004538547654083738, "hi": 0.0001382158116132311, "p_two_sided": 0.06793206793206794}, "n": 6583}, "r": {"intercept": {"coef": -1.032841877696882, "lo": -2.2812077684976493, "hi": 0.20420294484688878, "p_two_sided": 0.11188811188811189}, "abs_spread": {"coef": 0.17537353809500403, "lo": 0.05112900216228956, "hi": 0.2986273103077713, "p_two_sided": 0.003996003996003996}, "T": {"coef": -0.02199751111103738, "lo": -0.11573553694403668, "hi": 0.06900095632615502, "p_two_sided": 0.6773226773226774}, "abs_spread_x_T": {"coef": -0.0023480217618914883, "lo": -0.014163513896129304, "hi": 0.009832831470470232, "p_two_sided": 0.6573426573426573}, "n": 6583}}, "confirmation 2022-23..2025-26": {"model_resid": {"intercept": {"coef": 0.7134807022881439, "lo": -0.5618119022417792, "hi": 1.9275550237755081, "p_two_sided": 0.26373626373626374}, "abs_spread": {"coef": 0.08882916584077108, "lo": -0.06055239652022591, "hi": 0.23451570220776125, "p_two_sided": 0.21578421578421578}, "T": {"coef": 0.1927674945728397, "lo": 0.08824315457245566, "hi": 0.29324479511149326, "p_two_sided": 0.000999000999000999}, "abs_spread_x_T": {"coef": -0.0013704259675139743, "lo": -0.015192614003361107, "hi": 0.012616581469278687, "p_two_sided": 0.7932067932067932}, "n": 5260}, "model_lean": {"intercept": {"coef": -0.8588638090081335, "lo": -1.0837222236696824, "hi": -0.6072122644693668, "p_two_sided": 0.000999000999000999}, "abs_spread": {"coef": 0.09619001741796282, "lo": 0.07391508263977563, "hi": 0.11743532589275352, "p_two_sided": 0.000999000999000999}, "T": {"coef": -0.2191521849599978, "lo": -0.24000514813346663, "hi": -0.19916531142052366, "p_two_sided": 0.000999000999000999}, "abs_spread_x_T": {"coef": -0.0016850402611343258, "lo": -0.004291947024470084, "hi": 0.0008872919240052895, "p_two_sided": 0.2037962037962038}, "n": 5260}, "r": {"intercept": {"coef": -0.14538310671999538, "lo": -1.4682634478413426, "hi": 1.097406400361309, "p_two_sided": 0.8051948051948052}, "abs_spread": {"coef": 0.18501918325873476, "lo": 0.035833445651466386, "hi": 0.3278111749564886, "p_two_sided": 0.011988011988011988}, "T": {"coef": -0.026384690387157125, "lo": -0.12366709016114882, "hi": 0.0715841825404667, "p_two_sided": 0.6473526473526473}, "abs_spread_x_T": {"coef": -0.0030554662286484116, "lo": -0.016611533562176626, "hi": 0.010701557809764154, "p_two_sided": 0.5894105894105894}, "n": 5260}}}, "step3_reading": {"residual_product_coef": -0.0013704259675139743, "p_two_sided": 0.7932067932067932, "same_sign_as_market_confirmation": true, "layer_b_supported": false}, "layer_c_run": false, "bet": {"chosen": {"total": "high total", "spread": "10+", "side": "over"}, "cells": [{"total": "low total", "spread": "0-5", "side": "over", "discovery": {"roi": -8.70439084724799, "lo": -15.717199363816095, "hi": -0.8588047902778638, "bets": 588}, "confirmation": {"roi": 6.407447973713033, "lo": -3.377172635419756, "hi": 16.23491663259279, "bets": 332}}, {"total": "low total", "spread": "0-5", "side": "under", "discovery": {"roi": -0.26283240568954835, "lo": -8.141142115509414, "hi": 6.747593311940547, "bets": 588}, "confirmation": {"roi": -15.443592552026287, "lo": -25.27182999409386, "hi": -5.628848176036414, "bets": 332}}, {"total": "low total", "spread": "5-10", "side": "over", "discovery": {"roi": 1.924651924651925, "lo": -6.444114361278724, "hi": 11.12697092880019, "bets": 444}, "confirmation": {"roi": -2.3426573426573443, "lo": -14.467390029325516, "hi": 9.718756742350203, "bets": 260}}, {"total": "low total", "spread": "5-10", "side": "under", "discovery": {"roi": -10.974610974610977, "lo": -20.19765280297431, "hi": -2.6079527624993237, "bets": 444}, "confirmation": {"roi": -6.74825174825175, "lo": -18.809665833259302, "hi": 5.376480938416421, "bets": 260}}, {"total": "low total", "spread": "10+", "side": "over", "discovery": {"roi": 2.3088023088023086, "lo": -13.040215313611112, "hi": 18.73715415019762, "bets": 126}, "confirmation": {"roi": 10.178710178710176, "lo": -6.273737373737374, "hi": 26.000909090909087, "bets": 117}}, {"total": "low total", "spread": "10+", "side": "under", "discovery": {"roi": -11.327561327561327, "lo": -27.687477542220627, "hi": 4.08159930275628, "bets": 126}, "confirmation": {"roi": -19.19191919191919, "lo": -35.055111492281306, "hi": -2.7696969696969753, "bets": 117}}, {"total": "mid total", "spread": "0-5", "side": "over", "discovery": {"roi": -7.8671328671328675, "lo": -15.421752812534764, "hi": -0.2948521907585517, "bets": 572}, "confirmation": {"roi": -6.918872266973534, "lo": -14.029598393476665, "hi": 0.4644577627735766, "bets": 632}}, {"total": "mid total", "spread": "0-5", "side": "under", "discovery": {"roi": -1.1919898283534647, "lo": -8.729312998162053, "hi": 6.374398884557377, "bets": 572}, "confirmation": {"roi": -2.0857307249712314, "lo": -9.480477114964847, "hi": 4.9726087982073315, "bets": 632}}, {"total": "mid total", "spread": "5-10", "side": "over", "discovery": {"roi": -1.8181818181818188, "lo": -9.929951137142918, "hi": 6.49978395668815, "bets": 495}, "confirmation": {"roi": -2.5754733071806246, "lo": -10.442360955997325, "hi": 5.503988930338169, "bets": 533}}, {"total": "mid total", "spread": "5-10", "side": "under", "discovery": {"roi": -7.217630853994489, "lo": -15.58726698761459, "hi": 0.9089103438418487, "bets": 495}, "confirmation": {"roi": -6.515435783728468, "lo": -14.594898021247268, "hi": 1.3514518650882261, "bets": 533}}, {"total": "mid total", "spread": "10+", "side": "over", "discovery": {"roi": 2.817650186071237, "lo": -11.070196991249624, "hi": 17.884952004517213, "bets": 171}, "confirmation": {"roi": 3.3208800332087978, "lo": -8.663259487218696, "hi": 15.982001395291217, "bets": 219}}, {"total": "mid total", "spread": "10+", "side": "under", "discovery": {"roi": -11.695906432748536, "lo": -26.821665494434377, "hi": 2.345636819321023, "bets": 171}, "confirmation": {"roi": -12.37027812370278, "lo": -24.98988169364882, "hi": -0.42136072714692796, "bets": 219}}, {"total": "high total", "spread": "0-5", "side": "over", "discovery": {"roi": -6.596652445027897, "lo": -13.987098427887906, "hi": 0.7326170226689857, "bets": 554}, "confirmation": {"roi": -7.693321906519876, "lo": -12.301336373083306, "hi": -2.7511519784247076, "bets": 1379}}, {"total": "high total", "spread": "0-5", "side": "under", "discovery": {"roi": -2.461437479488021, "lo": -9.797563383033626, "hi": 4.94270289097875, "bets": 554}, "confirmation": {"roi": -1.3250708682180763, "lo": -6.260872581193376, "hi": 3.292785813367555, "bets": 1379}}, {"total": "high total", "spread": "5-10", "side": "over", "discovery": {"roi": -9.259606373008436, "lo": -17.530146009007407, "hi": -1.7662737555699484, "bets": 485}, "confirmation": {"roi": -4.0604556733588995, "lo": -9.662015591302442, "hi": 1.5175497726210638, "bets": 1209}}, {"total": "high total", "spread": "5-10", "side": "under", "discovery": {"roi": 0.18744142455482626, "lo": -7.324111665460641, "hi": 8.48867782869704, "bets": 485}, "confirmation": {"roi": -5.007895330475975, "lo": -10.575264412741488, "hi": 0.5887899021963917, "bets": 1209}}, {"total": "high total", "spread": "10+", "side": "over", "discovery": {"roi": 7.035175879396983, "lo": -4.959770868861782, "hi": 19.783468613944095, "bets": 199}, "confirmation": {"roi": -2.389878163074039, "lo": -10.67561166824552, "hi": 6.1775475120472105, "bets": 582}}, {"total": "high total", "spread": "10+", "side": "under", "discovery": {"roi": -15.989036089538603, "lo": -28.686908445517783, "hi": -3.96784904338041, "bets": 199}, "confirmation": {"roi": -6.654170571696345, "lo": -15.26845660295631, "hi": 1.6174109038643643, "bets": 582}}], "discovery": {"over chosen cell, opening @ -110": {"roi": 7.035175879396983, "lo": -4.959770868861782, "hi": 19.783468613944095, "bets": 199}, "over chosen cell, closing @ -110": {"roi": 2.5493025493025483, "lo": -11.218496749487935, "hi": 16.469139695383145, "bets": 189}, "over chosen cell, best book": {"roi": 10.784726820694354, "lo": -2.038603170740994, "hi": 24.005093727785955, "bets": 199}, "over all games (control)": {"roi": -4.3027968179316565, "lo": -7.543827194076244, "hi": -1.0756741158995669, "bets": 3634}, "under all games (control)": {"roi": -4.723069995497073, "lo": -7.949320365044176, "hi": -1.4793303157593867, "bets": 3634}}, "confirmation": {"over chosen cell, opening @ -110": {"roi": -2.389878163074039, "lo": -10.67561166824552, "hi": 6.1775475120472105, "bets": 582}, "over chosen cell, closing @ -110": {"roi": -2.561699468915965, "lo": -10.582970127019932, "hi": 5.798021210886363, "bets": 582}, "over chosen cell, best book": {"roi": 0.8341951792886395, "lo": -7.411703381976734, "hi": 9.620996026007425, "bets": 582}, "over all games (control)": {"roi": -3.6515640923773156, "lo": -6.097491269815362, "hi": -0.97110291610029, "bets": 5263}, "under all games (control)": {"roi": -5.3927072357625265, "lo": -8.055433917025034, "hi": -2.956116485414531, "bets": 5263}}}};
+const fmt = {
+  '0': v => v.toFixed(0), '1': v => v.toFixed(1), '2': v => v.toFixed(2), '3': v => v.toFixed(3), 's2': v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(2), 's3': v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(3),
+  'pct1': v => (v * 100).toFixed(1) + '%', 'int': v => Math.round(v).toLocaleString('en-US'), 'roi': v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1) + '%', 'raw': v => String(v)
+};
+const path = (o, p) => p.split('.').reduce((a, k) => (a == null ? a : a[k]), o);
+const s2 = R.step2, CONF = 'confirmation 2022-23..2025-26';
+const slopeKey = (per, i) => Object.keys(s2[per].spread_slope_at_total_percentiles)[i];
+R.D = { pooledMid: s2['registered pooled'].abs_spread.coef, pc: s2.confirmation.abs_spread_x_T, pd: s2.discovery.abs_spread_x_T,
+  slopeLo: s2['registered pooled'].spread_slope_at_total_percentiles[slopeKey('registered pooled', 0)].slope, slopeHi: s2['registered pooled'].spread_slope_at_total_percentiles[slopeKey('registered pooled', 2)].slope,
+  detect: s2.confirmation.detectable.min_detectable_slope_change_over_iqr, shLow: R.tercile_shares.confirmation[0], shHigh: R.tercile_shares.confirmation[2],
+  contrC: s2.contrast_10plus_top_minus_bottom_tercile.confirmation, contrD: s2.contrast_10plus_top_minus_bottom_tercile.discovery,
+  wsD: R.step2_sensitivity_within_season_total.discovery.coef, wsC: R.step2_sensitivity_within_season_total.confirmation.coef,
+  nc1: R.sensitivity_no_covid_seasons['2021-22 only'].coef, nc2: R.sensitivity_no_covid_seasons['pooled 2021-22..2025-26'].coef };
+document.querySelectorAll('[data-b]').forEach(el => { const [p, f] = el.dataset.b.split('|'); const v = path(R, p); el.textContent = v == null ? '?' : (f ? fmt[f](v) : String(v)); });
+function table(id, head, rows, hl) {
+  const t = document.getElementById(id);
+  t.innerHTML = '<thead><tr>' + head.map(h => `<th>${h}</th>`).join('') + '</tr></thead><tbody>' + rows.map((r, i) => `<tr class="${hl && hl(i) ? 'hl' : ''}">` + r.map(c => `<td>${c}</td>`).join('') + '</tr>').join('') + '</tbody>';
+}
+const ci = (lo, hi, f) => `${f(lo)} to ${f(hi)}`;
+const pill = (ok, t) => `<span class="pill ${ok ? 'pass' : 'fail'}">${ok ? '✓' : '✗'} ${t || (ok ? 'passes' : 'fails')}</span>`;
+const pct = v => (v * 100).toFixed(1) + '%';
+const TL = ['low total', 'mid total', 'high total'], SB = ['0-5', '5-10', '10+'];
+function gridTable(id, rows, per) {
+  table(id, ['Total tercile', ...SB.map(s => `|Spread| ${s}`)], TL.map(t => [t, ...SB.map(s => {
+    const c = rows.find(r => r.period === per && r.total === t && r.spread === s);
+    return `<b>${fmt.s2(c.mean_r)}</b> (${ci(c.mean_r_lo, c.mean_r_hi, fmt.s1 || fmt.s2)})<br><span style="color:var(--muted)">under ${pct(c.under_rate)} · ${fmt.int(c.games)} games</span>`;
+  })]));
+}
+gridTable('t-grid-d', R.grid, 'discovery'); gridTable('t-grid-c', R.grid, 'confirmation');
+table('t-grid-ws', ['Period · tercile', ...SB.map(s => `|Spread| ${s}`)], ['discovery', 'confirmation'].flatMap(p => TL.map(t => [`${p} · ${t}`, ...SB.map(s => {
+  const c = R.grid_within_season_terciles.find(r => r.period === p && r.total === t && r.spread === s);
+  return `${fmt.s2(c.mean_r)} · under ${pct(c.under_rate)} · ${c.games}`;
+})])));
+
+const cf = x => `${fmt.s3(x.coef)} (${ci(x.lo, x.hi, fmt.s3)})`;
+table('t-reg', ['Term', 'Discovery (95%)', 'Confirmation (95%)', 'Registered seasons pooled (95%)'], [
+  ['|Spread| (at the discovery-mean total)', cf(s2.discovery.abs_spread), cf(s2.confirmation.abs_spread), cf(s2['registered pooled'].abs_spread)],
+  ['Total, per point above the discovery mean', cf(s2.discovery.T), cf(s2.confirmation.T), cf(s2['registered pooled'].T)],
+  ['|Spread| × total (the registered statistic)', cf(s2.discovery.abs_spread_x_T), cf(s2.confirmation.abs_spread_x_T), cf(s2['registered pooled'].abs_spread_x_T)],
+  ['Two-sided p for the product', fmt['3'](s2.discovery.abs_spread_x_T.p_two_sided), fmt['3'](s2.confirmation.abs_spread_x_T.p_two_sided), fmt['3'](s2['registered pooled'].abs_spread_x_T.p_two_sided)],
+  ['Games', fmt.int(s2.discovery.n), fmt.int(s2.confirmation.n), fmt.int(s2['registered pooled'].n)]], i => i === 2);
+
+const m3 = R.step3;
+table('t-model', ['Product coefficient (95%), two-sided p', 'All OOS seasons (2021-22 to 2025-26)', 'Confirmation seasons'],
+  [['model_resid', 'Model residual: actual − model prediction'], ['model_lean', 'Model lean: model prediction − opening total'], ['r', 'Market residual: actual − opening total']].map(([k, lab]) => [lab,
+    ...['2021-22..2025-26 (all OOS)', CONF].map(per => { const x = m3[per][k].abs_spread_x_T; return `${fmt.s3(x.coef)} (${ci(x.lo, x.hi, fmt.s3)}), p = ${fmt['3'](x.p_two_sided)}`; })]), i => i === 0);
+
+const bt = R.bet, rc = r => `${fmt.roi(r.roi)} (${ci(r.lo, r.hi, fmt.roi)})`;
+table('t-bet', ['Strategy', 'Discovery: bets', 'Discovery: return (95%)', 'Confirmation: bets', 'Confirmation: return (95%)'],
+  Object.keys(bt.discovery).map(k => [k, fmt.int(bt.discovery[k].bets), rc(bt.discovery[k]), fmt.int(bt.confirmation[k].bets), rc(bt.confirmation[k])]), i => i === 0);
+table('t-cells', ['Cell and side', 'Discovery: bets', 'Discovery return', 'Confirmation: bets', 'Confirmation return'],
+  bt.cells.map(c => [`${c.side}, ${c.total}, ${c.spread}`, c.discovery.bets, fmt.roi(c.discovery.roi), c.confirmation.bets, fmt.roi(c.confirmation.roi)]));
+
+const rd = R.step2_reading, r3 = R.step3_reading;
+table('t-rules', ['Registered condition', 'Value', 'Result'], [
+  ['Product coefficient has the same sign in both periods', `${fmt.s3(s2.discovery.abs_spread_x_T.coef)} / ${fmt.s3(s2.confirmation.abs_spread_x_T.coef)}`, pill(rd.same_sign_both_periods)],
+  ['Confirmation two-sided p < 0.05', fmt['3'](rd.confirmation_p_two_sided), pill(rd.confirmation_p_two_sided < 0.05)],
+  ['H_INT supported (raw)', '', pill(rd.H_INT_supported_raw, rd.H_INT_supported_raw ? 'supported' : 'not supported')],
+  ['Example sign (product positive) in confirmation', fmt.s3(s2.confirmation.abs_spread_x_T.coef), pill(rd.example_sign_positive_in_confirmation)],
+  ['Model residual: same sign and p < 0.05 (layer b)', `p = ${fmt['3'](r3.p_two_sided)}`, pill(r3.layer_b_supported)],
+  ['Feature test (layer c)', '', '<span class="pill info">not run</span>'], ['Holm across 8 angles', '', '<span class="pill info">pending</span>']], i => i === 2);
+
+const NS = 'http://www.w3.org/2000/svg';
+function ticks(lo, hi, n) {
+  const raw = (hi - lo) / n, p = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / p;
+  const step = (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p, out = [];
+  for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) out.push(+v.toFixed(10));
+  return out;
+}
+function dotChart(el, o) {
+  const W = 720, H = o.h || 290, m = { l: 58, r: 16, t: o.bands ? 30 : 14, b: 44 }, n = o.cats.length, S = o.series.length;
+  let lo = Infinity, hi = -Infinity;
+  o.series.forEach(s => s.pts.forEach(p => { lo = Math.min(lo, p.lo); hi = Math.max(hi, p.hi); }));
+  (o.refs || []).forEach(r => { lo = Math.min(lo, r.y); hi = Math.max(hi, r.y); });
+  if (o.zero) { lo = Math.min(lo, 0); hi = Math.max(hi, 0); }
+  const tk = ticks(lo, hi, 5); lo = Math.min(lo, tk[0]); hi = Math.max(hi, tk[tk.length - 1]);
+  const pad = (hi - lo) * 0.03; lo -= pad; hi += pad;
+  const bw = (W - m.l - m.r) / n, cx = i => m.l + (i + 0.5) * bw, y = v => m.t + (hi - v) / (hi - lo) * (H - m.t - m.b);
+  const step = Math.min(20, bw / (S + 1));
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${o.label}">`;
+  (o.bands || []).forEach(b => { s += `<rect class="band" x="${cx(b.from) - bw / 2}" y="${m.t}" width="${(b.to - b.from + 1) * bw}" height="${H - m.t - m.b}"/><text x="${cx(b.from) - bw / 2 + 6}" y="${m.t - 8}">${b.label}</text>`; });
+  tk.forEach(v => { s += `<line class="grid" x1="${m.l}" x2="${W - m.r}" y1="${y(v)}" y2="${y(v)}"/><text x="${m.l - 8}" y="${y(v) + 4}" text-anchor="end">${o.yFmt(v)}</text>`; });
+  if (o.zero) s += `<line class="zero" x1="${m.l}" x2="${W - m.r}" y1="${y(0)}" y2="${y(0)}"/>`;
+  (o.refs || []).forEach(r => { s += `<line class="ref" x1="${m.l}" x2="${W - m.r}" y1="${y(r.y)}" y2="${y(r.y)}"/><text x="${W - m.r - 4}" y="${y(r.y) - 4}" text-anchor="end">${r.label}</text>`; });
+  o.cats.forEach((cat, i) => { s += `<text x="${cx(i)}" y="${H - m.b + 18}" text-anchor="middle">${cat}</text>`; });
+  if (o.xTitle) s += `<text class="lbl" x="${m.l + (W - m.l - m.r) / 2}" y="${H - 6}" text-anchor="middle">${o.xTitle}</text>`;
+  o.series.forEach((se, si) => {
+    const off = (si - (S - 1) / 2) * step;
+    se.pts.forEach((p, i) => {
+      if (!p) return;
+      const x = cx(i) + off, col = `var(${se.color})`;
+      s += `<g><title>${se.name} · ${o.cats[i]}: ${o.yFmt(p.y, 2)} (${o.yFmt(p.lo, 2)} to ${o.yFmt(p.hi, 2)})</title><line x1="${x}" x2="${x}" y1="${y(p.lo)}" y2="${y(p.hi)}" stroke="${col}" stroke-width="2"/>` +
+        `<line x1="${x - 3}" x2="${x + 3}" y1="${y(p.lo)}" y2="${y(p.lo)}" stroke="${col}" stroke-width="2"/><line x1="${x - 3}" x2="${x + 3}" y1="${y(p.hi)}" y2="${y(p.hi)}" stroke="${col}" stroke-width="2"/>` +
+        `<circle cx="${x}" cy="${y(p.y)}" r="4.2" fill="${se.hollow ? 'var(--surface)' : col}" stroke="${col}" stroke-width="2"/></g>`;
+    });
+  });
+  s += '</svg>';
+  const lg = o.series.length > 1 ? `<div class="legend">${o.series.map(se => `<span><i style="background:${se.hollow ? 'var(--surface)' : `var(${se.color})`};border:2px solid var(${se.color})"></i>${se.name}</span>`).join('')}</div>` : '';
+  document.getElementById(el).innerHTML = lg + s;
+}
+const pctT = (v, d) => (v * 100).toFixed(d === 2 ? 1 : 0) + '%';
+const sgn = (v, d) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(d === 2 ? 2 : 1);
+
+
+const col = ['--under', '--muted', '--over'];
+const gridChart = (el, per) => dotChart(el, { label: 'Mean r by spread bucket and total tercile', cats: SB.map(s => s), zero: true, yFmt: (v, d) => sgn(v, d === 2 ? 2 : 1), xTitle: 'Opening |spread|, points', h: 280,
+  series: TL.map((t, i) => ({ name: t, color: col[i], hollow: false, pts: SB.map(s => { const c = R.grid.find(r => r.period === per && r.total === t && r.spread === s); return { y: c.mean_r, lo: c.mean_r_lo, hi: c.mean_r_hi }; }) })) });
+gridChart('c-disc', 'discovery'); gridChart('c-conf', 'confirmation');
+const sl = per => Object.values(s2[per].spread_slope_at_total_percentiles).map(v => ({ y: v.slope, lo: v.lo, hi: v.hi }));
+dotChart('c-slopes', { label: 'Spread slope at three totals', cats: ['16th percentile total', 'Median total', '84th percentile total'], zero: true, yFmt: (v, d) => sgn(v, d === 2 ? 2 : 1), xTitle: 'Level of the opening total', h: 270,
+  series: [{ name: 'Discovery', color: '--under', hollow: true, pts: sl('discovery') }, { name: 'Confirmation', color: '--under', hollow: false, pts: sl('confirmation') }] });
+</script>

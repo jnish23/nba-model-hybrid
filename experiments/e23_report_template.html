@@ -1,0 +1,126 @@
+<main>
+<header style="display:flex;flex-direction:column;gap:12px">
+  <div class="eyebrow">Experiment E23 · totals · angle 7 of 8 · run 2026-10-23 · exploratory</div>
+  <h1>Favourite Back-to-Back Test</h1>
+  <p class="lede">Does a big favourite on the second night of a back-to-back change the total, by winning big less often or by pulling its starters earlier? Regular-season games only, registered in <code>PREREGISTRATION.md</code> before the run.</p>
+  <nav class="toc" aria-label="Sections"><a href="#verdict">Verdict</a><a href="#cells">1 · Cells</a><a href="#reg">2 · Regression</a><a href="#blow">3 · Blowouts</a><a href="#model">Model</a><a href="#bets">Betting</a><a href="#limits">Limits</a></nav>
+</header>
+
+<section id="verdict">
+  <div class="verdict">
+    <span class="tag">H_B2B NOT SUPPORTED · MECHANISM NOT SHOWN</span>
+    <p class="lede">The back-to-back flags do not move the total in either period (joint test p = <span data-b="step2_reading.discovery_wald_p|2"></span> in discovery, <span data-b="step2_reading.confirmation_wald_p|2"></span> in confirmation). Favourites of 8+ on a back-to-back win by 15 or more a little less often than the spread implies, but so do rested favourites, and the gap to them is within noise.</p>
+    <div class="facts">
+      <div class="fact"><b class="num"><span data-b="D.nd|int"></span> / <span data-b="D.nc|int"></span></b><span>games with a favourite of 8+ on a back-to-back, discovery and confirmation. The plan expected about 350 over seven years; there are <span data-b="D.nsum|int"></span>.</span></div>
+      <div class="fact"><b class="num"><span data-b="D.dc.diff|s3"></span></b><span>favourite-blowout rate minus the spread-implied rate for that cell in confirmation (interval <span data-b="D.dc.lo|s3"></span> to <span data-b="D.dc.hi|s3"></span>); discovery <span data-b="D.dd.diff|s3"></span>. Same sign in both, neither excludes zero.</span></div>
+      <div class="fact"><b class="num over"><span data-b="D.betD.roi|roi"></span> → <span data-b="D.betC.roi|roi"></span></b><span>over bet on underdogs of 8+ on a back-to-back: the discovery winner (interval <span data-b="D.betD.lo|roi"></span> to <span data-b="D.betD.hi|roi"></span>) turned negative in confirmation. This is the discovery-only result you warned about.</span></div>
+    </div>
+  </div>
+</section>
+
+<section id="cells">
+  <h2>1 · Cells</h2>
+  <p>Favourite on a back-to-back (yes or no) by spread bucket (below 8, 8 or more), and the mirror for the underdog. Mean of actual − opening total, with 95% intervals from resampling game days. Pick'em games have no favourite and are dropped (<span data-b="D.pickems|int"></span> games).</p>
+  <div class="cols">
+    <div class="chartbox"><h3>Favourite on a back-to-back</h3><div class="sub">Mean r by spread bucket. Hollow = discovery, solid = confirmation.</div><div id="c-fav"></div></div>
+    <div class="chartbox"><h3>Underdog on a back-to-back</h3><div class="sub">The mirror case.</div><div id="c-dog"></div></div>
+  </div>
+  <div class="scroll"><table id="t-cells"></table></div>
+  <details><summary>Other spread cut points (6 and 10), favourite on a back-to-back</summary><div class="scroll" style="margin-top:8px"><table id="t-thr"></table></div></details>
+  <p>No cell stands out. The one discovery cell that looks different (underdog on a back-to-back, spread 8+, mean r <span data-b="D.udd|s1"></span>) falls to <span data-b="D.udc|s1"></span> in confirmation.</p>
+</section>
+
+<section id="reg">
+  <h2>2 · Regression</h2>
+  <p>r on |spread|, the total, FB (favourite on a back-to-back), UB (underdog on one), their products with |spread| and season dummies. The primary statistic is the joint test of the four flag coefficients.</p>
+  <div class="scroll"><table id="t-reg"></table></div>
+  <p>Without 2019-20 and 2020-21 the joint test is <span data-b="D.sensp|2"></span>. The favourite coefficients are about −1 to −2 points at a zero spread, partly offset by a positive interaction (+0.1 to +0.3 points per spread point), and none is distinguishable from zero.</p>
+</section>
+
+<section id="blow">
+  <h2>3 · Do favourites on a back-to-back blow games open less often?</h2>
+  <p>Observed rate of a favourite win by 15 or more, against the rate a normal margin model with the spread as its mean and σ = <span data-b="sigma_margin_discovery|1"></span> implies.</p>
+  <div class="scroll"><table id="t-blow"></table></div>
+  <p>Every favourite cell has an observed blowout rate below the model's, by 1 to 6 points and by 1 to 3 points even for rested favourites, so the normal model overstates blowouts in general. The question is whether back-to-back favourites differ from rested ones: for spread 8+ the difference is <span data-b="D.vsC.diff|s3"></span> in confirmation (interval <span data-b="D.vsC.lo|s3"></span> to <span data-b="D.vsC.hi|s3"></span>) and <span data-b="D.vsD.diff|s3"></span> in discovery (<span data-b="D.vsD.lo|s3"></span> to <span data-b="D.vsD.hi|s3"></span>). The mechanism points the right way and is too small to see with 137 and 219 games. The registered rule needs the confirmation interval to exclude zero, so it is not supported. Whether starters are pulled earlier cannot be tested with team totals; it would need player-minutes data (<code>player_basic_stats</code> exists) and was not part of the plan.</p>
+</section>
+
+<section id="model">
+  <h2>4 · Does the deployed model use it?</h2>
+  <div class="scroll"><table id="t-model"></table></div>
+  <p>The joint test on the model's residual is p = <span data-b="D.mdl|2"></span> in the confirmation seasons: nothing to absorb. The feature test (layer c) was not run.</p>
+</section>
+
+<section id="bets">
+  <h2>5 · Betting test</h2>
+  <p>Over and under on each of the four favourite and underdog back-to-back cells, chosen on discovery (at least 100 bets): <b><span data-b="bet.chosen.side|raw"></span> on <span data-b="bet.chosen.cell|raw"></span></b>.</p>
+  <div class="scroll"><table id="t-bet"></table></div>
+  <p>Eight combinations on a few hundred games each: the best discovery result is the one most likely to be luck, and it reversed. No stake conclusion follows.</p>
+</section>
+
+<section id="limits">
+  <h2>Limits</h2>
+  <ul class="plain">
+    <li>Cells are small (137 and 219 games for the key cell), so a real effect of one to two points would not show. The joint test over four coefficients has little power per coefficient.</li>
+    <li>"Back-to-back" is the training set's flag (one day of rest). Third game in four nights and travel were not tested.</li>
+    <li>Holm across the 8 angles is pending; the confirmation joint p of <span data-b="step2_reading.confirmation_wald_p|2"></span> is nowhere near 0.05.</li>
+    <li>Script: <code>experiments/e23_b2b.py</code>; numbers: <code>reports/experiments/E23_b2b/results.json</code>.</li>
+  </ul>
+</section>
+<footer>Day-cluster bootstrap, 1,000 draws, seed 20261017. Joint test: Wald statistic with the bootstrap covariance of the four flag coefficients, chi-square with 4 degrees of freedom.</footer>
+</main>
+
+<script>
+const R = __R__;
+const fmt = {
+  '1': v => v.toFixed(1), '2': v => v.toFixed(2), '3': v => v.toFixed(3), 's1': v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1), 's2': v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(2), 's3': v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(3),
+  'int': v => Math.round(v).toLocaleString('en-US'), 'roi': v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1) + '%', 'raw': v => String(v)
+};
+const path = (o, p) => p.split('.').reduce((a, k) => (a == null ? a : a[k]), o);
+const cell = (thr, side, b2b, bucket, per) => R.cells.find(c => c.threshold === thr && c.side === side && c.b2b === b2b && c.spread_bucket === bucket && c.period === per);
+const CONFL = 'confirmation 2022-23..2025-26';
+const bt = R.bet, ck = Object.keys(bt.discovery || {});
+const fb = (per) => cell(8, 'favourite', true, '>= 8', per);
+R.D = { nd: fb('discovery').games, nc: fb('confirmation').games, nsum: fb('discovery').games + fb('confirmation').games, pickems: R.games_before_dropping_pickems - R.games,
+  dd: R.step3.cell.discovery.fav_blowout_diff, dc: R.step3.cell.confirmation.fav_blowout_diff, vsD: R.step3.cell.discovery.vs_rested_favourites_diff, vsC: R.step3.cell.confirmation.vs_rested_favourites_diff,
+  udd: cell(8, 'underdog', true, '>= 8', 'discovery').mean_r, udc: cell(8, 'underdog', true, '>= 8', 'confirmation').mean_r, sensp: R.sensitivity['2021-22..2025-26'].wald_p,
+  mdl: R.step4.models[CONFL].model_resid.wald_p, betD: bt.discovery[ck[0]], betC: bt.confirmation[ck[0]] };
+document.querySelectorAll('[data-b]').forEach(el => { const [p, f] = el.dataset.b.split('|'); const v = path(R, p); el.textContent = v == null ? '?' : (f ? fmt[f](v) : String(v)); });
+function table(id, head, rows, hl) {
+  const t = document.getElementById(id);
+  t.innerHTML = '<thead><tr>' + head.map(h => `<th>${h}</th>`).join('') + '</tr></thead><tbody>' + rows.map((r, i) => `<tr class="${hl && hl(i) ? 'hl' : ''}">` + r.map(c => `<td>${c}</td>`).join('') + '</tr>').join('') + '</tbody>';
+}
+const ci = (lo, hi, f) => `${f(lo)} to ${f(hi)}`;
+const pct = v => (v * 100).toFixed(1) + '%';
+const sg = v => (v >= 0 ? '+' : '−') + Math.abs(v * 100).toFixed(1) + ' pts';
+
+const rows = [];
+for (const side of ['favourite', 'underdog']) for (const b2b of [true, false]) for (const bk of ['< 8', '>= 8']) for (const per of ['discovery', 'confirmation']) {
+  const c = cell(8, side, b2b, bk, per); rows.push([`${side}${b2b ? ' on a back-to-back' : ' rested'}, |spread| ${bk}`, per, c.games, `${fmt.s2(c.mean_r)} (${ci(c.mean_r_lo, c.mean_r_hi, fmt.s1)})`, pct(c.under_rate)]);
+}
+table('t-cells', ['Cell', 'Period', 'Games', 'Mean r (95%)', 'Under rate'], rows, i => rows[i][0].includes('on a back-to-back'));
+const trows = [];
+for (const thr of [6, 10]) for (const bk of [`< ${thr}`, `>= ${thr}`]) for (const per of ['discovery', 'confirmation']) { const c = cell(thr, 'favourite', true, bk, per); trows.push([`cut ${thr}: |spread| ${bk}`, per, c.games, `${fmt.s2(c.mean_r)} (${ci(c.mean_r_lo, c.mean_r_hi, fmt.s1)})`, pct(c.under_rate)]); }
+table('t-thr', ['Favourite on a back-to-back', 'Period', 'Games', 'Mean r (95%)', 'Under rate'], trows);
+
+const names = { FB: 'FB: favourite on a back-to-back', UB: 'UB: underdog on a back-to-back', FB_x_abs_spread: 'FB × |spread|', UB_x_abs_spread: 'UB × |spread|' };
+table('t-reg', ['Coefficient', 'Discovery (95%)', 'Confirmation (95%)'], [...Object.keys(names).map(k => [names[k], ...['discovery', 'confirmation'].map(p => { const c = R.step2[p].coefs[k]; return `${fmt.s2(c.coef)} (${ci(c.lo, c.hi, fmt.s1)}), p = ${fmt['2'](c.p_two_sided)}`; })]),
+  ['Joint test, four flag coefficients', ...['discovery', 'confirmation'].map(p => `Wald ${R.step2[p].wald.toFixed(1)}, p = ${fmt['2'](R.step2[p].wald_p)}`)]], i => i === 4);
+
+const brows = [];
+for (const per of ['discovery', 'confirmation']) for (const b2b of [true, false]) for (const bk of ['< 8', '>= 8']) { const c = cell(8, 'favourite', b2b, bk, per);
+  brows.push([`favourite${b2b ? ' on a back-to-back' : ' rested'}, |spread| ${bk}`, per, c.games, pct(c.fav_blowout_obs), pct(c.fav_blowout_implied), `${sg(c.fav_blowout_diff)} (${(c.fav_blowout_diff_lo * 100).toFixed(1)} to ${(c.fav_blowout_diff_hi * 100).toFixed(1)})`]); }
+table('t-blow', ['Cell', 'Period', 'Games', 'Favourite wins by 15+', 'Implied by the spread', 'Observed − implied (95%)'], brows, i => brows[i][0].includes('back-to-back') && brows[i][0].includes('>= 8'));
+
+const mm = R.step4.models;
+table('t-model', ['Joint test of the flags on', 'All OOS seasons', 'Confirmation seasons'], [['model_resid', 'Model residual: actual − prediction'], ['model_lean', 'Model lean: prediction − opening total'], ['r', 'Market residual: actual − opening total']].map(([k, l]) => [l, `p = ${fmt['3'](mm['2021-22..2025-26'][k].wald_p)}`, `p = ${fmt['3'](mm[CONFL][k].wald_p)}`]));
+
+const rc = r => `${fmt.roi(r.roi)} (${ci(r.lo, r.hi, fmt.roi)})`;
+table('t-bet', ['Strategy', 'Discovery: bets', 'Discovery: return (95%)', 'Confirmation: bets', 'Confirmation: return (95%)'], Object.keys(bt.discovery).map(k => [k, bt.discovery[k].bets, rc(bt.discovery[k]), bt.confirmation[k].bets, rc(bt.confirmation[k])]), i => i === 0);
+
+__CHART_JS__
+const BK = ['< 8', '>= 8'];
+const side = (el, s) => dotChart(el, { label: `${s} back-to-back`, cats: ['|spread| < 8', '|spread| ≥ 8'], zero: true, yFmt: (v, d) => sgn(v, d === 2 ? 2 : 1), xTitle: 'Spread bucket', h: 270,
+  series: [['true', 'On a back-to-back', '--over'], ['false', 'Rested', '--under']].flatMap(([b, n, col]) => ['discovery', 'confirmation'].map(per => ({ name: `${n}, ${per}`, color: col, hollow: per === 'discovery',
+    pts: BK.map(bk => { const c = cell(8, s, b === 'true', bk, per); return { y: c.mean_r, lo: c.mean_r_lo, hi: c.mean_r_hi }; }) }))) });
+side('c-fav', 'favourite'); side('c-dog', 'underdog');
+</script>

@@ -1,0 +1,74 @@
+{
+ "slope": {
+  "0.0": {
+   "registered": 0.013333333333333334,
+   "confirmation_only": 0.02,
+   "pooled": 0.03666666666666667
+  },
+  "0.05": {
+   "registered": 0.06666666666666667,
+   "confirmation_only": 0.08666666666666667,
+   "pooled": 0.17
+  },
+  "0.1": {
+   "registered": 0.24333333333333335,
+   "confirmation_only": 0.27666666666666667,
+   "pooled": 0.49666666666666665
+  },
+  "0.15": {
+   "registered": 0.5466666666666666,
+   "confirmation_only": 0.5466666666666666,
+   "pooled": 0.86
+  },
+  "0.18": {
+   "registered": 0.74,
+   "confirmation_only": 0.7433333333333333,
+   "pooled": 0.94
+  },
+  "0.25": {
+   "registered": 0.9566666666666667,
+   "confirmation_only": 0.9566666666666667,
+   "pooled": 1.0
+  }
+ },
+ "product": {
+  "0.0": {
+   "registered": 0.02666666666666667,
+   "confirmation_only": 0.07666666666666666,
+   "pooled": 0.05
+  },
+  "0.005": {
+   "registered": 0.06666666666666667,
+   "confirmation_only": 0.08666666666666667,
+   "pooled": 0.17666666666666667
+  },
+  "0.01": {
+   "registered": 0.18666666666666668,
+   "confirmation_only": 0.19333333333333333,
+   "pooled": 0.3933333333333333
+  },
+  "0.015": {
+   "registered": 0.4033333333333333,
+   "confirmation_only": 0.41333333333333333,
+   "pooled": 0.78
+  },
+  "0.02": {
+   "registered": 0.6766666666666666,
+   "confirmation_only": 0.68,
+   "pooled": 0.9366666666666666
+  }
+ },
+ "n_rep": 300,
+ "n_inner": 300,
+ "removed_effects": {
+  "spread_slope": 0.17980716302977945,
+  "product": -0.0002158093161738761
+ },
+ "e16_p_ot_regression": {
+  "se_coefficient_on_p_ot": 196.81407108700137,
+  "p_ot_range_0_3_to_12plus": 0.03190442846799174,
+  "power_for_gap_0.8_points": 0.03343133257297629,
+  "power_for_gap_2.0_points": 0.050347856127966946,
+  "power_for_gap_5.0_points": 0.12226766660053373
+ }
+}

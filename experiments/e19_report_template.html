@@ -1,0 +1,139 @@
+<main>
+<header style="display:flex;flex-direction:column;gap:12px">
+  <div class="eyebrow">Experiment E19 · totals · angle 5 of 8 · run 2026-10-23 · exploratory</div>
+  <h1>Late-Season Tanking Test</h1>
+  <p class="lede">Are games late in the season, with a tanking team or a contender locked into its seed, mispriced at the open? Regular-season games only, registered in <code>PREREGISTRATION.md</code> before the run.</p>
+  <nav class="toc" aria-label="Sections"><a href="#verdict">Verdict</a><a href="#rules">The new rules</a><a href="#groups">Flagged games</a><a href="#reg">Regression</a><a href="#move">Line movement</a><a href="#model">Model</a><a href="#bets">Betting</a><a href="#limits">Limits</a></nav>
+</header>
+
+<section id="verdict">
+  <div class="verdict">
+    <span class="tag">H_TANK NOT SUPPORTED (REGISTERED RULE) · LEAD FOUND</span>
+    <p class="lede">The registered rule needs the joint flag test to show up in discovery (p &lt; 0.10) and then in confirmation (p &lt; 0.05). Discovery gave p = <span data-b="step2_reading.discovery_wald_p|2"></span>; confirmation gave p = <span data-b="step2_reading.confirmation_wald_p|3"></span>. So the registered verdict is not supported. What the confirmation seasons show is a plain late-season over lean that has nothing to do with tankers or locked seeds.</p>
+    <div class="facts">
+      <div class="fact"><b class="num over"><span data-b="D.g70.mean_r|s2"></span></b><span>points: mean of actual − opening total in games with either team at game 70 or later (<span data-b="D.g70.games|int"></span> games, interval <span data-b="D.g70.lo|s2"></span> to <span data-b="D.g70.hi|s2"></span>). Earlier stretches of the season sit between −0.2 and +1.1.</span></div>
+      <div class="fact"><b class="num"><span data-b="D.lo.r_open|s2"></span></b><span>for late games with <i>no</i> tanker and <i>no</i> locked team (<span data-b="D.lo.games|int"></span> games), versus <span data-b="D.lt.r_open|s2"></span> for late tanker games (<span data-b="D.lt.games|int"></span>). The effect does not need a tanker.</span></div>
+      <div class="fact"><b class="num"><span data-b="D.lk|int"></span></b><span>late games with a locked team in seven seasons: too few to say anything. The plan expected about 1,500 flagged games; the whole late window holds <span data-b="D.late|int"></span>.</span></div>
+    </div>
+  </div>
+  <div class="note"><b>Scope correction for E14 to E18.</b> While building the standings I found that the frame those reports used includes playoff and play-in games: <span data-b="scope.playoff_and_playin_games|int"></span> of the <span data-b="scope.games_registered_seasons_all_types|int"></span> registered-season games (7%). On regular-season games only, the E14 spread slope is <span data-b="scope.e14_slope_regular_season_only.registered.slope|s3"></span> (interval <span data-b="scope.e14_slope_regular_season_only.registered.lo|s3"></span> to <span data-b="scope.e14_slope_regular_season_only.registered.hi|s3"></span>) against <span data-b="scope.e14_slope_all_game_types.registered.slope|s3"></span> with everything. The conclusion does not change, but the E14 discovery interval (<span data-b="scope.e14_slope_regular_season_only.discovery.lo|s3"></span> to <span data-b="scope.e14_slope_regular_season_only.discovery.hi|s3"></span>) now includes zero. E15 was already defined on regular-season games. The published E14 to E18 numbers are unchanged.</div>
+</section>
+
+<section id="rules">
+  <h2>Do the new anti-tanking rules matter here?</h2>
+  <p>Mostly for the tanker flag, and not for the main finding. What changed (NBA release and ESPN, May 2026; sources below):</p>
+  <ul class="plain">
+    <li>A <b>3-2-1 lottery</b> takes effect with the 2027 Draft, so it governs the 2026-27 season's records. The lottery grows to 16 teams. The three worst records get two balls and cannot pick lower than 12th; teams from fourth-worst through tenth-worst get three balls each, which flattens the odds. Play-in seeds 9 and 10 get two balls and the losers of the 7-8 games one. A team's own pick cannot be No. 1 two years running or top five three years running, and newly traded picks cannot carry top-12 to top-15 protections. The league can cut a team's lottery odds, move its draft position and fine it (ESPN reports up to $10 million). It runs for the 2027 to 2029 drafts.</li>
+    <li>For <b>resting stars</b> the 2023 player participation policy (no more than one star unavailable per game, fines, no shutdowns) is, as far as my search shows, still the framework. I found no 2026-27 change, but that search was not exhaustive.</li>
+  </ul>
+  <p><b>What it means for the test.</b> Being the very worst no longer pays: the bottom three are penalised and records 4th through 10th worst are equal. A bottom-5 win% flag will therefore mix teams that stopped caring about losing with teams now trying to avoid the bottom three. Contenders locked into a seed keep their old reasons to rest, limited by the participation policy. No season in this sample has the 3-2-1 rules, so what E19 measures is the old regime, and whether it carries into 2026-27 can only be answered with forward data from this season. The late-season over lean below shows up in games with <i>no</i> tanker or locked flag, so it is less exposed to the lottery change than the tanking idea was.</p>
+  <p style="font-size:14px;color:var(--muted)">Sources: <a href="https://pr.nba.com/nba-board-of-governors-approves-new-draft-lottery-system-to-address-tanking/">NBA Communications release</a>; <a href="https://www.espn.com/nba/story/_/id/48903380/sources-nba-bog-votes-expand-lottery-disincentivizes-tanking">ESPN</a>; 2023 participation policy from search snippets of contemporary coverage (<a href="https://africa.espn.com/nba/story/_/id/38392750/source-nba-board-governors-approve-tougher-rest-rule">ESPN</a>).</p>
+</section>
+
+<section id="groups">
+  <h2>1 · Flagged games</h2>
+  <div class="scroll"><table id="t-counts"></table></div>
+  <div class="cols">
+    <div class="chartbox"><h3>Mean r by group</h3><div class="sub">Actual − opening total, points, 95% intervals from resampling game days.</div><div id="c-groups"></div></div>
+    <div class="chartbox"><h3>Mean r by the later team's game number</h3><div class="sub">Exploratory, not registered. All seven seasons pooled.</div><div id="c-gn"></div></div>
+  </div>
+  <div class="scroll"><table id="t-groups"></table></div>
+  <p>The step shows up at game 70, not as a slow drift: the 60 to 69 stretch sits at <span data-b="D.g60.mean_r|s2"></span>. Late minus not-late is positive in six of seven seasons (2020-21 has only 47 late games). The locked flag is almost empty (13 and 26 games in the two periods), and the 2019-20 and 2020-21 seasons contribute hardly any late games because of their shortened schedules.</p>
+</section>
+
+<section id="reg">
+  <h2>2 · The registered regression</h2>
+  <p>r on |spread|, the total, the three flags and their interactions with |spread|, plus season dummies. The primary statistic is the joint test that all six flag coefficients are zero.</p>
+  <div class="scroll"><table id="t-reg"></table></div>
+  <div class="scroll" style="margin-top:8px"><table id="t-sens"></table></div>
+  <p>Confirmation shows a joint effect, carried mainly by the late-season × spread interaction (<span data-b="D.lxa.coef|s3"></span>, interval <span data-b="D.lxa.lo|s3"></span> to <span data-b="D.lxa.hi|s3"></span>) and, less precisely, the locked × spread term. Discovery shows nothing, so the registered find step fails. The joint p-value in confirmation also survives dropping 2019-20 and 2020-21 and restricting to the participation-policy era, but it is not a registered pass.</p>
+</section>
+
+<section id="move">
+  <h2>3 · Line movement</h2>
+  <div class="scroll"><table id="t-move"></table></div>
+  <p>The market does not adjust before tip-off: for every flagged group the open-to-close move, and the size of the move, is no different from not-late games. The late-season over lean is the same against the closing total, so it is not an edge that exists only at the open.</p>
+</section>
+
+<section id="model">
+  <h2>4 · Does the deployed model absorb it?</h2>
+  <div class="scroll"><table id="t-model"></table></div>
+  <p>No. In the confirmation seasons the model's residual (actual − prediction) is <span data-b="D.mdlLate.mean|s1"></span> points in late games against <span data-b="D.mdlNot.mean|s1"></span> for the rest of the season, and the joint test on its residual gives p = <span data-b="D.mdlWald|p"></span>. The layer (b) condition holds. Layer (c), the feature test, needs the market test to be supported as well, so it was not run.</p>
+</section>
+
+<section id="bets">
+  <h2>5 · Betting test</h2>
+  <p>Over and under on late tanker games, late locked games and all late games at -110, chosen on discovery (at least 100 bets): <b><span data-b="bet.chosen.side|raw"></span> on <span data-b="bet.chosen.group|raw"></span></b>.</p>
+  <div class="scroll"><table id="t-bet"></table></div>
+  <div class="note"><b>A lead, not an edge.</b> The over on late games returned <span data-b="D.betD.roi|roi"></span> in discovery (interval <span data-b="D.betD.lo|roi"></span> to <span data-b="D.betD.hi|roi"></span>) and <span data-b="D.betC.roi|roi"></span> in confirmation (<span data-b="D.betC.lo|roi"></span> to <span data-b="D.betC.hi|roi"></span>); the best-book line brings confirmation to <span data-b="D.betCB.roi|roi"></span> (<span data-b="D.betCB.lo|roi"></span> to <span data-b="D.betCB.hi|roi"></span>). The under on late games lost <span data-b="D.underC.roi|roi"></span>. This is one group picked after earlier angles in this series came out null or reversed, and the joint test failed its registered find step, so the multiplicity burden is high. A forward test on 2026-27 games from game 70 on would be the clean way to settle it, and a re-registration would fix the over direction in advance.</div>
+</section>
+
+<section id="limits">
+  <h2>Limits</h2>
+  <ul class="plain">
+    <li>Late means either team's game number ≥ 70. In 2020-21 (72 games) that is the last three games, and 2019-20 was cut short, so the late window is thin in two of the seven seasons. Game numbers match the training set's <code>season_game_number</code> columns for every game.</li>
+    <li>Locked means more than 6 games clear of the next seed in both directions, for conference ranks 1 to 10; I read "next seed" as both neighbours. A looser rule would flag more games.</li>
+    <li>Tanker is bottom 5 in win% among 30 teams at the date, from the start of the season, so most tanker games are not late.</li>
+    <li>The step-by-game-number table and the by-season late-minus-not-late differences are exploratory additions. The primary six-coefficient test has the least power per coefficient.</li>
+    <li>Holm across the 8 angles is pending. The confirmation joint p of <span data-b="step2_reading.confirmation_wald_p|3"></span> would still be below 0.05 after a worst-case multiplication by 8, but it is not counted as a pass because the registered find step failed first.</li>
+    <li>Script: <code>experiments/e19_tanking.py</code>; numbers: <code>reports/experiments/E19_tanking/results.json</code>.</li>
+  </ul>
+</section>
+<footer>Day-cluster bootstrap, 1,000 draws, seed 20261017. Joint test: Wald statistic with the bootstrap covariance of the six flag coefficients, chi-square with 6 degrees of freedom.</footer>
+</main>
+
+<script>
+const R = __R__;
+const fmt = {
+  '2': v => v.toFixed(2), '3': v => v.toFixed(3), 's1': v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1), 's2': v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(2), 's3': v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(3),
+  'p': v => (v < 0.001 ? '<0.001' : v.toFixed(3)), 'pct1': v => (v * 100).toFixed(1) + '%', 'int': v => Math.round(v).toLocaleString('en-US'), 'roi': v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1) + '%', 'raw': v => String(v)
+};
+const path = (o, p) => p.split('.').reduce((a, k) => (a == null ? a : a[k]), o);
+const SEAS = ['2019-20', '2020-21', '2021-22', '2022-23', '2023-24', '2024-25', '2025-26'];
+const mv = (per, g) => R.step3.find(x => x.period === per && x.group === g);
+const gnb = (per, b) => R.exploratory_game_number_bins.find(x => x.period === per && x.bin === b);
+const CONFL = 'confirmation 2022-23..2025-26';
+const bt = R.bet, ck = Object.keys(bt.confirmation || {});
+const mg = (per, g) => R.step4.groups.find(x => x.period === per && x.group === g);
+R.D = { g70: gnb('registered', '70+'), g60: gnb('registered', '60-69'), lo: mv('registered', 'late, other (LO)'), lt: mv('registered', 'late, tanker (LT)'),
+  cnt: R.counts.discovery.LK + R.counts.confirmation.LK, lk: R.counts.discovery.LK + R.counts.confirmation.LK, late: R.counts.discovery.L + R.counts.confirmation.L,
+  lxa: R.step2.A.confirmation.coefs.L_f_x_abs_spread, mdlLate: mg(CONFL, 'late, other (LO)') ? { mean: (mg(CONFL, 'late, other (LO)').model_resid.mean * mg(CONFL, 'late, other (LO)').games + mg(CONFL, 'late, tanker (LT)').model_resid.mean * mg(CONFL, 'late, tanker (LT)').games + mg(CONFL, 'late, locked (LK)').model_resid.mean * mg(CONFL, 'late, locked (LK)').games) / (mg(CONFL, 'late, other (LO)').games + mg(CONFL, 'late, tanker (LT)').games + mg(CONFL, 'late, locked (LK)').games) } : null,
+  mdlNot: mg(CONFL, 'not late').model_resid, mdlWald: R.step4.models[CONFL].model_resid.wald_p,
+  betD: bt.discovery[ck[0]], betC: bt.confirmation[ck[0]], betCB: bt.confirmation[ck[2]], underC: bt.confirmation['under, all late games'] };
+document.querySelectorAll('[data-b]').forEach(el => { const [p, f] = el.dataset.b.split('|'); const v = path(R, p); el.textContent = v == null ? '?' : (f ? fmt[f](v) : String(v)); });
+function table(id, head, rows, hl) {
+  const t = document.getElementById(id);
+  t.innerHTML = '<thead><tr>' + head.map(h => `<th>${h}</th>`).join('') + '</tr></thead><tbody>' + rows.map((r, i) => `<tr class="${hl && hl(i) ? 'hl' : ''}">` + r.map(c => `<td>${c}</td>`).join('') + '</tr>').join('') + '</tbody>';
+}
+const ci = (lo, hi, f) => `${f(lo)} to ${f(hi)}`;
+const pill = (ok, t) => `<span class="pill ${ok ? 'pass' : 'fail'}">${ok ? '✓' : '✗'} ${t || (ok ? 'passes' : 'fails')}</span>`;
+const pct = v => (v * 100).toFixed(1) + '%';
+
+table('t-counts', ['Games', 'Discovery', 'Confirmation'], [['All regular-season games', R.counts.discovery.games, R.counts.confirmation.games], ['Late (L): either team at game 70 or later', R.counts.discovery.L, R.counts.confirmation.L],
+  ['Tanker (T): either team bottom 5 in win%', R.counts.discovery.T, R.counts.confirmation.T], ['Locked (K): either team locked into its seed', R.counts.discovery.K, R.counts.confirmation.K],
+  ['Late and tanker (LT)', R.counts.discovery.LT, R.counts.confirmation.LT], ['Late and locked (LK)', R.counts.discovery.LK, R.counts.confirmation.LK], ['Late, neither (LO)', R.counts.discovery.LO, R.counts.confirmation.LO]]);
+table('t-groups', ['Group', 'Period', 'Games', 'Mean r (95%)', 'Under rate (95%)'], R.step1.map(g => [g.group, g.period, g.games, `${fmt.s2(g.mean_r)} (${ci(g.lo, g.hi, fmt.s1)})`, `${pct(g.under_rate)} (${pct(g.under_lo)} to ${pct(g.under_hi)})`]));
+
+const A = R.step2.A, names = { L_f: 'Late (L)', T_f: 'Tanker (T)', K_f: 'Locked (K)', L_f_x_abs_spread: 'L × |spread|', T_f_x_abs_spread: 'T × |spread|', K_f_x_abs_spread: 'K × |spread|' };
+table('t-reg', ['Coefficient', 'Discovery (95%)', 'Confirmation (95%)'], [...Object.keys(names).map(k => [names[k], ...['discovery', 'confirmation'].map(p => { const c = A[p].coefs[k]; return `${fmt.s2(c.coef)} (${ci(c.lo, c.hi, fmt.s1)}), p = ${fmt['2'](c.p_two_sided)}`; })]),
+  ['Joint test, six flag coefficients', ...['discovery', 'confirmation'].map(p => `Wald ${A[p].wald.toFixed(1)}, p = ${A[p].wald_p < 0.001 ? '<0.001' : fmt['3'](A[p].wald_p)}`)],
+  ['Registered pass condition', 'p < 0.10 ' + pill(A.discovery.wald_p < 0.10), 'p < 0.05 ' + pill(A.confirmation.wald_p < 0.05)]], i => i === 6);
+table('t-sens', ['Joint test in other samples', 'Games', 'Late games', 'Wald p'], Object.keys(R.sensitivity).map(k => [k, R.sensitivity[k].n, R.sensitivity[k].counts.L, fmt['3'](R.sensitivity[k].wald_p)]));
+
+const gs = ['late, other (LO)', 'late, tanker (LT)', 'late, locked (LK)'];
+table('t-move', ['Group (registered seasons)', 'Games', 'Close − open total', 'vs not late (95%)', 'Mean |move|, vs not late', 'Actual − open total, vs not late', 'Actual − close total, vs not late'], [...gs.map(g => { const m = mv('registered', g);
+  return [g, m.games, `${fmt.s2(m.move)} (${ci(m.move_lo, m.move_hi, fmt.s2)})`, ci(m.move_vs_not_late.lo, m.move_vs_not_late.hi, fmt.s2), `${fmt.s2(m.abs_move)}, diff ${fmt.s2(m.abs_move_vs_not_late.diff)}`, `${fmt.s2(m.r_open_vs_not_late.diff)} (${ci(m.r_open_vs_not_late.lo, m.r_open_vs_not_late.hi, fmt.s1)})`, `${fmt.s2(m.r_close_vs_not_late.diff)} (${ci(m.r_close_vs_not_late.lo, m.r_close_vs_not_late.hi, fmt.s1)})`]; })]);
+
+table('t-model', ['Group (confirmation seasons)', 'Games', 'Model residual: actual − prediction (95%)', 'Market residual: actual − opening total (95%)'], R.step4.groups.filter(g => g.period === CONFL).map(g => [g.group, g.games, `${fmt.s2(g.model_resid.mean)} (${ci(g.model_resid.lo, g.model_resid.hi, fmt.s1)})`, `${fmt.s2(g.r.mean)} (${ci(g.r.lo, g.r.hi, fmt.s1)})`]));
+
+const rc = r => `${fmt.roi(r.roi)} (${ci(r.lo, r.hi, fmt.roi)})`;
+table('t-bet', ['Strategy', 'Discovery: bets', 'Discovery: return (95%)', 'Confirmation: bets', 'Confirmation: return (95%)'], Object.keys(bt.discovery).map(k => [k, bt.discovery[k].bets, rc(bt.discovery[k]), bt.confirmation[k].bets, rc(bt.confirmation[k])]), i => i === 0);
+
+__CHART_JS__
+const G = ['not late', 'late, other (LO)', 'late, tanker (LT)', 'late, locked (LK)'];
+dotChart('c-groups', { label: 'Mean r by group', cats: ['not late', 'late other', 'late tanker', 'late locked'], zero: true, yFmt: (v, d) => sgn(v, d === 2 ? 2 : 1), xTitle: 'Group', h: 300,
+  series: [['discovery', 'Discovery', true], ['confirmation', 'Confirmation', false]].map(([p, n, hol]) => ({ name: n, color: '--over', hollow: hol, pts: G.map(g => { const x = R.step1.find(r => r.period === p && r.group === g); return { y: x.mean_r, lo: x.lo, hi: x.hi }; }) })) });
+const BINS = ['games 1-19', '20-39', '40-59', '60-69', '70+'];
+dotChart('c-gn', { label: 'Mean r by game-number stretch', cats: BINS, zero: true, yFmt: (v, d) => sgn(v, d === 2 ? 2 : 1), xTitle: "Later team's game number", h: 300,
+  series: [{ name: 'All seven seasons', color: '--under', hollow: false, pts: BINS.map(b => { const x = gnb('registered', b); return { y: x.mean_r, lo: x.lo, hi: x.hi }; }) }] });
+</script>
