@@ -279,3 +279,37 @@ Steps:
 **Power (stated now).** Counts will be reported before any result; the user expects about 1,500 late flagged games across 7 seasons and far fewer tanker-only games. With sd(`r`) about 18, a group of 300 games has a standard error of about 1.0 point, so only a group effect of several points is detectable, as the user noted. A joint test with six coefficients also has less power per coefficient than a single test.
 
 **Reading rule.** Supported / not supported against the rules above; no criterion changes after the run; anything else is exploratory.
+
+
+## E21 - pace mismatch (angle 6 of 8)
+
+Added 2026-10-23 before any E21 number was computed (only column names, null shares and per-season mean paces of the box-score table were inspected). Shared rules above apply (discovery 2019-20..2021-22, confirmation 2022-23..2025-26, day-cluster bootstrap 1000 draws seed 20261017,
+Holm across 8 pending, layers a/b/c, betting last, sensitivity without 2019-20 and 2020-21). Regular-season games only (game id prefix 002), as in E19, because rolling windows need regular-season sequences.
+
+**Hypothesis H_PACE (sign fixed):** when the two teams' paces differ, actual game pace falls below the average of the two paces, and totals built from that average go under: the coefficient on the pace gap is **negative** for actual possessions (mechanism) and negative for `r = actual total - opening total` (market).
+
+**What has been seen.** E5 tested pace-normalised team statistics, never a pace gap. For this angle no gap, mechanism or `r`-by-gap number has been seen in either period; confirmation is untouched. The training set holds no pace column; `team_game_full` has a box-score `pace` column, which is only used for a sanity check of the possession formula.
+
+Definitions (fixed now):
+- Possessions per team-game `poss = FGA + 0.44 FTA - OREB + TOV` from `team_game_full`; **pace** = `poss x 240 / minutes` (per 48 minutes, so overtime does not inflate it; `minutes` is team minutes, 240 in regulation).
+- **Team rolling pace** = the mean pace of the team's previous 20 regular-season games, strictly before the game's date, within the same season, requiring at least 10 prior games (so each team's first 10 games of a season, and any game where either team has fewer, are excluded; counts reported).
+  Window robustness: 10 and 30 games, mechanism step only.
+- `mean_pace = (home rolling + away rolling) / 2`, `gap = |home rolling - away rolling|`. **Actual game pace** = the mean of the two teams' pace in that game.
+- `odds_total`, `r`, plausibility filter and the day bootstrap as in E14-E19. Home and away teams come from the training set's `teamId_home` and `teamId_away`.
+
+Steps:
+1. **Mechanism (layer a0, no line involved).** OLS `actual game pace ~ 1 + mean_pace + gap`, separately on discovery and confirmation (and variants with season dummies, regulation-only games, and window 10 and 30). **Supported** iff the `gap` coefficient is negative in discovery and negative in confirmation with one-sided bootstrap p < 0.05 in confirmation.
+   Also reported: the `mean_pace` coefficient (1 would mean "the average rule is right"). Supplementary (not registered as decisive): the same regression on 2013-14..2018-19 and on all 13 seasons, which needs no odds.
+2. **Market test (layer a), gated on step 1.** OLS `r ~ 1 + gap + mean_pace + (odds_total - discovery mean)` (variants: with season dummies; regulation-only), separately in each period. **Supported** iff the `gap` coefficient is negative in both periods and the confirmation one-sided p < 0.05.
+   This p-value is the angle's Holm input if step 1 is supported; if step 1 is not supported the angle's Holm input is 1.0 and step 2 is still run, labelled **exploratory and ungated**.
+3. **Model test (layer b).** On the deployed out-of-sample predictions (`reports/oos_predictions_*.csv`, 2021-22..2025-26 and the confirmation seasons), OLS `actual - total_pred ~ 1 + gap + mean_pace + (odds_total - mean)`, one-sided negative for `gap`, two-sided also reported;
+   plus the mean residual and mean `r` by quintile of `gap` (edges from the pooled OOS sample). Supported iff the confirmation `gap` coefficient is negative with one-sided p < 0.05.
+4. **Feature test (layer c), gated:** only if steps 1, 2 and 3 are all supported. Then add `pace_gap` and `pace_mean` (known before tip-off, one-game shift) to a variant of the training set and run `experiments/feature_exp.py` (seven walk-forward folds) against the baseline and `noise_floor.md`; keep iff total MAE improves in at least 5 of 7 seasons with a pooled paired interval below 0
+   and the no-harm rule holds for ML log loss, spread MAE and total MAE. Not run otherwise.
+5. **Betting test.** Under at -110 at the opening total when `gap >= c`, where `c` is the discovery quantile q of `gap` for q in {0.5, 0.6, 0.7, 0.8, 0.9}; choose the q with the highest discovery return among those with at least 200 discovery bets; apply that numeric cutoff to confirmation.
+   Report return with intervals at the opening total, the closing total and the best-book line and quoted price (E12 method), plus the all-games under control. The mirror (over when `gap >= c`) is exploratory.
+6. **Sensitivity.** Steps 1 and 2 without 2019-20 and 2020-21 (pooled 2021-22..2025-26), and with season dummies.
+
+**Power (stated now).** The report states the standard error of the `gap` coefficient in each step and the smallest effect detectable at 80% power (2.8 x SE). Each possession adds about 2.2 points to a game total, so a mechanism coefficient of -0.1 possessions per pace point of gap would be worth about -0.2 points of total per pace point.
+
+**Reading rule.** Supported / not supported against the rules above; no criterion changes after the run; anything else is exploratory.
