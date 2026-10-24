@@ -98,3 +98,72 @@ Price improvement is measured per bet by key number (3, 7, other), not assumed.
 ## Winners combined
 
 After all experiments, only KEEP decisions are re-run together (one combined run) and compared with the sum of individual effects.
+
+
+---
+
+# Totals angles (E16 onward): market residual `r = actual total - opening total`
+
+Added 2026-10-23, after E14/E15 and **before any E16 number was computed**. Shared framework supplied by the user for a family of 8 angles
+(the E14 spread angle is #1 of the 8, so E16 = angle 2 of 8; later angles are appended below this section before they are run).
+
+## Shared rules for the family
+
+- Target `r`; under = `r < 0`; pushes dropped from rates (profit 0 in betting). Data and filters exactly as E14 (`experiments/e14_blowout_under.py`).
+- Discovery 2019-20..2021-22; confirmation 2022-23..2025-26. Intervals: day-cluster bootstrap, 1000 draws, seed 20261017.
+- Three layers in order: (a) market test, (b) deployed-model test on `reports/oos_predictions_*.csv` (2021-22..2025-26), (c) feature test with
+  `experiments/feature_exp.py` against the baseline and `noise_floor.md`, run only if (a) and (b) both support the angle. Only (b) and (c) can change the model.
+- Betting test last, thresholds picked on discovery only, return at -110 and at best-book line and price (E12 method), break-even 52.38%.
+- Sensitivity: rerun without 2019-20 and 2020-21. Because that leaves one discovery season (2021-22), the sensitivity is reported for discovery = 2021-22 alone and for the
+  pooled sample 2021-22..2025-26; it is not used to decide anything.
+- Multiple testing: Holm correction across the family of 8 using the **one-sided bootstrap p-value of each angle's primary confirmation test** (p = share of draws on the
+  wrong side of 0, floored at 1/1001). The family is not complete yet, so E16 reports its raw p and marks Holm as pending; a "supported" label needs raw p < 0.05
+  now and Holm-adjusted p < 0.05 once all 8 are in.
+- Look-ahead: only pre-tip information. For E16 the inputs are the opening spread, opening total and the overtime outcome of the game itself, the last of which is used
+  only as a *target of a fitted probability*, never as a feature for the same game.
+
+## E16 - overtime and close finishes (angle 2 of 8)
+
+**Hypothesis H_OT (sign fixed):** games likely to be close go over and lopsided games go under, because close games reach overtime and end with fouling.
+In terms of the fitted close-game probabilities below, the coefficient on them in the regression of `r` is **positive**.
+
+**Disclosure that weakens this registration.** E14 already printed, for all registered seasons including confirmation: the overtime rate by spread bucket, the mean `r` of
+overtime versus regulation games by bucket, and the slope of `r` on |spread| for all games and regulation-only games. The confirmation seasons are therefore not untouched for
+this angle, and the expected answer (overtime raises `r` in close games by about 20 points per game; the |spread| slope gets more positive without overtime) is known. E16 is a
+formal re-expression with the user's probability-based design, not an independent confirmation. Its verdict is labelled exploratory-on-seen-data unless a forward sample (E15's)
+is later scored for it.
+
+**Known identification problem, registered up front.** The fitted probabilities below are functions of |spread| (and, for the variants, the opening total) only. A regression of `r` on
+such a probability with |spread| and the opening total as controls is identified only through the curvature of the link function, not through independent variation. Its coefficient will
+be imprecise and is not by itself evidence about overtime. The decomposition in step 5 (my addition, requested by no one) answers the mechanism question without that problem.
+
+Steps (all cut points fixed now):
+
+1. **Overtime model.** Logistic regression of `ot` (either team's minutes > 240) on |spread|, fitted on the discovery seasons only, then frozen. Calibration: ten bins of predicted
+   probability by quantile (bins with duplicate edges are merged), predicted versus observed overtime rate with day-bootstrap intervals, on discovery (in-sample) and confirmation (out-of-sample).
+   Calibration passes if no confirmation bin differs from its prediction by more than 2 percentage points beyond its interval; this is reported, not a gate.
+2. **Close-finish probability.** `sigma` = standard deviation of `margin + opening home spread` over the discovery games (`margin` = `target_point_diff`). For each game
+   `P_close = Phi((3.5 + spread)/sigma) - Phi((-3.5 + spread)/sigma)` (probability that |margin| <= 3 with the continuity correction, expected home margin = -spread). `sigma` is fixed from discovery.
+3. **Primary test (market, layer a).** OLS `r ~ P_OT + |spread| + odds_total` (intercept, no season dummies), once on discovery and once on confirmation, with `P_OT` from step 1.
+   Coefficient on `P_OT`: H_OT needs it positive in both periods. Primary confirmation statistic = that coefficient with its one-sided bootstrap p. Then the same regression on
+   regulation-only games, and the same two regressions with `P_close` in place of `P_OT` (secondary). Mechanism reading: **overtime is the mechanism** iff the all-games `P_OT` coefficient is positive with
+   confirmation one-sided p < 0.05 and the regulation-only coefficient's two-sided 95% interval includes 0 (or is smaller than half the all-games coefficient with the difference interval above 0).
+   Otherwise the mechanism is not overtime.
+4. **Size sanity check.** Report overtime share by spread bucket (0-3, 3-6, 6-9, 9-12, 12+), mean `r` of overtime and of regulation games, and the implied gap
+   (overtime share difference between the 0-3 and 12+ buckets times the overtime-minus-regulation mean `r`), compared with the |spread| slope times the bucket distance. The user's expected gap
+   of 0.5-1 point and "about 11 points per overtime game" are checked against these.
+5. **Decomposition (added).** Write `E[r | s] = (1-p(s)) mu_reg(s) + p(s) mu_ot(s)`. Report the overtime contribution to the |spread| slope as
+   `(mu_ot - mu_reg) * dp/ds` using the discovery logistic slope at the mean overtime rate and the pooled overtime-minus-regulation mean `r`, and the remainder (the regulation slope), each with
+   a day-bootstrap interval (logistic refitted on each draw by weighting games by how many times their day was drawn). Compare to the directly estimated all-games and regulation-only |spread| slopes.
+6. **Model test (layer b).** Slope of the deployed model residual `actual - total_pred` on `P_OT` controlling for |spread| and the opening total, 2021-22..2025-26, and the model's predicted minus
+   opening total on the same regressors, to show what the model already leans on. Support requires the residual coefficient positive with one-sided p < 0.05; otherwise the model already absorbs it.
+7. **Feature test (layer c).** Not run unless step 3 (confirmation) and step 6 are both supported. The candidate would be `P_OT` and `P_close` computed from pre-game lines.
+8. **Betting test.** Over bet at -110 when `P_OT >= c`, where c is the discovery quantile q of `P_OT` for q in {0.5, 0.6, 0.7, 0.8, 0.9}, chosen as the q with the highest discovery
+   return among those with at least 200 discovery bets; the numerical cutoff c is then applied unchanged to confirmation. Report return with a day-bootstrap interval at the opening total, at the closing
+   total and at the best-book line and quoted price. The mirror (under when `P_OT <= c'`, symmetric cut points on the low side) is reported as exploratory only.
+
+**Power (stated now).** `r` has standard deviation about 18. Two groups of 2,000 games differ with a standard error of about 0.57 points, so an effect under about 1.1 points is not
+detectable at 95% two-sided. Non-significant is the expected outcome unless the overtime effect is larger than the overtime arithmetic gives.
+
+**Reading rule for the report.** Each layer is stated as supported / not supported against the rules above; no criterion is changed after the run; anything outside these steps is labelled
+exploratory.
