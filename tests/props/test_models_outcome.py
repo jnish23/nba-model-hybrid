@@ -74,3 +74,18 @@ def test_scoring_helpers():
     assert oc.prob_over(pm, np.array([1.5]))[0] == pytest.approx(0.3)
     assert oc.crps(pm, np.array([1]))[0] == pytest.approx(0.2 ** 2 + 0.3 ** 2)  # cdf = .2, .7, 1.0 vs indicator 0, 1, 1
     assert oc.crps(pm, np.array([1]))[0] < oc.crps(pm, np.array([2]))[0]
+
+
+def test_push_aware_probabilities_on_integer_and_half_lines():
+    pm = np.zeros((1, 11), dtype=np.float32)
+    pm[0, :] = [0.05, 0.05, 0.1, 0.1, 0.15, 0.2, 0.15, 0.1, 0.05, 0.03, 0.02]           # X = 5 has mass 0.2
+    line5, line55 = np.array([5.0]), np.array([5.5])
+    assert abs(oc.prob_push(pm, line5)[0] - 0.2) < 1e-6 and oc.prob_push(pm, line55)[0] == 0.0
+    over, under, push = oc.prob_over(pm, line5)[0], oc.prob_under(pm, line5)[0], oc.prob_push(pm, line5)[0]
+    assert abs(over + under + push - 1) < 1e-6
+    assert abs(oc.prob_over_no_push(pm, line5)[0] - over / (1 - push)) < 1e-6              # conditional on no push, both sides are larger than the raw probabilities
+    assert oc.prob_over_no_push(pm, line5)[0] > over and oc.prob_under_no_push(pm, line5)[0] > under
+    assert abs(oc.prob_over_no_push(pm, line55)[0] - oc.prob_over(pm, line55)[0]) < 1e-9   # half lines: unchanged
+    # a push returns the stake: at fair-no-push odds the EV is zero on an integer line
+    p = oc.prob_over_no_push(pm, line5)[0]
+    assert abs(oc.ev_per_unit(pm, line5, 1.0 / p, 'over')[0]) < 1e-6

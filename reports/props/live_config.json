@@ -1,0 +1,20 @@
+{
+ "rule_file": "reports/props/phase5_revised_rule.frozen_rule.json",
+ "rule_sha256": "b597763ab3b13fd9cf295b1de802255ac87fe6e9bbf065103171db49eec2b6fb",
+ "model_version": "v3_live_2026-27",
+ "model_season": "2026-27",
+ "model_bundle_sha256": "c416a8a516e4f17bed97625352c135097c680775cce343eec599769471df746a",
+ "features_db": "data/props_features_v3.db",
+ "features_db_bytes": 684130304,
+ "features_db_sha256": "2d221a8d39923a300b2496395a4ea9abc9d723d0f4adc6f860746c66007cfab9",
+ "roster_rule": "v2",
+ "n_sims": 20000,
+ "effective_from": "2026-10-22",
+ "waivers": [
+  "A1 (October coverage ~60%)",
+  "A4 (teammate-availability inputs cannot be reproduced before the game)",
+  "A5",
+  "A6"
+ ],
+ "note": "Paper record only. The parity gap is disclosed in reports/props/d1_parity_report.md and in every live report."
+}

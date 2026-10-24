@@ -20,6 +20,8 @@ MIN_REF = 8.0
 S = 64                                         # support points per regime
 BUCKET_EDGES = (15.0, 28.0)                    # predicted-minutes buckets for the residual banks: <15, 15-28, 28+
 MIN_SD = 0.75
+OOF_BLOCKS = 5                                  # forward-chaining blocks inside the fit window (block 0 only trains)
+MIN_BANK_ROWS = 300
 
 
 def _levels(n):
@@ -58,12 +60,18 @@ class MinutesModel:
             Xs, ys, ws, ds = X.iloc[sel], y[sel], w[sel], dates[sel]
             _, nm = common.fit_booster('regression', Xs, ys, ws, ds, self.params)
             mean = common.refit('regression', Xs, ys, ws, nm, self.params)
-            oof = common.blocked_oof('regression', Xs, ys, ws, ds, nm, params=self.params)
+            # forward-chaining residuals (each block predicted from earlier blocks only) and an OUT-OF-SAMPLE sd for each (the spread model that scales a residual
+            # never saw that row or any later one), so the standardized residuals in the bank are not narrowed by in-sample fitting
+            oof = common.forward_oof('regression', Xs, ys, ws, ds, nm, n_blocks=OOF_BLOCKS, params=self.params)
             res = ys - oof
             ok = ~np.isnan(res)
             _, ns = common.fit_booster('regression', Xs.iloc[np.flatnonzero(ok)], np.abs(res[ok]), ws[ok], ds[ok], self.params)
             spread = common.refit('regression', Xs.iloc[np.flatnonzero(ok)], np.abs(res[ok]), ws[ok], ns, self.params)
-            sd = np.maximum(spread.predict(Xs.iloc[np.flatnonzero(ok)]), MIN_SD)
+            sd_oof = common.forward_oof('regression', Xs, np.where(ok, np.abs(res), 0.0), ws, ds, ns, n_blocks=OOF_BLOCKS, params=self.params, usable=ok)
+            ok = ok & ~np.isnan(sd_oof)
+            if ok.sum() < MIN_BANK_ROWS:
+                raise ValueError(f'regime {name}: only {int(ok.sum())} rows with forward-chaining residuals and out-of-sample sd (need {MIN_BANK_ROWS})')
+            sd = np.maximum(sd_oof[ok], MIN_SD)
             z = res[ok] / sd
             mu_oof = oof[ok]
             bank = np.vstack([np.quantile(z[self._bucket(mu_oof) == b], _levels(S)) if (self._bucket(mu_oof) == b).sum() >= 50

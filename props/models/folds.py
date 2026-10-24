@@ -62,3 +62,23 @@ def assert_fold_integrity(frame, fold):
     s = frame['season'].to_numpy()
     if not (s[fold.test_idx] == fold.test_season).all() or not (s[fold.fit_idx] < fold.test_season).all():
         raise AssertionError('seasons are not walk-forward')
+
+
+def make_live_fold(frame, next_season, first_season=FIRST_SEASON, calib_frac=CALIB_FRAC, exclude_bubble=True):
+    """
+    The fold used to train a LIVE model: the training window is every season before `next_season` (the season about to be played, which must have no rows in `frame`),
+    split by date into fit and calibration exactly as make_fold does; there is no test part. Same rules, same cut-off arithmetic, same bubble exclusion.
+    """
+    season = frame['season'].to_numpy()
+    date = frame['game_date'].to_numpy()
+    if (season >= next_season).any():
+        raise ValueError(f'the frame already has rows from {next_season} or later: a live fold trains on completed seasons only')
+    train = season >= first_season
+    if exclude_bubble:
+        train &= ~((season == '2019-20') & (date >= BUBBLE_START))
+    dates = np.unique(date[train])
+    cutoff = dates[int(np.floor(len(dates) * (1 - calib_frac)))]
+    fit, cal = np.flatnonzero(train & (date < cutoff)), np.flatnonzero(train & (date >= cutoff))
+    if not (len(fit) and len(cal)) or not date[fit].max() < date[cal].min():
+        raise AssertionError('fit rows are not strictly before calibration rows')
+    return Fold(next_season, fit, cal, np.array([], dtype=int), str(cutoff))

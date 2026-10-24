@@ -33,7 +33,7 @@ def snapshot_env(props_db, grid=GRID):
                 JOIN event_ref r ON r.event_id_vendor = t.event_id_vendor
                 LEFT JOIN snapshot_ref s ON s.snapshot_ts_utc = t.snapshot_ts_utc AND s.event_id_vendor = t.event_id_vendor
                 WHERE l.mode IN ({','.join('?' * len(modes))}) AND r.game_id IS NOT NULL AND COALESCE(s.in_game, 0) = 0
-                  AND s.minutes_to_ref >= CAST(substr(l.mode, 8) AS REAL) - 1.0"""
+                  AND s.minutes_to_ref >= CAST(substr(l.mode, 8) AS REAL)"""
         d = pd.read_sql(q, conn, params=modes)
     d['minutes_before'] = d['mode'].str.replace('hist_T-', '', regex=False).astype(int)
     fair_home, _, _ = devig.devig_prices(d['home_ml'], d['away_ml'], 'multiplicative')
@@ -65,7 +65,7 @@ def sbr_proxy(clean_odds, grid=GRID):
 def combine(snapshots, proxy):
     """Snapshot rows win; the proxy fills only (game, T) pairs with no snapshot row."""
     key = ['game_id', 'minutes_before']
-    keep = proxy.merge(snapshots[key].assign(_s=1), on=key, how='left')
+    keep = proxy.merge(snapshots[key].assign(_s=1).drop_duplicates(key), on=key, how='left', validate='many_to_one')
     keep = keep[keep['_s'].isna()].drop(columns='_s')
     return pd.concat([snapshots, keep], ignore_index=True)
 
@@ -76,7 +76,7 @@ def team_view(rows, env, minutes_before):
     env_team_spread < 0 means the player's team is the favourite.
     """
     e = env[env['minutes_before'] == minutes_before].drop(columns='minutes_before')
-    d = rows[['game_id', 'player_id', 'is_home']].merge(e, on='game_id', how='left')
+    d = rows[['game_id', 'player_id', 'is_home']].merge(e, on='game_id', how='left', validate='many_to_one')
     hs = d['home_spread'].to_numpy(dtype=float)
     home = d['is_home'].to_numpy() == 1
     team_spread = np.where(home, hs, -hs)
