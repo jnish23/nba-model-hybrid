@@ -167,3 +167,35 @@ detectable at 95% two-sided. Non-significant is the expected outcome unless the 
 
 **Reading rule for the report.** Each layer is stated as supported / not supported against the rules above; no criterion is changed after the run; anything outside these steps is labelled
 exploratory.
+
+
+## E17 - spread x total interaction (angle 3 of 8)
+
+Added 2026-10-23 before any E17 number was computed. Shared rules above apply (discovery 2019-20..2021-22, confirmation 2022-23..2025-26, day-cluster bootstrap 1000 draws seed 20261017, Holm across the 8
+angles pending, layers a/b/c, betting last, sensitivity without 2019-20 and 2020-21, E14 frame and filters).
+
+**Hypothesis H_INT (two-sided):** the effect of |spread| on `r` depends on the opening total. The motivating example (a leading team's bench keeps scoring in a fast game and not in a slow one) implies the interaction
+coefficient is **positive** (|spread| pushes `r` up more when the total is high); the test is two-sided because the claim is "behaves differently", and the sign of the example is reported against the result.
+
+**What has already been seen.** E14 printed the |spread| main effect and the coefficient on the opening total (about -0.05 per point), never a cell table or an interaction term. The interaction is therefore untouched in both periods. The |spread| main
+effect is positive and known (+0.18 in the registered seasons), so a significant interaction means only that the slope differs by total, not that it appears from nothing.
+
+Steps (cut points fixed now):
+
+1. **Grid.** Terciles of `odds_total` with cutoffs set once from the discovery games (33.3rd and 66.7th percentiles) and applied unchanged to every period; |spread| buckets [0,5), [5,10), [10,inf). For each of the 9 cells and each
+   period: games, mean `r`, under rate (pushes excluded), with day-bootstrap intervals. The opening total drifts upward over the seasons (about 222 in discovery to about 229 in 2025-26), so the share of confirmation games in each tercile
+   will not be a third; those shares are reported, and a within-season tercile version of the grid and of the interaction regression is reported as a sensitivity (added by me; the user-specified, discovery-cutoff version is the primary).
+2. **Primary regression.** OLS `r ~ |spread| + T + |spread| x T + season dummies`, where `T = odds_total - (discovery mean of odds_total)`, fitted separately on discovery and on confirmation (dummies for the seasons present, first dropped).
+   The statistic is the coefficient on the product. Two-sided bootstrap p = 2 x min(share of draws <= 0, share >= 0), floored at 2/1001. **H_INT is supported** iff the two periods' product coefficients have the same sign and the confirmation p < 0.05; Holm
+   across 8 angles is applied once the family is complete. Also reported: the spread slope at the 16th, 50th and 84th percentile of `T`, and the contrast "mean `r` in the (10+, top tercile) cell minus the (10+, bottom tercile) cell" in confirmation.
+3. **Model test (layer b).** The same regression with `actual - total_pred` as the target on the 2021-22..2025-26 out-of-sample predictions, and with `total_pred - odds_total` (the model's lean), season dummies included.
+   Layer b supports the angle iff the residual's product coefficient has the same sign as step 2's confirmation coefficient and p < 0.05 two-sided; otherwise the model already absorbs it (or the effect is absent).
+4. **Feature test (layer c).** Only if step 2 is supported and layer b is supported: add `abs_spread x total` and the tercile cell indicator as candidates in `experiments/feature_exp.py` against the baseline and `noise_floor.md`. Not run otherwise.
+5. **Betting test.** For each of the 9 cells and each side (over, under) at -110 at the opening total, compute the discovery return. Choose the one (cell, side) with the highest discovery return among cells with at least 150 discovery bets; apply that same cell definition to
+   confirmation. Report return with a day-bootstrap interval at the opening total, the closing total and the best-book line and quoted price (E12 method), plus the all-games over and under controls. Break-even is 52.38%.
+6. **Sensitivity (no 2019-20 / 2020-21).** The step 2 product coefficient with the sample = 2021-22 only (in place of discovery) and pooled 2021-22..2025-26. Reported, not decisive.
+
+**Power (stated now).** Cells hold about 400 (discovery) to 700 (confirmation) games, so a single cell mean has a standard error of about 0.7-0.9 points (sd of `r` about 18), and a difference between two cells about 1.0-1.3. The interaction is estimated from the whole sample but is expected to be weak; the report states its bootstrap standard error and the
+implied smallest detectable change in the spread slope across the interquartile range of the total (2.8 x SE x IQR of T). A non-significant result means "not shown".
+
+**Reading rule.** Supported / not supported against the rules above; no criterion changes after the run; anything else is exploratory.

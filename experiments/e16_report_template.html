@@ -1,0 +1,152 @@
+<main>
+<header style="display:flex;flex-direction:column;gap:12px">
+  <div class="eyebrow">Experiment E16 · totals · angle 2 of 8 · run 2026-10-23</div>
+  <h1>Overtime Close-Finish Test</h1>
+  <p class="lede">Do games likely to be close go over the opening total, through overtime and end-of-game fouling, while lopsided games go under? Registered in <code>PREREGISTRATION.md</code> before the run.</p>
+  <nav class="toc" aria-label="Sections">
+    <a href="#verdict">Verdict</a><a href="#size">Size check</a><a href="#decomp">Decomposition</a><a href="#primary">Registered regression</a><a href="#model">Model</a><a href="#bets">Betting</a><a href="#rules">Against the rules</a>
+  </nav>
+</header>
+
+<section id="verdict">
+  <div class="verdict">
+    <span class="tag">H_OT NOT SUPPORTED</span>
+    <p class="lede">Overtime does push close games over, but it is a small effect and plays against the spread theory: it makes the big-spread overs look <i>smaller</i>, not larger. In regulation time, close games run under the line and blowouts run over it.</p>
+    <div class="facts">
+      <div class="fact"><b class="num over"><span data-b="D.mu.point|s1"></span></b><span>points that one overtime game adds to (actual − opening total), against regulation games. Interval <span data-b="D.mu.lo|s1"></span> to <span data-b="D.mu.hi|s1"></span>. The plan assumed about 11.</span></div>
+      <div class="fact"><b class="num"><span data-b="D.ot.point|s3"></span></b><span>overtime's contribution to the |spread| slope (interval <span data-b="D.ot.lo|s3"></span> to <span data-b="D.ot.hi|s3"></span>). Negative: overtime works against the theory.</span></div>
+      <div class="fact"><b class="num"><span data-b="D.gapObs|s2"></span></b><span>points: mean r of 0-3 spreads minus 12+ spreads, all games. The theory predicts a positive gap; overtime alone would give <span data-b="step4.implied_gap_0_3_vs_12plus|s2"></span>.</span></div>
+    </div>
+  </div>
+  <div class="note"><b>This is a re-expression of data already seen.</b> E14 printed the overtime rate by spread bucket, overtime versus regulation mean r, and the all-games versus regulation-only slopes for every registered season, including the confirmation seasons. The 2022-26 seasons are therefore not untouched for this angle, and the registration says so. Treat the result as exploratory unless the forward sample in E15 is later scored for it. Holm correction is pending until all 8 angles are in; the raw confirmation p-value is <span data-b="step3_reading.confirmation_p_one_sided|3"></span> and the sign is wrong, so no correction could rescue it.</div>
+</section>
+
+<section id="size">
+  <h2>1 · Size check: how big can overtime be?</h2>
+  <p>About <span data-b="step4.ot_share_overall|pct1"></span> of games go to overtime, and they are more common when the spread is small. The share falls from <span data-b="D.b0.ot_share|pct1"></span> in the 0-3 bucket to <span data-b="D.b4.ot_share|pct1"></span> at 12+. Multiplying that gap by the overtime effect gives <span data-b="step4.implied_gap_0_3_vs_12plus|s2"></span> points, inside the 0.5 to 1 range you expected. The standard error for comparing two groups of 2,000 games is <span data-b="step4.se_two_groups_of_2000|2"></span> points (r has a standard deviation of <span data-b="step4.sd_r|1"></span>), so that gap is below what the data can resolve on its own.</p>
+  <div class="chartbox">
+    <h3>Mean of actual − opening total, by spread bucket</h3>
+    <div class="sub">Points, 2019-20 to 2025-26, 95% intervals from resampling game days. Overtime games are about 5% of each bucket.</div>
+    <div id="c-size"></div>
+  </div>
+  <div class="scroll"><table id="t-size"></table></div>
+  <p>The overtime effect is there (+0.8 points of gap), but the regulation games point the other way by 2.6 points: close games run under the line by about 1.3 points and games at 12+ run over it by about 1.4. Whatever sits in the 12+ over is not overtime, and the end-of-game fouling idea, which would show up inside regulation scoring, does not appear in the regulation data either.</p>
+</section>
+
+<section id="decomp">
+  <h2>2 · Decomposition: how much of the slope is overtime?</h2>
+  <p>The |spread| slope of r splits into an overtime term, (overtime minus regulation mean r) × (change in overtime probability per spread point), and a remainder from regulation games. The first column of numbers is a calculation from the fitted overtime model; the direct estimates are the plain regression slopes.</p>
+  <div class="scroll"><table id="t-decomp"></table></div>
+  <p>The overtime term (<span data-b="D.ot.point|s3"></span>) and the observed all-minus-regulation difference (<span data-b="D.diffDirect|s3"></span>) agree. Overtime is a suppressor of the positive slope, not its source. Removing overtime games makes the slope steeper, <span data-b="D.regSlope.slope|s3"></span> (interval <span data-b="D.regSlope.lo|s2"></span> to <span data-b="D.regSlope.hi|s2"></span>).</p>
+</section>
+
+<section id="primary">
+  <h2>3 · The registered regression</h2>
+  <p>As specified: regress r on the fitted overtime probability with |spread| and the opening total as controls. The registration warned that this cannot work, because the probability is a function of |spread| alone, so the coefficient is identified only through the curvature of the logistic link. The numbers confirm it.</p>
+  <div class="scroll"><table id="t-primary"></table></div>
+  <p>Coefficients are in the hundreds with intervals spanning zero by hundreds, and the sign flips between periods. The "regulation-only includes zero" condition is technically met, but only because the interval is wide enough to include everything, so it carries no information. The overtime logistic itself is fine: it passes the calibration check (no confirmation decile off by more than 2 points beyond its interval).</p>
+  <details>
+    <summary>Calibration of the overtime probability, by decile of predicted value</summary>
+    <div class="scroll" style="margin-top:8px"><table id="t-cal"></table></div>
+  </details>
+  <p style="margin-top:10px">Logistic slope: <span data-b="step1.slope_per_spread_point|3"></span> per spread point on the log-odds scale; margin sigma for the close-finish probability is <span data-b="sigma_margin_discovery|2"></span> points (you expected about 12).</p>
+</section>
+
+<section id="model">
+  <h2>4 · Does the deployed model use it?</h2>
+  <p>Same regression on the model's residual (actual − predicted total) and on its lean (predicted − opening total), 2021-22 to 2025-26. The coefficient is again unidentified (interval <span data-b="D.m.lo|0"></span> to <span data-b="D.m.hi|0"></span> for the residual), so this layer says nothing. What the model does with |spread| directly is covered in E14: roughly half of the market's positive slope is already inside its predictions.</p>
+  <p>Layer (c), the feature experiment, was not run: it needed both the market and model tests to support the idea.</p>
+</section>
+
+<section id="bets">
+  <h2>5 · Betting test</h2>
+  <p>Over bet at -110 when the overtime probability is at or above the cutoff, the cutoff being a discovery-season quantile in {0.5, 0.6, 0.7, 0.8, 0.9}. The rule picked q = <span data-b="bet_registered_over.q_chosen|raw"></span>, then applied that numeric cutoff to the confirmation seasons.</p>
+  <div class="scroll"><table id="t-bet"></table></div>
+  <div class="note"><b>Exploratory mirror.</b> Under when the overtime probability is low (the big-spread under bet from E14, re-cut by probability): <span data-b="D.mirC.roi|roi"></span> on confirmation (interval <span data-b="D.mirC.lo|roi"></span> to <span data-b="D.mirC.hi|roi"></span>). It loses for the same reason as before.</div>
+</section>
+
+<section id="rules">
+  <h2>6 · Against the registered rules</h2>
+  <div class="scroll"><table id="t-rules"></table></div>
+  <h3 style="margin-top:8px">Sensitivity: without 2019-20 and 2020-21</h3>
+  <div class="scroll"><table id="t-sens"></table></div>
+  <p>Dropping the two unusual seasons leaves the |spread| slope positive (discovery 2021-22 alone is too small to be significant, the pooled five seasons are). The overtime-probability coefficient is as unidentified as before.</p>
+  <h3>Limits</h3>
+  <ul class="plain">
+    <li>End-game fouling has no direct test here (no play-by-play); its only pre-game proxy is the close-finish probability, which has the same identification problem as the overtime one.</li>
+    <li>The decomposition and size check are additions to your plan, registered before the run. Everything else follows your steps.</li>
+    <li>Script: <code>experiments/e16_overtime.py</code>; numbers: <code>reports/experiments/E16_overtime/results.json</code>. Rerun: <code>.venv\Scripts\python.exe -m experiments.e16_overtime</code>.</li>
+  </ul>
+</section>
+<footer>Day-cluster bootstrap, 1,000 draws, seed 20261017. One-sided p = share of draws ≤ 0 for a positive hypothesis.</footer>
+</main>
+
+<script>
+const R = __R__;
+const fmt = {
+  '0': v => v.toFixed(0), '1': v => v.toFixed(1), '2': v => v.toFixed(2), '3': v => v.toFixed(3), 's1': v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1),
+  's2': v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(2), 's3': v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(3), 'pct1': v => (v * 100).toFixed(1) + '%',
+  'int': v => Math.round(v).toLocaleString('en-US'), 'roi': v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1) + '%', 'raw': v => String(v)
+};
+const path = (o, p) => p.split('.').reduce((a, k) => (a == null ? a : a[k]), o);
+const B = R.step4.buckets, s5 = R.step5, DISC_LAB = 'discovery logistic, pooled mean r (registered)';
+const CONF = 'confirmation 2022-23..2025-26';
+R.D = { mu: s5[DISC_LAB].mu_ot_minus_mu_reg, ot: s5[DISC_LAB].ot_contribution_to_slope, b0: B[0], b4: B[4], gapObs: B[0].mean_r_all - B[4].mean_r_all,
+  regSlope: s5['direct slopes, registered seasons']['regulation only'], diffDirect: s5['direct slopes, registered seasons']['all games'].slope - s5['direct slopes, registered seasons']['regulation only'].slope,
+  m: R.step6[CONF].model_resid, mirC: R.bet_mirror_exploratory.confirmation['under opening @ -110'] };
+document.querySelectorAll('[data-b]').forEach(el => { const [p, f] = el.dataset.b.split('|'); const v = path(R, p); el.textContent = v == null ? '?' : (f ? fmt[f](v) : String(v)); });
+function table(id, head, rows, hl) {
+  const t = document.getElementById(id);
+  t.innerHTML = '<thead><tr>' + head.map(h => `<th>${h}</th>`).join('') + '</tr></thead><tbody>' + rows.map((r, i) => `<tr class="${hl && hl(i) ? 'hl' : ''}">` + r.map(c => `<td>${c}</td>`).join('') + '</tr>').join('') + '</tbody>';
+}
+const ci = (lo, hi, f) => `${f(lo)} to ${f(hi)}`;
+const pill = (ok, t) => `<span class="pill ${ok ? 'pass' : 'fail'}">${ok ? '✓' : '✗'} ${t || (ok ? 'passes' : 'fails')}</span>`;
+const pct = v => (v * 100).toFixed(1) + '%';
+const cc = x => `${fmt.s2(x.coef)} (${ci(x.lo, x.hi, fmt.s2)})`;
+
+table('t-size', ['|Spread| bucket', 'Games', 'Overtime share (95%)', 'Mean r, regulation', 'Mean r, overtime', 'Mean r, all games'],
+  B.map(b => [b.bucket, fmt.int(b.games), `${pct(b.ot_share)} (${pct(b.ot_share_lo)} to ${pct(b.ot_share_hi)})`, fmt.s2(b.mean_r_reg), fmt.s2(b.mean_r_ot), fmt.s2(b.mean_r_all)]));
+
+const dd = s5[DISC_LAB], dc = s5['confirmation logistic and mean r'], dr = s5['direct slopes, registered seasons'];
+const tri = x => `${fmt.s3(x.point)} (${ci(x.lo, x.hi, fmt.s3)})`;
+table('t-decomp', ['Quantity', 'Registered (discovery logistic, pooled means)', 'Confirmation only'], [
+  ['Overtime minus regulation mean r, points', `${fmt.s1(dd.mu_ot_minus_mu_reg.point)} (${ci(dd.mu_ot_minus_mu_reg.lo, dd.mu_ot_minus_mu_reg.hi, fmt.s1)})`, `${fmt.s1(dc.mu_ot_minus_mu_reg.point)} (${ci(dc.mu_ot_minus_mu_reg.lo, dc.mu_ot_minus_mu_reg.hi, fmt.s1)})`],
+  ['Change in overtime probability per spread point', tri(dd.dp_ds), tri(dc.dp_ds)],
+  ['Overtime term of the slope', tri(dd.ot_contribution_to_slope), tri(dc.ot_contribution_to_slope)],
+  ['Direct slope, all games (registered seasons)', cc2(dr['all games']), ''],
+  ['Direct slope, regulation only', cc2(dr['regulation only']), '']
+], i => i === 2);
+function cc2(x) { return `${fmt.s3(x.slope)} (${ci(x.lo, x.hi, fmt.s2)})`; }
+
+const s3 = R.step3;
+const rowP = (lab, k, g) => [lab, `${cc(s3[k][g].discovery)}`, `${cc(s3[k][g].confirmation)}`, fmt['3'](s3[k][g].confirmation.p_one_sided)];
+table('t-primary', ['Coefficient on the probability', 'Discovery (95%)', 'Confirmation (95%)', 'Confirmation one-sided p'], [
+  rowP('Overtime probability, all games', 'p_ot', 'all games'), rowP('Overtime probability, regulation only', 'p_ot', 'regulation only'),
+  rowP('Close-finish probability, all games', 'p_close', 'all games'), rowP('Close-finish probability, regulation only', 'p_close', 'regulation only')]);
+
+const cal = R.calibration;
+table('t-cal', ['Period', 'Decile', 'Games', 'Predicted', 'Observed (95%)'], cal.map(c => [c.period, c.bin, c.games, pct(c.predicted), `${pct(c.observed)} (${pct(c.lo)} to ${pct(c.hi)})`]));
+
+const rb = R.bet_registered_over, rc = r => `${fmt.roi(r.roi)} (${ci(r.lo, r.hi, fmt.roi)})`;
+table('t-bet', ['Strategy', 'Discovery: bets', 'Discovery: return (95%)', 'Confirmation: bets', 'Confirmation: return (95%)'],
+  Object.keys(rb.discovery).map(k => [k.replace('over', 'Over').replace('(control)', '(control, every game)'), fmt.int(rb.discovery[k].bets), rc(rb.discovery[k]), fmt.int(rb.confirmation[k].bets), rc(rb.confirmation[k])]), i => i === 1);
+
+const rd = R.step3_reading;
+table('t-rules', ['Registered condition', 'Value', 'Result'], [
+  ['P_OT coefficient positive in both periods', `${fmt.s2(s3.p_ot['all games'].discovery.coef)} / ${fmt.s2(s3.p_ot['all games'].confirmation.coef)}`, pill(rd.positive_in_both_periods)],
+  ['Confirmation one-sided p < 0.05', fmt['3'](rd.confirmation_p_one_sided), pill(rd.confirmation_p_one_sided < 0.05)],
+  ['H_OT supported (raw)', '', pill(rd.H_OT_supported_raw, rd.H_OT_supported_raw ? 'supported' : 'not supported')],
+  ['Overtime is the mechanism', 'needs H_OT supported', pill(rd.overtime_is_mechanism, rd.overtime_is_mechanism ? 'yes' : 'no')],
+  ['Model residual coefficient positive, p < 0.05 (layer b)', fmt['3'](R.step6[CONF].model_resid.p_one_sided), pill(R.step6_supported)],
+  ['Feature test (layer c)', '', '<span class="pill info">not run</span>'],
+  ['Holm across 8 angles', '', '<span class="pill info">pending</span>']
+], i => i === 2);
+
+const sv = R.sensitivity_no_covid_seasons;
+table('t-sens', ['Sample', 'P_OT coefficient, all games', '|Spread| slope, all games', '|Spread| slope, regulation only'],
+  Object.keys(sv).map(k => [k, cc(sv[k]['p_ot all games']), cc2(sv[k]['abs_spread slope all games']), cc2(sv[k]['abs_spread slope regulation only'])]));
+
+__CHART_JS__
+dotChart('c-size', { label: 'Mean r by bucket, regulation versus all', cats: B.map(b => b.bucket), zero: true, yFmt: (v, d) => sgn(v, d === 2 ? 2 : 1), xTitle: 'Opening |spread|, points', h: 280,
+  series: [['mean_r_reg', 'Regulation only', '--under'], ['mean_r_all', 'All games', '--over']].map(([k, n, col]) => ({ name: n, color: col, hollow: false, pts: B.map(b => ({ y: b[k], lo: b[k + '_lo'], hi: b[k + '_hi'] })) })) });
+</script>

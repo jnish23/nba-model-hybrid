@@ -1,0 +1,148 @@
+<main>
+<header style="display:flex;flex-direction:column;gap:12px">
+  <div class="eyebrow">Experiment E17 · totals · angle 3 of 8 · run 2026-10-23</div>
+  <h1>Spread and Total Interaction</h1>
+  <p class="lede">Does the effect of a big spread on the over/under depend on how high the total is? Registered in <code>PREREGISTRATION.md</code> before the run; the interaction had not been looked at in either period.</p>
+  <nav class="toc" aria-label="Sections"><a href="#verdict">Verdict</a><a href="#grid">The 3×3 grid</a><a href="#reg">Regression</a><a href="#model">Model</a><a href="#bets">Betting</a><a href="#rules">Against the rules</a></nav>
+</header>
+
+<section id="verdict">
+  <div class="verdict">
+    <span class="tag">H_INT NOT SUPPORTED</span>
+    <p class="lede">The slope of r on |spread| is the same at low, middle and high totals: about <b class="num over"><span data-b="D.pooledMid|s2"></span></b> points per spread point everywhere. The product term is zero in both periods and its sign flips between them.</p>
+    <div class="facts">
+      <div class="fact"><b class="num"><span data-b="D.pc.coef|s3"></span></b><span>confirmation product coefficient (interval <span data-b="D.pc.lo|s3"></span> to <span data-b="D.pc.hi|s3"></span>), two-sided p = <span data-b="D.pc.p_two_sided|2"></span>. Discovery: <span data-b="D.pd.coef|s3"></span>.</span></div>
+      <div class="fact"><b class="num"><span data-b="D.slopeLo|s2"></span> / <span data-b="D.slopeHi|s2"></span></b><span>spread slope at the 16th and 84th percentile of the total (pooled seasons). The example in your idea needs the high-total slope to be clearly larger.</span></div>
+      <div class="fact"><b class="num"><span data-b="D.detect|2"></span></b><span>rough detection threshold for a change in the spread slope across the interquartile range of the total. A simulation (POWER_CHECK) shows the registered rule catches a 0.22 change 68% of the time and a 0.11 change 19%, so only a large interaction was testable.</span></div>
+    </div>
+  </div>
+  <div class="note"><b>Tercile drift.</b> The registered cutoffs come from the discovery seasons (<span data-b="definitions.tercile_cutoffs.0|1"></span> and <span data-b="definitions.tercile_cutoffs.1|1"></span>). Totals rose afterwards, so in the confirmation seasons only <span data-b="D.shLow|pct1"></span> of games fall in the low tercile and <span data-b="D.shHigh|pct1"></span> in the high one. The grid is read with that in mind; the within-season version at the bottom removes the drift and says the same thing. Holm correction is pending until all 8 angles are in; the raw p is far from 0.05.</div>
+</section>
+
+<section id="grid">
+  <h2>1 · The 3×3 grid</h2>
+  <p>Each cell shows the mean r with its 95% interval, the under rate and the number of games. Tercile cutoffs and spread edges (0-5, 5-10, 10+) were fixed before looking.</p>
+  <div class="cols">
+    <div class="chartbox"><h3>Discovery 2019-20 to 2021-22</h3><div class="sub">Mean of actual − opening total, by spread bucket, one series per total tercile.</div><div id="c-disc"></div></div>
+    <div class="chartbox"><h3>Confirmation 2022-23 to 2025-26</h3><div class="sub">Same cells. The low-total cells are small after the drift.</div><div id="c-conf"></div></div>
+  </div>
+  <h3>Discovery</h3><div class="scroll"><table id="t-grid-d"></table></div>
+  <h3>Confirmation</h3><div class="scroll"><table id="t-grid-c"></table></div>
+  <p>Five of the six tercile rows rise with the spread, which is the E14 effect (the exception is the low-total row in confirmation, which dips between 0-5 and 5-10 before its 10+ cell), and no tercile stands out. The 10+ cells are the thinnest (117 to 582 games per cell in confirmation), so their intervals are wide. The registered contrast, mean r in the (10+, high total) cell minus the (10+, low total) cell, is <span data-b="D.contrC.diff|s2"></span> in confirmation (interval <span data-b="D.contrC.lo|s2"></span> to <span data-b="D.contrC.hi|s2"></span>) and <span data-b="D.contrD.diff|s2"></span> in discovery (interval <span data-b="D.contrD.lo|s2"></span> to <span data-b="D.contrD.hi|s2"></span>). The point estimates say low-total blowouts go over <i>more</i>, but neither interval excludes zero.</p>
+  <details><summary>Within-season terciles (sensitivity, removes the drift)</summary>
+    <div class="scroll" style="margin-top:8px"><table id="t-grid-ws"></table></div></details>
+</section>
+
+<section id="reg">
+  <h2>2 · The registered regression</h2>
+  <p>r on |spread|, total (centred on the discovery mean), their product and season dummies, fitted separately in each period.</p>
+  <div class="scroll"><table id="t-reg"></table></div>
+  <div class="chartbox">
+    <h3>Slope of r on |spread|, evaluated at three totals</h3>
+    <div class="sub">16th, 50th and 84th percentile of the total in each period. 95% intervals from resampling game days. A flat line means no interaction.</div>
+    <div id="c-slopes"></div>
+  </div>
+  <p>The spread effect is positive at every total, and the interval for the high-total slope is not different from the low-total one. Centring on the within-season mean instead gives product coefficients of <span data-b="D.wsD|s3"></span> (discovery) and <span data-b="D.wsC|s3"></span> (confirmation), also null. Without 2019-20 and 2020-21: <span data-b="D.nc1|s3"></span> (2021-22 only) and <span data-b="D.nc2|s3"></span> (pooled 2021-22 to 2025-26).</p>
+</section>
+
+<section id="model">
+  <h2>3 · Does the deployed model use it?</h2>
+  <p>The same regression on the model's out-of-sample residual and lean, 2021-22 to 2025-26.</p>
+  <div class="scroll"><table id="t-model"></table></div>
+  <p>The residual's product coefficient is <span data-b="step3_reading.residual_product_coef|s3"></span> with p = <span data-b="step3_reading.p_two_sided|2"></span>: nothing to absorb. The feature test (layer c) was not run.</p>
+</section>
+
+<section id="bets">
+  <h2>4 · Betting test</h2>
+  <p>Each of the 9 cells on each side at -110, scored on the discovery seasons. The best cell with at least 150 bets was <b><span data-b="bet.chosen.side|raw"></span>, <span data-b="bet.chosen.total|raw"></span>, <span data-b="bet.chosen.spread|raw"></span> spread</b>, then applied unchanged to confirmation.</p>
+  <div class="scroll"><table id="t-bet"></table></div>
+  <details><summary>All 18 cell and side combinations</summary><div class="scroll" style="margin-top:8px"><table id="t-cells"></table></div></details>
+  <p style="margin-top:8px">With 18 combinations on 3,634 discovery games, the best looking one is the one that overfits: +7.0% in discovery became −2.4% in confirmation, and the interval spans zero in both.</p>
+</section>
+
+<section id="rules">
+  <h2>5 · Against the registered rules</h2>
+  <div class="scroll"><table id="t-rules"></table></div>
+  <h3 style="margin-top:8px">Limits</h3>
+  <ul class="plain">
+    <li>Power is weak for an interaction: the formula-based detection threshold is a slope change of about <span data-b="D.detect|2"></span> across the interquartile range of the total, and the simulation in <code>reports/experiments/POWER_CHECK/</code> found the registered rule catches that size about 68% of the time (false-positive rate 2.7%). A real but modest interaction is not ruled out.</li>
+    <li>The tercile cutoffs are the discovery ones as you specified; the confirmation distribution is skewed toward high totals, and the within-season version is an addition of mine.</li>
+    <li>Script: <code>experiments/e17_interaction.py</code>; numbers: <code>reports/experiments/E17_interaction/results.json</code>.</li>
+  </ul>
+</section>
+<footer>Day-cluster bootstrap, 1,000 draws, seed 20261017. Two-sided p = 2 × the smaller tail share of the draws.</footer>
+</main>
+
+<script>
+const R = __R__;
+const fmt = {
+  '0': v => v.toFixed(0), '1': v => v.toFixed(1), '2': v => v.toFixed(2), '3': v => v.toFixed(3), 's2': v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(2), 's3': v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(3),
+  'pct1': v => (v * 100).toFixed(1) + '%', 'int': v => Math.round(v).toLocaleString('en-US'), 'roi': v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1) + '%', 'raw': v => String(v)
+};
+const path = (o, p) => p.split('.').reduce((a, k) => (a == null ? a : a[k]), o);
+const s2 = R.step2, CONF = 'confirmation 2022-23..2025-26';
+const slopeKey = (per, i) => Object.keys(s2[per].spread_slope_at_total_percentiles)[i];
+R.D = { pooledMid: s2['registered pooled'].abs_spread.coef, pc: s2.confirmation.abs_spread_x_T, pd: s2.discovery.abs_spread_x_T,
+  slopeLo: s2['registered pooled'].spread_slope_at_total_percentiles[slopeKey('registered pooled', 0)].slope, slopeHi: s2['registered pooled'].spread_slope_at_total_percentiles[slopeKey('registered pooled', 2)].slope,
+  detect: s2.confirmation.detectable.min_detectable_slope_change_over_iqr, shLow: R.tercile_shares.confirmation[0], shHigh: R.tercile_shares.confirmation[2],
+  contrC: s2.contrast_10plus_top_minus_bottom_tercile.confirmation, contrD: s2.contrast_10plus_top_minus_bottom_tercile.discovery,
+  wsD: R.step2_sensitivity_within_season_total.discovery.coef, wsC: R.step2_sensitivity_within_season_total.confirmation.coef,
+  nc1: R.sensitivity_no_covid_seasons['2021-22 only'].coef, nc2: R.sensitivity_no_covid_seasons['pooled 2021-22..2025-26'].coef };
+document.querySelectorAll('[data-b]').forEach(el => { const [p, f] = el.dataset.b.split('|'); const v = path(R, p); el.textContent = v == null ? '?' : (f ? fmt[f](v) : String(v)); });
+function table(id, head, rows, hl) {
+  const t = document.getElementById(id);
+  t.innerHTML = '<thead><tr>' + head.map(h => `<th>${h}</th>`).join('') + '</tr></thead><tbody>' + rows.map((r, i) => `<tr class="${hl && hl(i) ? 'hl' : ''}">` + r.map(c => `<td>${c}</td>`).join('') + '</tr>').join('') + '</tbody>';
+}
+const ci = (lo, hi, f) => `${f(lo)} to ${f(hi)}`;
+const pill = (ok, t) => `<span class="pill ${ok ? 'pass' : 'fail'}">${ok ? '✓' : '✗'} ${t || (ok ? 'passes' : 'fails')}</span>`;
+const pct = v => (v * 100).toFixed(1) + '%';
+const TL = ['low total', 'mid total', 'high total'], SB = ['0-5', '5-10', '10+'];
+function gridTable(id, rows, per) {
+  table(id, ['Total tercile', ...SB.map(s => `|Spread| ${s}`)], TL.map(t => [t, ...SB.map(s => {
+    const c = rows.find(r => r.period === per && r.total === t && r.spread === s);
+    return `<b>${fmt.s2(c.mean_r)}</b> (${ci(c.mean_r_lo, c.mean_r_hi, fmt.s1 || fmt.s2)})<br><span style="color:var(--muted)">under ${pct(c.under_rate)} · ${fmt.int(c.games)} games</span>`;
+  })]));
+}
+gridTable('t-grid-d', R.grid, 'discovery'); gridTable('t-grid-c', R.grid, 'confirmation');
+table('t-grid-ws', ['Period · tercile', ...SB.map(s => `|Spread| ${s}`)], ['discovery', 'confirmation'].flatMap(p => TL.map(t => [`${p} · ${t}`, ...SB.map(s => {
+  const c = R.grid_within_season_terciles.find(r => r.period === p && r.total === t && r.spread === s);
+  return `${fmt.s2(c.mean_r)} · under ${pct(c.under_rate)} · ${c.games}`;
+})])));
+
+const cf = x => `${fmt.s3(x.coef)} (${ci(x.lo, x.hi, fmt.s3)})`;
+table('t-reg', ['Term', 'Discovery (95%)', 'Confirmation (95%)', 'Registered seasons pooled (95%)'], [
+  ['|Spread| (at the discovery-mean total)', cf(s2.discovery.abs_spread), cf(s2.confirmation.abs_spread), cf(s2['registered pooled'].abs_spread)],
+  ['Total, per point above the discovery mean', cf(s2.discovery.T), cf(s2.confirmation.T), cf(s2['registered pooled'].T)],
+  ['|Spread| × total (the registered statistic)', cf(s2.discovery.abs_spread_x_T), cf(s2.confirmation.abs_spread_x_T), cf(s2['registered pooled'].abs_spread_x_T)],
+  ['Two-sided p for the product', fmt['3'](s2.discovery.abs_spread_x_T.p_two_sided), fmt['3'](s2.confirmation.abs_spread_x_T.p_two_sided), fmt['3'](s2['registered pooled'].abs_spread_x_T.p_two_sided)],
+  ['Games', fmt.int(s2.discovery.n), fmt.int(s2.confirmation.n), fmt.int(s2['registered pooled'].n)]], i => i === 2);
+
+const m3 = R.step3;
+table('t-model', ['Product coefficient (95%), two-sided p', 'All OOS seasons (2021-22 to 2025-26)', 'Confirmation seasons'],
+  [['model_resid', 'Model residual: actual − model prediction'], ['model_lean', 'Model lean: model prediction − opening total'], ['r', 'Market residual: actual − opening total']].map(([k, lab]) => [lab,
+    ...['2021-22..2025-26 (all OOS)', CONF].map(per => { const x = m3[per][k].abs_spread_x_T; return `${fmt.s3(x.coef)} (${ci(x.lo, x.hi, fmt.s3)}), p = ${fmt['3'](x.p_two_sided)}`; })]), i => i === 0);
+
+const bt = R.bet, rc = r => `${fmt.roi(r.roi)} (${ci(r.lo, r.hi, fmt.roi)})`;
+table('t-bet', ['Strategy', 'Discovery: bets', 'Discovery: return (95%)', 'Confirmation: bets', 'Confirmation: return (95%)'],
+  Object.keys(bt.discovery).map(k => [k, fmt.int(bt.discovery[k].bets), rc(bt.discovery[k]), fmt.int(bt.confirmation[k].bets), rc(bt.confirmation[k])]), i => i === 0);
+table('t-cells', ['Cell and side', 'Discovery: bets', 'Discovery return', 'Confirmation: bets', 'Confirmation return'],
+  bt.cells.map(c => [`${c.side}, ${c.total}, ${c.spread}`, c.discovery.bets, fmt.roi(c.discovery.roi), c.confirmation.bets, fmt.roi(c.confirmation.roi)]));
+
+const rd = R.step2_reading, r3 = R.step3_reading;
+table('t-rules', ['Registered condition', 'Value', 'Result'], [
+  ['Product coefficient has the same sign in both periods', `${fmt.s3(s2.discovery.abs_spread_x_T.coef)} / ${fmt.s3(s2.confirmation.abs_spread_x_T.coef)}`, pill(rd.same_sign_both_periods)],
+  ['Confirmation two-sided p < 0.05', fmt['3'](rd.confirmation_p_two_sided), pill(rd.confirmation_p_two_sided < 0.05)],
+  ['H_INT supported (raw)', '', pill(rd.H_INT_supported_raw, rd.H_INT_supported_raw ? 'supported' : 'not supported')],
+  ['Example sign (product positive) in confirmation', fmt.s3(s2.confirmation.abs_spread_x_T.coef), pill(rd.example_sign_positive_in_confirmation)],
+  ['Model residual: same sign and p < 0.05 (layer b)', `p = ${fmt['3'](r3.p_two_sided)}`, pill(r3.layer_b_supported)],
+  ['Feature test (layer c)', '', '<span class="pill info">not run</span>'], ['Holm across 8 angles', '', '<span class="pill info">pending</span>']], i => i === 2);
+
+__CHART_JS__
+const col = ['--under', '--muted', '--over'];
+const gridChart = (el, per) => dotChart(el, { label: 'Mean r by spread bucket and total tercile', cats: SB.map(s => s), zero: true, yFmt: (v, d) => sgn(v, d === 2 ? 2 : 1), xTitle: 'Opening |spread|, points', h: 280,
+  series: TL.map((t, i) => ({ name: t, color: col[i], hollow: false, pts: SB.map(s => { const c = R.grid.find(r => r.period === per && r.total === t && r.spread === s); return { y: c.mean_r, lo: c.mean_r_lo, hi: c.mean_r_hi }; }) })) });
+gridChart('c-disc', 'discovery'); gridChart('c-conf', 'confirmation');
+const sl = per => Object.values(s2[per].spread_slope_at_total_percentiles).map(v => ({ y: v.slope, lo: v.lo, hi: v.hi }));
+dotChart('c-slopes', { label: 'Spread slope at three totals', cats: ['16th percentile total', 'Median total', '84th percentile total'], zero: true, yFmt: (v, d) => sgn(v, d === 2 ? 2 : 1), xTitle: 'Level of the opening total', h: 270,
+  series: [{ name: 'Discovery', color: '--under', hollow: true, pts: sl('discovery') }, { name: 'Confirmation', color: '--under', hollow: false, pts: sl('confirmation') }] });
+</script>
