@@ -1,0 +1,464 @@
+<title>Blowout Under Test</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700&family=JetBrains+Mono:wght@400;500&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&display=swap">
+<style>
+/* Layout: one reading column, verdict first, then one section per registered step; each section = claim, chart or table, the caveat. */
+:root {
+  --bg: #f3f5f8; --surface: #ffffff; --ink: #14202e; --muted: #556373; --rule: #d6dde5; --wash: #e9edf2;
+  --under: #2a5db0; --over: #c4570a;
+  --good: #1b7442; --good-bg: #e1f2e8; --bad: #aa2a22; --bad-bg: #f8e4e2; --note-bg: #fdf3dc; --note-ink: #6b4b00;
+  --display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1319; --surface: #151c24; --ink: #e6ebf1; --muted: #98a6b5; --rule: #29333f; --wash: #1d2631;
+    --under: #7aa9f4; --over: #f19b58;
+    --good: #5cc88d; --good-bg: #16301f; --bad: #f2776e; --bad-bg: #3a1a18; --note-bg: #2f2713; --note-ink: #e8c872;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1319; --surface: #151c24; --ink: #e6ebf1; --muted: #98a6b5; --rule: #29333f; --wash: #1d2631;
+  --under: #7aa9f4; --over: #f19b58;
+  --good: #5cc88d; --good-bg: #16301f; --bad: #f2776e; --bad-bg: #3a1a18; --note-bg: #2f2713; --note-ink: #e8c872;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 17px; line-height: 1.55; margin: 0;
+  padding-block: 28px 72px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+main { max-width: 860px; margin: 0 auto; display: flex; flex-direction: column; gap: 44px; }
+section { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+h1, h2, h3 { font-family: var(--display); line-height: 1.15; margin: 0; text-wrap: balance; }
+h1 { font-size: clamp(30px, 6vw, 44px); letter-spacing: -0.01em; }
+h2 { font-size: 24px; }
+h3 { font-size: 17px; letter-spacing: 0.02em; }
+p { margin: 0; max-width: 68ch; }
+.eyebrow { font-family: var(--mono); font-size: 12.5px; color: var(--muted); letter-spacing: 0.04em; text-transform: uppercase; }
+.lede { font-size: 19px; max-width: 64ch; }
+a { color: var(--under); }
+code, .mono { font-family: var(--mono); font-size: 0.86em; }
+code { background: var(--wash); padding: 1px 5px; border-radius: 3px; overflow-wrap: anywhere; }
+.num { font-variant-numeric: tabular-nums; }
+.under { color: var(--under); } .over { color: var(--over); }
+
+.verdict { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 22px 22px 20px; display: flex; flex-direction: column; gap: 14px; }
+.verdict .tag { align-self: flex-start; font-family: var(--mono); font-size: 13px; font-weight: 500; letter-spacing: 0.05em; padding: 3px 10px; border-radius: 4px; background: var(--bad-bg); color: var(--bad); }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 0; border-top: 1px solid var(--rule); }
+.fact { padding: 14px 16px 4px 0; min-width: 0; }
+.fact + .fact { padding-left: 16px; border-left: 1px solid var(--rule); }
+@media (max-width: 680px) { .fact + .fact { border-left: 0; padding-left: 0; border-top: 1px solid var(--rule); margin-top: 10px; padding-top: 12px; } }
+.fact b { display: block; font-family: var(--display); font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.fact span { font-size: 15px; color: var(--muted); }
+
+.toc { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 15px; }
+.chartbox { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 14px 14px 8px; min-width: 0; }
+.chartbox h3 { font-size: 15px; margin-bottom: 2px; }
+.chartbox .sub { color: var(--muted); font-size: 14px; margin-bottom: 6px; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 14px; color: var(--muted); margin: 4px 0 2px; }
+.legend i { display: inline-block; width: 11px; height: 11px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+svg { display: block; width: 100%; height: auto; }
+svg text { font-family: var(--body); font-size: 12.5px; fill: var(--muted); font-variant-numeric: tabular-nums; }
+svg .grid { stroke: var(--rule); stroke-width: 1; }
+svg .zero { stroke: var(--ink); stroke-width: 1.2; }
+svg .ref { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 4 4; }
+svg .band { fill: var(--wash); }
+svg .lbl { fill: var(--ink); }
+
+.scroll { overflow-x: auto; max-width: 100%; border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 15px; font-variant-numeric: tabular-nums; }
+th, td { padding: 7px 12px; text-align: right; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; white-space: normal; min-width: 140px; }
+th { font-family: var(--display); font-size: 13px; font-weight: 600; color: var(--muted); background: var(--surface); }
+tr:last-child td { border-bottom: 0; }
+tr.hl td { background: var(--wash); }
+.pill { font-family: var(--mono); font-size: 12.5px; padding: 2px 8px; border-radius: 4px; font-weight: 500; white-space: nowrap; }
+.pill.fail { background: var(--bad-bg); color: var(--bad); }
+.pill.pass { background: var(--good-bg); color: var(--good); }
+.pill.info { background: var(--wash); color: var(--muted); }
+.note { background: var(--note-bg); color: var(--note-ink); border-radius: 6px; padding: 10px 14px; font-size: 15.5px; max-width: 72ch; }
+.note b { font-weight: 600; }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+ul.plain { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; max-width: 70ch; }
+
+.explorer { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+.controls { display: flex; flex-wrap: wrap; gap: 14px 24px; align-items: end; }
+.controls label { display: flex; flex-direction: column; gap: 4px; font-size: 14px; color: var(--muted); }
+select, input[type=range] { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--rule); border-radius: 5px; padding: 5px 8px; min-width: 150px; }
+input[type=range] { padding: 0; min-width: 220px; accent-color: var(--under); }
+.check { flex-direction: row !important; align-items: center; gap: 8px !important; }
+:focus-visible { outline: 2px solid var(--under); outline-offset: 2px; }
+footer { color: var(--muted); font-size: 14px; }
+</style>
+
+<main>
+<header style="display:flex;flex-direction:column;gap:12px">
+  <div class="eyebrow">Experiment E14 · totals · run 2026-10-23</div>
+  <h1>Blowout Under Test</h1>
+  <p class="lede">Do games with a big opening spread finish under the opening total? Registered before any number was computed, found on 2019-20 to 2021-22, confirmed on 2022-23 to 2025-26.</p>
+  <nav class="toc" aria-label="Sections">
+    <a href="#verdict">Verdict</a><a href="#h1">1 · Registered test</a><a href="#buckets">2 · Buckets</a><a href="#model">3 · Model</a><a href="#ot">4 · Overtime</a><a href="#close">5 · Open vs close</a><a href="#bets">6 · Betting</a><a href="#features">7 · Features</a><a href="#check">Check it yourself</a>
+  </nav>
+</header>
+
+<section id="verdict">
+  <div class="verdict">
+    <span class="tag">HYPOTHESIS NOT SUPPORTED</span>
+    <p class="lede">The slope has the opposite sign. In 2019-20 to 2025-26, every extra point of opening spread adds <b class="num over">+<span data-b="h1.registered.slope|2"></span> points</b> to (actual total − opening total), 95% interval <span class="num" data-b="h1.registered.lo|s2"></span> to <span class="num" data-b="h1.registered.hi|s2"></span>. Big-spread games lean over the opening total, not under it.</p>
+    <div class="facts">
+      <div class="fact"><b class="num"><span data-b="D.b10.under_rate|pct1"></span></b><span>of games with a 10+ spread went under (interval <span data-b="D.b10.under_lo|pct1"></span> to <span data-b="D.b10.under_hi|pct1"></span>, n = <span data-b="D.b10.games|int"></span>). Breakeven for an under bet is 52.4%.</span></div>
+      <div class="fact"><b class="num"><span data-b="D.betOpen.roi|roi"></span></b><span>return per bet on every under with spread ≥ <span data-b="bet.X"></span> in the confirmation seasons (interval <span data-b="D.betOpen.lo|roi"></span> to <span data-b="D.betOpen.hi|roi"></span>).</span></div>
+      <div class="fact"><b class="num">7 of 7</b><span>registered seasons have a positive slope. The sign did not flip anywhere between discovery and confirmation.</span></div>
+    </div>
+  </div>
+  <p>Steps 1 to 6 of the plan ran in full. Step 7 (adding features) was gated on the earlier steps supporting the idea, so it did not run. Everything below is generated from <code>results.json</code>, which the script <code>experiments/e14_blowout_under.py</code> writes; the explorer at the bottom recomputes the main numbers in your browser from the per-game file.</p>
+</section>
+
+<section id="h1">
+  <h2>1 · The registered test</h2>
+  <p>Market residual <code>r = actual total − opening total</code>. The claim was that the slope of <code>r</code> on |opening spread| is negative. It counts as supported only if all three conditions below hold.</p>
+  <div class="scroll"><table id="t-h1"></table></div>
+  <div class="chartbox">
+    <h3>Slope of r on |spread|, season by season</h3>
+    <div class="sub">Points of total per point of spread, with 95% intervals from resampling game days. Above zero means big spreads go over.</div>
+    <div id="c-seasons"></div>
+  </div>
+  <p>Every registered season is positive. The six earlier seasons are outside the registered design and are shown for context only: their opening totals come from the archive file rather than the six-book table, and the slopes there are scattered around zero (pooled <span class="num" data-b="h1.supp.slope|s3"></span>, interval <span class="num" data-b="h1.supp.lo|s2"></span> to <span class="num" data-b="h1.supp.hi|s2"></span>). So the positive slope looks like a feature of the recent era or of the recent odds source, not a long-run law.</p>
+</section>
+
+<section id="buckets">
+  <h2>2 · Under rate by spread size</h2>
+  <div class="chartbox">
+    <h3>Share of games that finished under the opening total</h3>
+    <div class="sub">Pushes excluded. 95% intervals from resampling game days. Dashed lines: 50% and the 52.4% an under bet needs at -110.</div>
+    <div id="c-buckets"></div>
+  </div>
+  <div class="scroll"><table id="t-buckets"></table></div>
+  <p>No bucket is a dependable under. The 12+ bucket leans over (<span class="num" data-b="D.b12.under_rate|pct1"></span> under, interval <span class="num" data-b="D.b12.under_lo|pct1"></span> to <span class="num" data-b="D.b12.under_hi|pct1"></span> across all seven seasons). Moderate spreads of 3 to 6 are the only bucket above 50%, and not by enough to bet.</p>
+  <h3>Is it just high totals in disguise?</h3>
+  <p>No. Adding the opening total and a dummy for each season leaves the spread coefficient where it was.</p>
+  <div class="scroll"><table id="t-ctl"></table></div>
+  <div class="note"><b>Power.</b> The plan quoted ±1.3 points for an under rate. With 1,414 games at 10+ that is one standard error (1.3 points); the 95% interval is about ±2.6, and an 80%-power test needs a shift near 3.7 points from 50%. The observed over rate of 53.4% in this bucket sits right at that limit, so a real effect of this size cannot be separated from a smaller one.</div>
+</section>
+
+<section id="model">
+  <h2>3 · Does the model already absorb it?</h2>
+  <p>The deployed model's out-of-sample predictions (<code>reports/oos_predictions_*.csv</code>, 2021-22 to 2025-26) already lean the way the market residual points. Its prediction minus the opening total rises with spread size, and the residual that remains after the model is smaller than the market's.</p>
+  <div class="chartbox">
+    <h3>Mean miss by spread bucket, 2021-22 to 2025-26</h3>
+    <div class="sub">Points. Market = actual − opening total. Model = actual − model prediction. 95% intervals from resampling game days.</div>
+    <div id="c-model"></div>
+  </div>
+  <div class="scroll"><table id="t-model"></table></div>
+  <p>Roughly half of the market's slope is already inside the model's predictions (lean slope <span class="num" data-b="D.leanC.slope|s3"></span>, interval <span class="num" data-b="D.leanC.lo|s3"></span> to <span class="num" data-b="D.leanC.hi|s3"></span> in the confirmation seasons). What is left is a model residual slope of <span class="num" data-b="D.modelC.slope|s2"></span> (interval <span class="num" data-b="D.modelC.lo|s2"></span> to <span class="num" data-b="D.modelC.hi|s2"></span>), which cannot be told apart from flat. On the seven-fold walk-forward baseline (8,897 games, including the earlier, less-trained folds) it is <span class="num" data-b="step3_baseline_wf.slope|s2"></span> (<span class="num" data-b="step3_baseline_wf.lo|s2"></span> to <span class="num" data-b="step3_baseline_wf.hi|s2"></span>). Either way the leftover points toward the over, the opposite of the hypothesis.</p>
+</section>
+
+<section id="ot">
+  <h2>4 · Overtime split</h2>
+  <p>Overtime games finish about 21 points over the opening total, and they are twice as common in close games. That inflates the overs in low-spread games and makes big-spread games look relatively more under. Your suspicion about the mechanism is right, but it works against the theory: take overtime out and the slope gets steeper.</p>
+  <div class="scroll"><table id="t-ot"></table></div>
+  <div class="scroll"><table id="t-otslopes"></table></div>
+  <p>In regulation time, close games run under the line by about 1.3 points and games at 12+ run over it by about 1.4. Overtime is one reason close games look like overs, not the reason blowouts look like unders.</p>
+</section>
+
+<section id="close">
+  <h2>5 · Opening versus closing line</h2>
+  <p>The market does not correct this before tip-off. Closing total minus opening total has no relationship to spread size, and the residual against the closing line has the same positive slope.</p>
+  <div class="scroll"><table id="t-close"></table></div>
+  <div class="note"><b>Source difference.</b> The training-set opening total comes from one priority book. The closing total is the median across cleaned books, so the two differ by a book effect as well as by movement (mean absolute gap <span data-b="open_total_check.mean_abs_diff|2"></span> points where both exist). That adds noise to the open-to-close comparison but no trend with spread size.</div>
+</section>
+
+<section id="bets">
+  <h2>6 · Betting test</h2>
+  <p>Flat bet on the under at -110 whenever |spread| ≥ X, with X picked on the discovery seasons only (highest return among thresholds with at least 200 bets), then applied unchanged to the confirmation seasons.</p>
+  <div class="cols">
+    <div class="chartbox"><h3>Under bets, return per bet</h3><div class="sub">By threshold X. Hollow = discovery, solid = confirmation. Percent, 95% intervals.</div><div id="c-bet-under"></div></div>
+    <div class="chartbox"><h3>Over bets (exploratory)</h3><div class="sub">Not registered. Same rule, mirrored after seeing the sign.</div><div id="c-bet-over"></div></div>
+  </div>
+  <p>Every threshold lost money on the discovery seasons, so the rule picked the least bad one: X = <span data-b="bet.X"></span>. Results at that threshold:</p>
+  <div class="scroll"><table id="t-bet"></table></div>
+  <p>Pricing the under at the best book line improves the result by a few points but not enough to turn it positive. The all-games row is the cost of the vig with a nearly even under rate.</p>
+  <div class="note"><b>Exploratory, not registered.</b> The mirrored over bet, with X chosen on discovery by the same rule (X = <span data-b="bet_over_exploratory.X"></span>), returned <span class="num" data-b="D.ovD.roi|roi"></span> on discovery (<span data-b="D.ovD.bets|int"></span> bets, interval <span data-b="D.ovD.lo|roi"></span> to <span data-b="D.ovD.hi|roi"></span>) and <span class="num" data-b="D.ovC.roi|roi"></span> on confirmation (<span data-b="D.ovC.bets|int"></span> bets, interval <span data-b="D.ovC.lo|roi"></span> to <span data-b="D.ovC.hi|roi"></span>). The edge fell by about 70% between the two windows and the confirmation interval spans zero. That is a lead for a new registered test, not an edge.</div>
+  <p>Opening-line returns assume you could bet the opener; the model's inputs are read after the opener, so only the closing-line row is a fair like-for-like comparison.</p>
+</section>
+
+<section id="features">
+  <h2>7 · Features: not run</h2>
+  <p>The registered gate needed all four of these to hold before building <code>abs_spread</code> or a blowout probability. None did, so no feature was built and <code>feature_exp.py</code> was not run.</p>
+  <div class="scroll"><table id="t-gate"></table></div>
+  <p>If you want to test the opposite direction (an over lean for big spreads, which the model only half absorbs), that needs its own registration with the sign fixed in advance. I have not started it.</p>
+</section>
+
+<section id="check">
+  <h2>Check it yourself</h2>
+  <div class="explorer">
+    <div>
+      <h3>Recompute from the per-game file</h3>
+      <p style="color:var(--muted);font-size:15px;margin-top:4px">8,897 games from 2019-20 to 2025-26. Under rate and flat -110 returns at the opening total, with intervals from 1,000 resamples of whole game days. Point values match the tables above; interval ends differ slightly because the resampling draws differ.</p>
+    </div>
+    <div class="controls">
+      <label for="x-period">Seasons
+        <select id="x-period"><option value="disc">Discovery 2019-20 to 2021-22</option><option value="conf" selected>Confirmation 2022-23 to 2025-26</option><option value="all">All registered</option></select>
+      </label>
+      <label for="x-cut">Minimum |spread|: <b id="x-cutv" class="num" style="color:var(--ink)">10</b>
+        <input id="x-cut" type="range" min="0" max="15" step="1" value="10">
+      </label>
+      <label class="check" for="x-reg"><input id="x-reg" type="checkbox"> Regulation only</label>
+    </div>
+    <div class="scroll"><table id="t-x"></table></div>
+  </div>
+
+  <h3>Files</h3>
+  <ul class="plain">
+    <li><code>reports/experiments/E14_blowout_under/PREREGISTRATION.md</code> written before the first run; it is not committed yet, so commit it to make the order provable in git.</li>
+    <li><code>experiments/e14_blowout_under.py</code> runs every step (12 seconds). <code>results.json</code> holds all numbers; <code>e14_games.csv</code> holds one row per game.</li>
+    <li>Rerun: <code>.venv\Scripts\python.exe -m experiments.e14_blowout_under</code></li>
+  </ul>
+
+  <h3>Changes after the first run, and limits</h3>
+  <ul class="plain">
+    <li>After the first run I added a plausibility filter (totals 170 to 290, |spread| ≤ 30, the bounds in <code>odds_clean.py</code>) because 2016-17 held a corrupt opening total. It removed 2 games, both before 2019-20, so the registered result did not change.</li>
+    <li>The over-bet analysis was added after the sign came out reversed and is labelled exploratory everywhere.</li>
+    <li>The OOS prediction files carry the same opening lines as the training set for 98.5% of games; the other 1.5% differ and were left in.</li>
+    <li>Discovery includes the 2019-20 stoppage and the 2020-21 reduced-crowd season.</li>
+    <li>One primary test; the other numbers are descriptive and not corrected for multiple comparisons.</li>
+    <li>Not checked in this run: the earlier claims about which features the deployed totals model uses (split counts, whether the spread is an input). Nothing here depends on them.</li>
+  </ul>
+</section>
+<footer>Generated from results.json and e14_games.csv · day-cluster bootstrap, 1,000 draws, seed 20261017.</footer>
+</main>
+
+<script>
+const R = __R__;
+const G = __G__;
+const SEAS = G.seasons;
+
+/* ---------- formatting and binding ---------- */
+const fmt = {
+  '2': v => v.toFixed(2), '3': v => v.toFixed(3), 's2': v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(2), 's3': v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(3),
+  'pct1': v => (v * 100).toFixed(1) + '%', 'int': v => Math.round(v).toLocaleString('en-US'),
+  'roi': v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1) + '%', 'raw': v => String(v)
+};
+const path = (o, p) => p.split('.').reduce((a, k) => (a == null ? a : a[k]), o);
+const regRow = (b, per = 'registered') => R.buckets.find(x => x.period.startsWith(per) && x.bucket === b);
+const CONF = '2022-23..2025-26 (confirmation)';
+const X = R.bet.X, OX = R.bet_over_exploratory.X;
+R.D = {
+  b10: regRow('10+'), b12: regRow('12+'),
+  betOpen: R.bet.confirmation[`under |spread|>=${X}, opening @ -110`],
+  modelC: R.step3_oos[CONF]['model residual (actual - total_pred)'],
+  leanC: R.step3_oos[CONF]['model lean (total_pred - opening total)'],
+  ovD: R.bet_over_exploratory.discovery[`over |spread|>=${OX}, opening @ -110`],
+  ovC: R.bet_over_exploratory.confirmation[`over |spread|>=${OX}, opening @ -110`]
+};
+R.h1.registered = R.h1['registered (2019-20..2025-26)'];
+R.h1.supp = R.h1['supplementary 2013-14..2018-19'];
+document.querySelectorAll('[data-b]').forEach(el => {
+  const [p, f] = el.dataset.b.split('|');
+  const v = path(R, p);
+  el.textContent = v == null ? '?' : (f ? fmt[f](v) : String(v));
+});
+
+/* ---------- tables ---------- */
+function table(id, head, rows, hl) {
+  const t = document.getElementById(id);
+  t.innerHTML = '<thead><tr>' + head.map(h => `<th>${h}</th>`).join('') + '</tr></thead><tbody>' +
+    rows.map((r, i) => `<tr class="${hl && hl(i) ? 'hl' : ''}">` + r.map(c => `<td>${c}</td>`).join('') + '</tr>').join('') + '</tbody>';
+}
+const ci = (lo, hi, f) => `${f(lo)} to ${f(hi)}`;
+const pill = (ok, t) => `<span class="pill ${ok ? 'pass' : 'fail'}">${ok ? '✓' : '✗'} ${t || (ok ? 'passes' : 'fails')}</span>`;
+const h = R.h1, c = R.controlled, s4 = R.step4;
+
+table('t-h1', ['Condition (registered)', 'Value', '95% interval', 'Result'], [
+  ['(i) Discovery slope below zero', fmt.s3(h.discovery.slope), ci(h.discovery.lo, h.discovery.hi, fmt.s2), pill(h.discovery_negative)],
+  ['(ii) Confirmation slope below zero', fmt.s3(h.confirmation.slope), ci(h.confirmation.lo, h.confirmation.hi, fmt.s2), pill(h.confirmation_negative)],
+  ['(iii) Confirmation interval entirely below zero', 'upper end ' + fmt.s2(h.confirmation.hi), '', pill(h.confirmation_ci_below_zero)],
+  ['Verdict', '', '', pill(h.SUPPORTED, h.SUPPORTED ? 'supported' : 'not supported')],
+  ['Secondary: confirmation slope after controlling for total and season', fmt.s3(c.confirmation.abs_spread.coef), ci(c.confirmation.abs_spread.lo, c.confirmation.abs_spread.hi, fmt.s2), pill(R.controlled_confirm_ci_below_zero)]
+], i => i === 3);
+
+/* buckets */
+const B = ['0-3', '3-6', '6-9', '9-12', '12+', '10+'];
+const per = ['discovery', 'confirmation', 'registered'];
+const rowsB = [];
+B.forEach(b => per.forEach(p => {
+  const r = regRow(b, p);
+  rowsB.push([`${b}${b === '10+' ? ' (overlaps 9-12 and 12+)' : ''} · ${p}`, fmt.int(r.games), pct(r.under_rate) + ` (${pct(r.under_lo)} to ${pct(r.under_hi)})`, fmt.s2(r.mean_r) + ` (${fmt.s2(r.mean_r_lo)} to ${fmt.s2(r.mean_r_hi)})`]);
+}));
+function pct(v) { return (v * 100).toFixed(1) + '%'; }
+table('t-buckets', ['|Spread| bucket · period', 'Games', 'Under rate (95%)', 'Mean r, points (95%)'], rowsB, i => i % 3 === 2);
+
+table('t-ctl', ['Period', 'Games', 'Spread coefficient (95%)', 'Opening-total coefficient (95%)'],
+  ['discovery', 'confirmation', 'registered (2019-20..2025-26)'].map(k => [k.replace(' (2019-20..2025-26)', ''), fmt.int(c[k].n),
+    `${fmt.s3(c[k].abs_spread.coef)} (${ci(c[k].abs_spread.lo, c[k].abs_spread.hi, fmt.s2)})`, `${fmt.s3(c[k].odds_total.coef)} (${ci(c[k].odds_total.lo, c[k].odds_total.hi, fmt.s2)})`]));
+
+/* model */
+const m3 = R.step3_oos;
+const mrow = (lab, k) => ['2021-22..2025-26 (all OOS)', CONF].map(per => { const v = m3[per][k]; return `${fmt.s3(v.slope)} (${ci(v.lo, v.hi, fmt.s2)})`; });
+const wf = R.step3_baseline_wf;
+table('t-model', ['Slope on |spread|', 'All OOS seasons (2021-22 to 2025-26)', 'Confirmation seasons (2022-23 to 2025-26)'], [
+  ['Market residual: actual − opening total', ...mrow('', 'market residual (actual - opening total)')],
+  ['Model lean: model prediction − opening total', ...mrow('', 'model lean (total_pred - opening total)')],
+  ['Model residual: actual − model prediction', ...mrow('', 'model residual (actual - total_pred)')],
+  ['Walk-forward baseline residual, 7 folds (8,897 games)', `${fmt.s3(wf.slope)} (${ci(wf.lo, wf.hi, fmt.s2)})`, '']
+], i => i === 2);
+
+/* overtime */
+table('t-ot', ['|Spread| bucket', 'Overtime games', 'Mean r, regulation', 'Mean r, overtime', 'Mean r, all games'],
+  ['0-3', '3-6', '6-9', '9-12', '12+'].map(b => {
+    const o = s4.ot_rate_by_bucket[b], m = s4.mean_r_ot_vs_reg[b];
+    return [b, `${pct(o.rate)} (${m.n_ot} of ${o.n})`, fmt.s2(m.regulation), fmt.s2(m.overtime), fmt.s2(regRow(b).mean_r)];
+  }));
+const sl = s4.slopes;
+const slc = x => `${fmt.s3(x.slope)} (${ci(x.lo, x.hi, fmt.s2)})`;
+table('t-otslopes', ['Slope of r on |spread| (95%)', 'Discovery', 'Confirmation'], [
+  ['All games', slc(sl.discovery.all), slc(sl.confirmation.all)],
+  ['Regulation only', slc(sl.discovery['regulation only']), slc(sl.confirmation['regulation only'])],
+  ['Regulation only, controlling for total and season', slc(sl.discovery['regulation only, controlled']), slc(sl.confirmation['regulation only, controlled'])],
+  ['Overtime only', slc(sl.discovery['overtime only']), slc(sl.confirmation['overtime only'])]
+], i => i === 1);
+
+/* close */
+const s5 = R.step5;
+table('t-close', ['|Spread| bucket', 'Games', 'Close − open total (95%)', 'Under rate at open', 'Under rate at close'],
+  s5.by_bucket.map(r => [r.bucket, fmt.int(r.games), `${fmt.s2(r.close_move)} (${ci(r.close_move_lo, r.close_move_hi, fmt.s2)})`, `${pct(r.under_rate_open)} (${pct(r.under_rate_open_lo)} to ${pct(r.under_rate_open_hi)})`, `${pct(r.under_rate_close)} (${pct(r.under_rate_close_lo)} to ${pct(r.under_rate_close_hi)})`]));
+const s5s = s5.slopes['registered (2019-20..2025-26)'];
+document.getElementById('t-close').insertAdjacentHTML('beforeend', '<tfoot></tfoot>');
+document.querySelector('#t-close tfoot').innerHTML = ['close_total - open_total ~ |spread|', 'actual - open_total ~ |spread|', 'actual - close_total ~ |spread|'].map(k =>
+  `<tr class="hl"><td colspan="2">Slope on |spread|: ${k.replace('|spread|', '').replace(' ~ ', ' on')}</td><td colspan="3" style="text-align:left">${slc(s5s[k])}</td></tr>`).join('');
+
+/* betting table */
+const bt = R.bet;
+const bkeys = k => bt.confirmation[k];
+const labels = [['under all games (control)', 'Under on every game (control)'], [`under |spread|>=${X}, opening @ -110`, `Under, |spread| ≥ ${X}, opening total @ -110`],
+  [`under |spread|>=${X}, closing total @ -110`, `Under, |spread| ≥ ${X}, closing total @ -110`], [`under |spread|>=${X}, best-book line @ quoted price`, `Under, |spread| ≥ ${X}, best book line and price`]];
+const rc = r => `${fmt.roi(r.roi)} (${ci(r.lo, r.hi, fmt.roi)})`;
+table('t-bet', ['Strategy', 'Discovery: bets', 'Discovery: return (95%)', 'Confirmation: bets', 'Confirmation: return (95%)'],
+  labels.map(([k, l]) => [l, fmt.int(bt.discovery[k].bets), rc(bt.discovery[k]), fmt.int(bt.confirmation[k].bets), rc(bt.confirmation[k])]), i => i === 1);
+
+/* gate */
+const gate = [
+  ['H1 supported', h.SUPPORTED, `confirmation slope ${fmt.s2(h.confirmation.slope)}`],
+  ['Controlled confirmation slope: interval below zero', R.controlled_confirm_ci_below_zero, `upper end ${fmt.s2(c.confirmation.abs_spread.hi)}`],
+  ['Regulation-only confirmation slope: interval below zero', sl.confirmation['regulation only'].hi < 0, `upper end ${fmt.s2(sl.confirmation['regulation only'].hi)}`],
+  ['Deployed OOS residual slope 2022-26: interval below zero', R.D.modelC.hi < 0, `upper end ${fmt.s2(R.D.modelC.hi)}`]
+];
+table('t-gate', ['Gate condition', 'Value', 'Result'], gate.map(g => [g[0], g[2], pill(g[1])]));
+
+/* ---------- charts ---------- */
+const NS = 'http://www.w3.org/2000/svg';
+function ticks(lo, hi, n) {
+  const raw = (hi - lo) / n, p = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / p;
+  const step = (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p, out = [];
+  for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) out.push(+v.toFixed(10));
+  return out;
+}
+function dotChart(el, o) {
+  const W = 720, H = o.h || 290, m = { l: 58, r: 16, t: o.bands ? 30 : 14, b: 44 }, n = o.cats.length, S = o.series.length;
+  let lo = Infinity, hi = -Infinity;
+  o.series.forEach(s => s.pts.forEach(p => { lo = Math.min(lo, p.lo); hi = Math.max(hi, p.hi); }));
+  (o.refs || []).forEach(r => { lo = Math.min(lo, r.y); hi = Math.max(hi, r.y); });
+  if (o.zero) { lo = Math.min(lo, 0); hi = Math.max(hi, 0); }
+  const tk = ticks(lo, hi, 5); lo = Math.min(lo, tk[0]); hi = Math.max(hi, tk[tk.length - 1]);
+  const pad = (hi - lo) * 0.03; lo -= pad; hi += pad;
+  const bw = (W - m.l - m.r) / n, cx = i => m.l + (i + 0.5) * bw, y = v => m.t + (hi - v) / (hi - lo) * (H - m.t - m.b);
+  const step = Math.min(20, bw / (S + 1));
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${o.label}">`;
+  (o.bands || []).forEach(b => { s += `<rect class="band" x="${cx(b.from) - bw / 2}" y="${m.t}" width="${(b.to - b.from + 1) * bw}" height="${H - m.t - m.b}"/><text x="${cx(b.from) - bw / 2 + 6}" y="${m.t - 8}">${b.label}</text>`; });
+  tk.forEach(v => { s += `<line class="grid" x1="${m.l}" x2="${W - m.r}" y1="${y(v)}" y2="${y(v)}"/><text x="${m.l - 8}" y="${y(v) + 4}" text-anchor="end">${o.yFmt(v)}</text>`; });
+  if (o.zero) s += `<line class="zero" x1="${m.l}" x2="${W - m.r}" y1="${y(0)}" y2="${y(0)}"/>`;
+  (o.refs || []).forEach(r => { s += `<line class="ref" x1="${m.l}" x2="${W - m.r}" y1="${y(r.y)}" y2="${y(r.y)}"/><text x="${W - m.r - 4}" y="${y(r.y) - 4}" text-anchor="end">${r.label}</text>`; });
+  o.cats.forEach((cat, i) => { s += `<text x="${cx(i)}" y="${H - m.b + 18}" text-anchor="middle">${cat}</text>`; });
+  if (o.xTitle) s += `<text class="lbl" x="${m.l + (W - m.l - m.r) / 2}" y="${H - 6}" text-anchor="middle">${o.xTitle}</text>`;
+  o.series.forEach((se, si) => {
+    const off = (si - (S - 1) / 2) * step;
+    se.pts.forEach((p, i) => {
+      if (!p) return;
+      const x = cx(i) + off, col = `var(${se.color})`;
+      s += `<g><title>${se.name} · ${o.cats[i]}: ${o.yFmt(p.y, 2)} (${o.yFmt(p.lo, 2)} to ${o.yFmt(p.hi, 2)})</title><line x1="${x}" x2="${x}" y1="${y(p.lo)}" y2="${y(p.hi)}" stroke="${col}" stroke-width="2"/>` +
+        `<line x1="${x - 3}" x2="${x + 3}" y1="${y(p.lo)}" y2="${y(p.lo)}" stroke="${col}" stroke-width="2"/><line x1="${x - 3}" x2="${x + 3}" y1="${y(p.hi)}" y2="${y(p.hi)}" stroke="${col}" stroke-width="2"/>` +
+        `<circle cx="${x}" cy="${y(p.y)}" r="4.2" fill="${se.hollow ? 'var(--surface)' : col}" stroke="${col}" stroke-width="2"/></g>`;
+    });
+  });
+  s += '</svg>';
+  const lg = o.series.length > 1 ? `<div class="legend">${o.series.map(se => `<span><i style="background:${se.hollow ? 'var(--surface)' : `var(${se.color})`};border:2px solid var(${se.color})"></i>${se.name}</span>`).join('')}</div>` : '';
+  document.getElementById(el).innerHTML = lg + s;
+}
+const pctT = (v, d) => (v * 100).toFixed(d === 2 ? 1 : 0) + '%';
+const sgn = (v, d) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(d === 2 ? 2 : 1);
+
+// seasons
+const sk = Object.keys(R.h1_by_season);
+dotChart('c-seasons', {
+  label: 'Slope by season', cats: sk.map(s => s.slice(2)), zero: true, yFmt: (v, d) => sgn(v, d === 2 ? 2 : 1),
+  bands: [{ from: sk.indexOf('2019-20'), to: sk.indexOf('2021-22'), label: 'Discovery' }, { from: sk.indexOf('2022-23'), to: sk.length - 1, label: 'Confirmation' }],
+  series: [{ name: 'Slope of r on |spread|', color: '--over', pts: sk.map(s => { const v = R.h1_by_season[s]; return { y: v.slope, lo: v.lo, hi: v.hi }; }) }], xTitle: 'Season (2013-14 to 2018-19 not registered)'
+});
+
+// buckets
+const L5 = ['0-3', '3-6', '6-9', '9-12', '12+'];
+dotChart('c-buckets', {
+  label: 'Under rate by spread bucket', cats: L5, yFmt: (v, d) => pctT(v, d), xTitle: 'Opening |spread|, points',
+  refs: [{ y: 0.5, label: '50%' }, { y: 0.5238, label: 'breakeven for unders 52.4%' }],
+  series: ['discovery', 'confirmation'].map((p, i) => ({ name: i ? 'Confirmation 2022-23 to 2025-26' : 'Discovery 2019-20 to 2021-22', color: i ? '--under' : '--under', hollow: !i,
+    pts: L5.map(b => { const r = regRow(b, p); return { y: r.under_rate, lo: r.under_lo, hi: r.under_hi }; }) }))
+});
+
+// model
+dotChart('c-model', {
+  label: 'Market and model residual by bucket', cats: L5, zero: true, yFmt: (v, d) => sgn(v, d === 2 ? 2 : 1), xTitle: 'Opening |spread|, points',
+  series: [['r', 'Market: actual − opening total', '--over', false], ['model_resid', 'Model: actual − model prediction', '--under', false]].map(([k, name, col, hol]) => ({
+    name, color: col, hollow: hol, pts: R.step3_buckets.map(b => ({ y: b[k], lo: b[k + '_lo'], hi: b[k + '_hi'] })) }))
+});
+
+// bets
+const THR = R.bet_grid.map(g => g.X);
+function betChart(el, grid) {
+  dotChart(el, { label: 'Return by threshold', cats: THR.map(String), zero: true, yFmt: (v, d) => sgn(v, d === 2 ? 1 : 0) + '%', xTitle: 'Minimum |spread| for the bet', h: 280,
+    series: [['discovery', 'Discovery', true], ['confirmation', 'Confirmation', false]].map(([p, n, hol]) => ({ name: n, color: el.endsWith('over') ? '--over' : '--under', hollow: hol,
+      pts: grid.map(g => ({ y: g[p].roi, lo: g[p].lo, hi: g[p].hi })) })) });
+}
+betChart('c-bet-under', R.bet_grid);
+betChart('c-bet-over', R.bet_over_exploratory.grid);
+
+/* ---------- explorer ---------- */
+const nd = G.nd;
+function rng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+const WU = 100 / 110;
+function explore() {
+  const per = document.getElementById('x-period').value, cut = +document.getElementById('x-cut').value, reg = document.getElementById('x-reg').checked;
+  document.getElementById('x-cutv').textContent = cut;
+  const lo = per === 'conf' ? 3 : 0, hi = per === 'disc' ? 2 : 6;
+  const d = { n: new Float64Array(nd), np: new Float64Array(nd), u: new Float64Array(nd), pu: new Float64Array(nd), po: new Float64Array(nd), sr: new Float64Array(nd) };
+  let cnt = 0;
+  for (let i = 0; i < G.s.length; i++) {
+    if (G.s[i] < lo || G.s[i] > hi || G.a[i] < cut * 10 || (reg && G.o[i])) continue;
+    const r = G.r[i] / 2, k = G.d[i]; cnt++;
+    d.n[k]++; d.sr[k] += r;
+    if (r !== 0) d.np[k]++;
+    if (r < 0) { d.u[k]++; d.pu[k] += WU; d.po[k] -= 1; } else if (r > 0) { d.pu[k] -= 1; d.po[k] += WU; }
+  }
+  const sum = a => a.reduce((x, y) => x + y, 0), pt = (a, b) => sum(a) / sum(b);
+  const stats = { under: [d.u, d.np], mean: [d.sr, d.n], roiU: [d.pu, d.n], roiO: [d.po, d.n] };
+  const draws = {}; Object.keys(stats).forEach(k => draws[k] = []);
+  const rand = rng(20261017);
+  for (let b = 0; b < 1000; b++) {
+    const acc = {}; Object.keys(stats).forEach(k => acc[k] = [0, 0]);
+    for (let j = 0; j < nd; j++) { const k = Math.floor(rand() * nd); for (const key in stats) { acc[key][0] += stats[key][0][k]; acc[key][1] += stats[key][1][k]; } }
+    for (const key in stats) draws[key].push(acc[key][1] ? acc[key][0] / acc[key][1] : NaN);
+  }
+  const q = (a, p) => { const s = a.filter(x => !isNaN(x)).sort((x, y) => x - y); return s[Math.floor(p * (s.length - 1))]; };
+  const row = (lab, key, f) => { const v = pt(...stats[key]); return [lab, isNaN(v) ? 'no games' : f(v), isNaN(v) ? '' : `${f(q(draws[key], .025))} to ${f(q(draws[key], .975))}`]; };
+  const over = v => 1 - v;
+  const t = [['Games', fmt.int(cnt), ''], ['Pushes', fmt.int(sum(d.n) - sum(d.np)), ''],
+    row('Under rate', 'under', pct)];
+  const u = pt(...stats.under);
+  t.push(['Over rate', isNaN(u) ? '' : pct(over(u)), isNaN(u) ? '' : `${pct(over(q(draws.under, .975)))} to ${pct(over(q(draws.under, .025)))}`]);
+  t.push(row('Mean r (actual − opening total), points', 'mean', fmt.s2), row('Under at -110, return per bet', 'roiU', v => fmt.roi(v * 100)), row('Over at -110, return per bet', 'roiO', v => fmt.roi(v * 100)));
+  table('t-x', ['Measure', 'Value', '95% interval'], t);
+}
+['x-period', 'x-cut', 'x-reg'].forEach(id => document.getElementById(id).addEventListener('input', explore));
+explore();
+</script>
