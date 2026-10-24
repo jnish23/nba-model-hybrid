@@ -238,3 +238,44 @@ No model is retrained. `bias = actual - predicted total` (positive = the model i
 **Power note.** Games above 242 are few before 2023-24; per-season intervals there will be wide, and a fix that changes only the extreme tail moves total MAE little. A pooled MAE gain of about 0.05 points is at the edge of what 8,916 games resolve (E1 used 0.2 points as a visible effect).
 
 **Reading rule.** Keep / not kept / era-confounded per fix; no criterion changes after the run; anything else is exploratory.
+
+
+## E19 - late-season tanking and locked seeds (angle 5 of 8)
+
+Added 2026-10-23 before any E19 number was computed (only table layouts, row counts and game-id prefixes were inspected). Shared rules above apply (discovery 2019-20..2021-22, confirmation 2022-23..2025-26, day-cluster bootstrap 1000 draws seed 20261017,
+Holm across 8 pending, layers a/b/c, betting last, sensitivity without 2019-20 and 2020-21). **Exploratory** by the user's own instruction: flagged games are few and the direction is unknown.
+
+**Scope correction for E14-E18 (found while preparing this angle).** The training-set frame used by E14-E18 contains playoff (game id prefix 004) and play-in (005) games: 627 of the 8,897 registered-season games (590 + 37, 7%).
+E19 uses **regular-season games only** (prefix 002) because game numbers and standings exist only there. A check of E14's headline on regular-season games only, run while preparing this registration, gives slope +0.161 (interval +0.061 to +0.268) against +0.180 with
+everything; discovery +0.165 (-0.009 to +0.339), confirmation +0.155 (+0.031 to +0.288). The sign and the E14 conclusion do not change, but the discovery interval now includes 0. The E14-E18 figures are left as published and reported with this caveat; the forward test E15 is already defined on regular-season games.
+
+**Rules context (researched 2026-10-23; sources: NBA Communications release https://pr.nba.com/nba-board-of-governors-approves-new-draft-lottery-system-to-address-tanking/ and ESPN https://www.espn.com/nba/story/_/id/48903380/sources-nba-bog-votes-expand-lottery-disincentivizes-tanking; the participation-policy item comes from search snippets of 2023 coverage, not re-read).**
+- On 2026-05-28 the Board of Governors approved (29-1) a "3-2-1" lottery effective with the **2027 Draft** (so it governs the 2026-27 season's records), in force for the 2027-2029 drafts. The lottery has 16 teams. Non-playoff teams get 3 balls, but the three worst records lose one (2 balls) and cannot pick lower than 12th ("draft relegation");
+  the 9 and 10 play-in seeds get 2 balls and the losers of the 7-8 games 1 ball. A team's own pick cannot be No. 1 in two consecutive drafts or a top-five pick in three consecutive drafts. Newly traded picks cannot carry top-12 to top-15 protections. The league gets expanded power to cut lottery odds, change draft position and fine (ESPN reports up to $10 million).
+- Resting stars: the 2023 player participation policy (no more than one star unavailable per game, fines for violations, no shutting down a star) is, as far as one search shows, still the framework; no 2026-27 change was found. Not exhaustive.
+- Implication for this angle: the old incentive to be as bad as possible is removed (the worst three are penalised and records 4th through 10th worst are equal), so a bottom-5 win% flag will mix teams with little incentive to lose and teams that may now try to avoid the bottom three. Contenders locked into a seed keep their old incentive to rest (limited by the participation policy and the play-in).
+  The 2019-20..2025-26 sample covers the pre-2026 lottery and, from 2023-24, the participation policy; **no historical season has the 3-2-1 rules**. A result here is evidence about the old regime; its transfer to 2026-27 is untested and needs forward data from 2026-27 regular-season games.
+
+**Hypothesis H_TANK (two-sided):** r depends on the late-season, tanking and locked flags and on their interactions with |spread|.
+
+Definitions (fixed now; regular-season games only; standings from games dated strictly before the game's date, built from `team_game_full` results; conferences hard-coded from team ids):
+- `game number` of a team = its regular-season games played before the date + 1 (checked against `season_game_number_*`). **Late (L)** = either team's game number >= 70. (Note: 2020-21 had 72 games, so its late window is 3 games per team; 2019-20 was shortened.)
+- **Tanker (T)** = either team is among the 5 lowest win% of all 30 teams at that date (rank method 'min', so ties at the boundary are included).
+- **Locked (K)** = either team has a conference rank (win%, then wins) from 1 to 10 and is more than 6 games clear of the next-lower rank and, unless it is rank 1, more than 6 games behind the next-higher rank. Games clear = ((W_a - L_a) - (W_b - L_b)) / 2.
+  This reads "more than 6 games clear of the next seed" as clear in both directions, i.e. the seed cannot realistically change.
+
+Steps:
+1. **Counts and descriptives.** Games in each flag and in L&T, L&K, L-only, not-L, per period. Mean `r`, under rate (pushes dropped) and n for those groups with day-bootstrap intervals.
+2. **Primary regression (user's design).** OLS `r ~ |spread| + (odds_total - discovery mean) + L + T + K + L x |spread| + T x |spread| + K x |spread| + season dummies`, separately on discovery and confirmation.
+   **Primary statistic: the joint Wald test that the six flag coefficients are zero**, `W = b' S^-1 b` with `S` the bootstrap covariance of those six coefficients, p from chi-square(6). **H_TANK is supported** iff discovery p < 0.10 and confirmation p < 0.05 (a loose find step, a strict confirm step);
+   Holm across the 8 angles uses the confirmation p. Individual coefficients with two-sided bootstrap p-values are reported as descriptive.
+   Secondary model B (my addition): the same with the late-only groups `LT = L & T`, `LK = L & K`, `LO = L & not T & not K` in place of L, T, K, again with their |spread| interactions.
+3. **Line movement.** `close_total - odds_total` (open to close, `odds_clean`, bad closing windows excluded): mean and mean absolute movement for LT, LK, LO and not-L, with intervals and the difference of each flagged group against not-L (paired draws); also mean `actual - close_total`. If the open-to-close movement for flagged games is larger and `actual - open` is not, the market is correcting it before tip.
+4. **Model test (layer b).** The step 2 regression on the out-of-sample model residual `actual - total_pred` and on the model's lean, 2021-22..2025-26, plus the mean residual for LT and LK games with intervals.
+5. **Feature test (layer c).** Only if step 2 is supported and step 4 shows a residual dependence (joint Wald p < 0.05 on the residual in the confirmation seasons). Not run otherwise.
+6. **Betting test.** Groups LT, LK, L (late, any), sides over and under at -110 at the opening total; choose the (group, side) with the highest discovery return among those with at least 100 discovery bets; apply unchanged to confirmation; report at the opening total, the closing total and the best-book line and price, with the all-late over and under controls.
+7. **Sensitivity.** Step 2's joint Wald p on (i) 2021-22..2025-26 (without the 2019-20 and 2020-21 seasons) and (ii) 2023-24..2025-26 (the participation-policy era), both reported, not decisive.
+
+**Power (stated now).** Counts will be reported before any result; the user expects about 1,500 late flagged games across 7 seasons and far fewer tanker-only games. With sd(`r`) about 18, a group of 300 games has a standard error of about 1.0 point, so only a group effect of several points is detectable, as the user noted. A joint test with six coefficients also has less power per coefficient than a single test.
+
+**Reading rule.** Supported / not supported against the rules above; no criterion changes after the run; anything else is exploratory.
