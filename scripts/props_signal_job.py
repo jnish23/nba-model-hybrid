@@ -23,7 +23,7 @@ import pandas as pd
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from props import schedule as S  # noqa: E402
 from props.features import build, history, rows as rows_mod  # noqa: E402
-from props.live import at_t as A, config, quotes, reports as live_reports_mod, signal, store  # noqa: E402
+from props.live import at_t as A, config, events, quotes, reports as live_reports_mod, signal, store  # noqa: E402
 from props.live.freshness import GAME_PREFIXES, HISTORY_LAG_HOURS, stale_history  # noqa: E402
 from props.models import registry  # noqa: E402
 
@@ -34,21 +34,7 @@ def utc_now():
     return pd.Timestamp.now(tz='UTC')
 
 
-def iso(ts):
-    return pd.Timestamp(ts).tz_convert('UTC').strftime('%Y-%m-%dT%H:%M:%SZ')
-
-
-def events_in_window(odds_db, now, hours_back=1.0, hours_ahead=7.0):
-    lo, hi = iso(now - pd.Timedelta(hours=hours_back)), iso(now + pd.Timedelta(hours=hours_ahead))
-    with sqlite3.connect(f'file:{odds_db}?mode=ro', uri=True, timeout=120) as conn:
-        ev = pd.read_sql('SELECT event_id_vendor, home_team, away_team, commence_time_utc FROM events WHERE commence_time_utc BETWEEN ? AND ?', conn, params=[lo, hi])
-        if ev.empty:
-            return ev
-        first = pd.read_sql(f"SELECT event_id_vendor, MIN(commence_time_utc) AS first_tip FROM prop_snapshots WHERE snapshot_ts_utc >= ? AND event_id_vendor IN ({','.join('?' * len(ev))}) "
-                            'GROUP BY event_id_vendor', conn, params=[iso(now - pd.Timedelta(days=3)), *ev['event_id_vendor']])
-    ev = ev.merge(first, on='event_id_vendor', how='left')
-    ev['commence_time_utc'] = ev['first_tip'].fillna(ev['commence_time_utc'])      # the reference clock uses the vendor's earliest estimate, as in the backtest
-    return ev.drop(columns='first_tip')
+iso = events.iso
 
 
 def play_tables_cached(features_db, season):
@@ -116,7 +102,7 @@ def main():
         season = cfg['model_season']
         sched = S.load_schedule(season)
         sched = sched[sched['game_id'].str[:3].isin(GAME_PREFIXES)].reset_index(drop=True)
-        ev = events_in_window(a.odds_db, now)
+        ev = events.events_in_window(a.odds_db, now)
         matched = S.match_games(ev, sched, S.team_id_map(a.nba_db)) if len(ev) else ev.assign(game_id=None, tip_ref_utc=None)
         log = []
         items = due_items(conn, a.odds_db, sched, matched, now, season, log)
