@@ -4,8 +4,13 @@ BASELINE = the post-audit deployed configuration: opening odds as inputs, two-st
 the FLAML boundary, LightGBM hyperparameters tuned INSIDE each fold on a time-ordered validation block, isotonic
 calibration and residual sigma fitted on the final 20% of the training window.
 
-Folds: test season s in TEST_SEASONS, training = all earlier seasons (sorted by date); model_train = first 80%,
-calibration = last 20%; for tuning, model_train is split again 80/20 in time (fit block / validation block).
+Folds: test season s in TEST_SEASONS, training = all earlier seasons (sorted by date); calibration = the last 20% of them,
+capped at CALIB_MAX_ROWS (about one season, as in team/train_baseline.py's 365-day block), model_train = the rest; for tuning,
+model_train is split again 80/20 in time (fit block / validation block). After the calibrators and sigma are fitted on the
+calibration block, the tuned base models are refit on model_train + calibration (refit_on_all, the production default), so the
+test season is predicted by a model that has seen everything up to its first game. Runs made before this (the artifacts under
+reports/experiments/ from 2026-10) used the uncapped 80/20 split and no refit: split.json beside a run records which scheme made it
+(run_split_params), and runs without one are read as the old scheme.
 Everything is seeded (SEED) and LightGBM runs deterministically, so a rerun reproduces the numbers exactly.
 """
 import json
@@ -28,6 +33,8 @@ from team.train_baseline import BaselineModel, FLAML_TRAIN_FRAC          # noqa:
 from team.data_paths import latest_training_set                           # noqa: E402
 
 SEED = 42
+CALIB_MAX_ROWS = 1300            # about one NBA regular season of games
+LEGACY_SPLIT = {'calib_cap': None, 'refit_on_all': False}      # how every run saved before the audit fix was made
 TEST_SEASONS = ['2019-20', '2020-21', '2021-22', '2022-23', '2023-24', '2024-25', '2025-26']
 OUT = ROOT / 'reports' / 'experiments'
 TARGETS = {'ml': 'target_home_win', 'spread': 'target_point_diff', 'total': 'target_total_pts'}
@@ -59,10 +66,22 @@ def fit_tuned(kind, X, y, n_fit, init=None, grid=GRID):
     return final, {'cfg': best, 'val_score': best_score, 'val_scores': scores}
 
 
-def split_fold(df, test_season):
+def calib_rows(n_train, calib_cap=CALIB_MAX_ROWS):
+    """Rows of the calibration block: the last 20% of the training window, at most `calib_cap` (None: no cap, the pre-audit rule)."""
+    n_cal = n_train - int(n_train * 0.8)
+    return n_cal if calib_cap is None else min(n_cal, calib_cap)
+
+
+def run_split_params(name):
+    """{'calib_cap', 'refit_on_all'} the run `name` was made with (LEGACY_SPLIT for runs saved before split.json existed)."""
+    path = OUT / name / 'split.json'
+    return {**LEGACY_SPLIT, **{k: v for k, v in json.loads(path.read_text()).items() if k in LEGACY_SPLIT}} if path.exists() else dict(LEGACY_SPLIT)
+
+
+def split_fold(df, test_season, calib_cap=CALIB_MAX_ROWS):
     train = df[df['seasonYear'] < test_season].sort_values('gameDate', kind='stable').reset_index(drop=True)
     test = df[df['seasonYear'] == test_season].reset_index(drop=True)
-    n_mt = int(len(train) * 0.8)
+    n_mt = len(train) - calib_rows(len(train), calib_cap)
     mt, calib = train.iloc[:n_mt].reset_index(drop=True), train.iloc[n_mt:].reset_index(drop=True)
     n_fl = int(len(mt) * FLAML_TRAIN_FRAC)
     return mt, calib, test, n_fl
@@ -87,7 +106,8 @@ DEFAULT_KEEP = ['gameId', 'gameDate', 'seasonYear', 'target_home_win', 'target_p
                 'close_home_prob', 'open_home_prob']
 
 
-def run_walk_forward(name, csv=None, features_from=None, hooks=None, seasons=TEST_SEASONS, save=True, df_override=None, selection_seed=42):
+def run_walk_forward(name, csv=None, features_from=None, hooks=None, seasons=TEST_SEASONS, save=True, df_override=None, selection_seed=42,
+                     calib_cap=CALIB_MAX_ROWS, refit_on_all=True):
     """
     Run all folds. `hooks` (dict, optional) lets an experiment change ONE thing:
       'init_scores'(kind, frame, fold_ctx) -> array|None   market-residual init_score (E1)
@@ -95,6 +115,7 @@ def run_walk_forward(name, csv=None, features_from=None, hooks=None, seasons=TES
     Returns (test_predictions, calib_predictions, info). Selected features are cached per fold in OUT/name/features.json
     and reused from `features_from` (another run's name) so that an experiment that does not touch features uses
     exactly the baseline feature sets.
+    calib_cap / refit_on_all: see the module docstring (calib_cap=None, refit_on_all=False reproduces the pre-audit runs).
     """
     hooks = hooks or {}
     t0 = time.time()
@@ -110,7 +131,7 @@ def run_walk_forward(name, csv=None, features_from=None, hooks=None, seasons=TES
     chosen, tests, calibs, info = {}, [], [], {}
     keep = DEFAULT_KEEP + hooks.get('extra_columns', [])
     for s in seasons:
-        mt, calib, test, n_fl = split_fold(df, s)
+        mt, calib, test, n_fl = split_fold(df, s, calib_cap=calib_cap)
         ctx = {'season': s, 'n_fl': n_fl, 'mt': mt, 'calib': calib, 'test': test}
         fold_feats = cached.get(s)
         if fold_feats is None:
@@ -119,6 +140,7 @@ def run_walk_forward(name, csv=None, features_from=None, hooks=None, seasons=TES
         chosen[s] = fold_feats
         res_test = test[[c for c in keep if c in test]].copy()
         res_cal = calib[[c for c in keep if c in calib]].copy()
+        res_cal['fold'] = s
         fold_info = {}
         for kind_name, target in TARGETS.items():
             feats = fold_feats[kind_name]
@@ -134,6 +156,16 @@ def run_walk_forward(name, csv=None, features_from=None, hooks=None, seasons=TES
             fold_info[kind_name] = {**finfo, 'n_features': len(feats)}
             r_cal = raw_predict(est, kind, calib[feats], init_cal)
             r_test = raw_predict(est, kind, test[feats], init_test)
+            if refit_on_all:
+                # calibrators / sigma stay fitted on the model_train model's out-of-sample calibration predictions; the test season is
+                # predicted by the same configuration refit on model_train + calibration (BaselineModel.train_and_save_all, refit_on_all)
+                tv = pd.concat([mt, calib], ignore_index=True)
+                y_tv = hooks['target'](kind_name, tv, ctx) if 'target' in hooks else tv[target]
+                init_tv = None if init is None else np.concatenate([init, init_cal])
+                final = make_est(kind, GRID[finfo['cfg']])
+                final.fit(tv[feats], y_tv, init_score=init_tv)
+                r_test = raw_predict(final, kind, test[feats], init_test)
+                fold_info[kind_name]['refit_rows'] = len(tv)
             if kind_name == 'ml':
                 p_cal, p_test = expit(r_cal), expit(r_test)
                 iso = IsotonicRegression(out_of_bounds='clip').fit(p_cal, calib[target])
@@ -159,17 +191,22 @@ def run_walk_forward(name, csv=None, features_from=None, hooks=None, seasons=TES
         test_df.to_csv(out_dir / 'predictions.csv', index=False)
         calib_df.to_csv(out_dir / 'calibration_set_predictions.csv', index=False)
         (out_dir / 'fold_info.json').write_text(json.dumps(info, indent=1))
+        (out_dir / 'split.json').write_text(json.dumps({'calib_cap': calib_cap, 'refit_on_all': refit_on_all}))
     return test_df, calib_df, info
 
 
-def label_calib_folds(df, calib_df, seasons=TEST_SEASONS):
-    """Calibration-set rows are saved in fold order; return the fold (test season) of each row."""
-    labels = []
-    for s in seasons:
-        n_train = int((df['seasonYear'] < s).sum())
-        labels += [s] * (n_train - int(n_train * 0.8))
-    assert len(labels) == len(calib_df), (len(labels), len(calib_df))
-    return np.array(labels)
+def label_calib_folds(df, calib_df, seasons=TEST_SEASONS, calib_cap='auto'):
+    """Fold (test season) of each calibration-set row. Runs saved by run_walk_forward carry a `fold` column; older ones are in fold order,
+    so the labels are rebuilt from the calibration-block sizes (calib_cap='auto' tries the capped block, then the pre-audit 20% block)."""
+    if 'fold' in calib_df:
+        return calib_df['fold'].to_numpy()
+    for cap in ([CALIB_MAX_ROWS, None] if calib_cap == 'auto' else [calib_cap]):
+        labels = []
+        for s in seasons:
+            labels += [s] * calib_rows(int((df['seasonYear'] < s).sum()), cap)
+        if len(labels) == len(calib_df):
+            return np.array(labels)
+    raise AssertionError(f'calibration set has {len(calib_df)} rows, which fits no known fold layout')
 
 
 def load_run(name):

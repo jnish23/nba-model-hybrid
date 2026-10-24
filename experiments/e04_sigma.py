@@ -12,7 +12,7 @@ from scipy.stats import norm
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from experiments import decide, metrics as M                                             # noqa: E402
-from experiments.lib import GRID, OUT, SEED, TEST_SEASONS, label_calib_folds, load_games, load_run, make_est, split_fold   # noqa: E402
+from experiments.lib import GRID, OUT, SEED, TEST_SEASONS, label_calib_folds, load_games, load_run, make_est, run_split_params, split_fold   # noqa: E402
 
 NAME = 'E04_sigma'
 SIGMA_FEATURES = [
@@ -61,7 +61,7 @@ def main():
     sig = {mk: pd.Series(np.nan, index=base.index) for mk in ('spread', 'total')}
     sig_rescaled = {mk: pd.Series(np.nan, index=base.index) for mk in ('spread', 'total')}
     for s in TEST_SEASONS:
-        mt, calib, test, n_fl = split_fold(df, s)
+        mt, calib, test, n_fl = split_fold(df, s, calib_cap=run_split_params('baseline')['calib_cap'])      # the split the baseline run used
         tm = (base['seasonYear'] == s).to_numpy()
         te_idx = base.index[tm]
         for mk in ('spread', 'total'):
