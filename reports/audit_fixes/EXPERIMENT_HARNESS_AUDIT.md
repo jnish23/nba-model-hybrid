@@ -72,7 +72,8 @@ Cumulative effect on the baseline (7 folds, 8,916 games; difference vs the pre-a
 
 **Totals improve by 0.12 points; ML log loss gets worse.** The ML cost comes from the cap: isotonic regression is now fitted on 1,300
 rows instead of 1,600-3,100 (ML ECE 0.012 -> 0.021). Production avoids this by using a logistic stack, not isotonic, for the market-aware ML
-model. If the harness should keep ML at its old level, give the ML calibrator a larger block or switch it to Platt (E02) - not done here.
+model. The harness now defaults to Platt too (`ml_calibrator='platt'`, see the follow-up section); the figures in this section are the
+isotonic ones, `ml_calibrator='isotonic'` reproduces them.
 
 ### 3. E01 / E25 residual runs (`cf61eac`)
 
@@ -163,7 +164,12 @@ difference vs the pre-audit run (V0, 0.6225) with day-bootstrap CI:
 
 ## Left for the owner
 
-* Whether to switch the harness's ML calibrator from isotonic to Platt (measured above; not changed in `lib.py`).
+* ~~Whether to switch the harness's ML calibrator from isotonic to Platt~~ - done: `run_walk_forward(..., ml_calibrator='platt')` is the
+  default, so the harness matches production's logistic calibration. Only `experiments/lib.py` changed; no production model, saved model
+  or `reports/experiments/` artifact. `split.json` records the calibrator and runs without it are read as isotonic
+  (`run_split_params`), so `E25_*`, `E01_*` and `baseline` still reproduce with `selection='legacy', calib_cap=None, refit_on_all=False,
+  ml_calibrator='isotonic'`. Any experiment that re-runs `run_walk_forward` with defaults now gets Platt ML probabilities, so compare it with
+  a reference made the same way (E02's "isotonic baseline" arm only means isotonic on runs made before this change).
 * Whether the E1 residual-total result should be re-registered and the "0.27-0.3 points worse" notes updated (see 3).
 * Regenerating `E25_*`, `E01_*` and `baseline` under the new defaults was **not** done; existing artifacts are untouched.
 * `experiments/e31_nosel.py` (untracked) was edited to follow its reference run's split via `run_split_params`; that edit is in the working

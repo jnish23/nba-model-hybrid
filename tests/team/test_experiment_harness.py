@@ -68,10 +68,58 @@ def test_fold_labels_follow_the_scheme_that_made_the_run():
 def test_runs_without_split_json_are_read_as_the_old_scheme(tmp_path, monkeypatch):
     monkeypatch.setattr(lib, 'OUT', tmp_path)
     (tmp_path / 'old').mkdir()
-    assert lib.run_split_params('old') == {'calib_cap': None, 'refit_on_all': False}
+    assert lib.run_split_params('old') == {'calib_cap': None, 'refit_on_all': False, 'ml_calibrator': 'isotonic'}
     (tmp_path / 'new').mkdir()
-    (tmp_path / 'new' / 'split.json').write_text(json.dumps({'calib_cap': 1300, 'refit_on_all': True}))
-    assert lib.run_split_params('new') == {'calib_cap': 1300, 'refit_on_all': True}
+    (tmp_path / 'new' / 'split.json').write_text(json.dumps({'calib_cap': 1300, 'refit_on_all': True, 'ml_calibrator': 'platt'}))
+    assert lib.run_split_params('new') == {'calib_cap': 1300, 'refit_on_all': True, 'ml_calibrator': 'platt'}
+    (tmp_path / 'mid').mkdir()                                                    # a run saved between the cap/refit fix and the Platt switch
+    (tmp_path / 'mid' / 'split.json').write_text(json.dumps({'calib_cap': 1300, 'refit_on_all': True}))
+    assert lib.run_split_params('mid') == {'calib_cap': 1300, 'refit_on_all': True, 'ml_calibrator': 'isotonic'}
+
+
+# ------------------------------------------------------------------ ML calibrator
+
+def test_platt_is_a_monotone_log_odds_map_and_fixes_a_miscalibrated_model():
+    rng = np.random.default_rng(0)
+    true_p = rng.uniform(0.15, 0.85, 4000)
+    y = (rng.uniform(size=4000) < true_p).astype(int)
+    over = 1 / (1 + np.exp(-2.0 * np.log(true_p / (1 - true_p))))              # an over-confident model: log-odds scaled by 2
+    cal = lib.fit_ml_calibrator('platt', over, y)
+    out = cal(np.linspace(0.02, 0.98, 50))
+    assert np.all(np.diff(out) > 0) and out.min() > 0 and out.max() < 1       # strictly increasing, a probability
+    assert abs(np.mean(cal(over)) - y.mean()) < 0.01                             # unpenalised logistic keeps the base rate
+    assert np.mean((cal(over) - true_p) ** 2) < np.mean((over - true_p) ** 2) / 4
+    ties = lib.fit_ml_calibrator('isotonic', over, y)(np.linspace(0.02, 0.98, 50))
+    assert len(np.unique(ties)) < 50 and len(np.unique(out)) == 50              # isotonic is a step function, Platt is not
+    with pytest.raises(ValueError):
+        lib.fit_ml_calibrator('beta', over, y)
+
+
+def test_platt_survives_degenerate_probabilities():
+    cal = lib.fit_ml_calibrator('platt', np.array([0.0, 1.0, 0.3, 0.7] * 50), np.array([0, 1, 0, 1] * 50))
+    assert np.isfinite(cal(np.array([0.0, 0.5, 1.0]))).all()                      # 0 and 1 are clipped, not sent to +-inf
+
+
+def test_ml_calibrator_changes_only_the_calibrated_probability(tmp_path, monkeypatch):
+    monkeypatch.setattr(lib, 'OUT', tmp_path)
+    m, df = _games()
+    kw = dict(df_override=(m, df), seasons=['2022-23'], calib_cap=200, refit_on_all=False, selection_seed=1)
+    plat = lib.run_walk_forward('p', **kw)
+    iso = lib.run_walk_forward('i', ml_calibrator='isotonic', **kw)
+    for a, b in zip(plat[:2], iso[:2]):
+        np.testing.assert_array_equal(a['ml_prob_raw'], b['ml_prob_raw'])
+        np.testing.assert_array_equal(a['total_pred'], b['total_pred'])
+        np.testing.assert_array_equal(a['spread_pred'], b['spread_pred'])
+        assert not np.allclose(a['ml_prob'], b['ml_prob'])
+    raw, cal = plat[0]['ml_prob_raw'].to_numpy(), plat[0]['ml_prob'].to_numpy()
+    assert np.array_equal(np.argsort(raw, kind='stable'), np.argsort(cal, kind='stable'))   # Platt does not reorder games
+    assert len(np.unique(plat[0]['ml_prob'].round(10))) > len(np.unique(iso[0]['ml_prob'].round(10)))
+    assert json.loads((tmp_path / 'i' / 'split.json').read_text())['ml_calibrator'] == 'isotonic'
+    assert run_params(tmp_path, 'p')['ml_calibrator'] == 'platt'
+
+
+def run_params(path, name):
+    return json.loads((path / name / 'split.json').read_text())
 
 
 # ------------------------------------------------------------------ refit on model_train + calibration
@@ -112,7 +160,7 @@ def test_refit_model_equals_the_tuned_config_trained_on_all_earlier_games(two_ru
 
 def test_saved_run_records_its_split_and_tags_calibration_rows_with_their_fold(two_runs):
     out, *_ = two_runs
-    assert json.loads((out / 'refit' / 'split.json').read_text()) == {'calib_cap': 100, 'refit_on_all': True}
+    assert json.loads((out / 'refit' / 'split.json').read_text()) == {'calib_cap': 100, 'refit_on_all': True, 'ml_calibrator': 'platt'}
     cal = pd.read_csv(out / 'refit' / 'calibration_set_predictions.csv')
     assert len(cal) == 100 and set(cal['fold']) == {'2022-23'}
 
