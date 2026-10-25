@@ -440,7 +440,7 @@ class BaselineModel:
 
     def _select_features_from_subset(self, df_subset, target, n_top=150, n_min=20, importance_type='gain', seed=42,
                                      groups=None, stratify=True, n_permutations=30, z_threshold=1.28,
-                                     exclude_odds=False, legacy=False, n_importance_fits=5):
+                                     exclude_odds=False, legacy=False, n_importance_fits=5, stop_after=None):
         """
         Two-Stage Feature Selection (No Leakage):
         1. Hierarchical Clustering (Spearman) to remove highly correlated redundant features.
@@ -470,7 +470,11 @@ class BaselineModel:
         90th-percentile rule) - only for rebuilding old artifacts.
         seed: random state of the proxy models and of the shuffled-target permutations (default 42);
         varying it measures how much of a result is selection noise.
+        stop_after: None runs both stages; 'pool' returns the pool after the zero-variance filter, 'stage1' the clustering output (what the
+        no-selection experiments compare against; the lists are exactly the selector's own intermediate ones).
         """
+        if stop_after not in (None, 'pool', 'stage1'):
+            raise ValueError(f"stop_after must be None, 'pool' or 'stage1', got {stop_after!r}")
         if legacy:
             importance_type, n_permutations, stratify, n_importance_fits = 'split', 10, False, 1
         # 1. Filter available/valid features from the correct pool
@@ -484,6 +488,8 @@ class BaselineModel:
         valid_cols = variances[variances > 1e-10].index.tolist()
         X = X[valid_cols]
         y = df_subset[target]
+        if stop_after == 'pool':
+            return list(X.columns)
         if groups is None and stratify and 'seasonYear' in df_subset.columns:
             groups = df_subset['seasonYear']
 
@@ -527,6 +533,9 @@ class BaselineModel:
         stage1_features = sorted(min(members, key=lambda f: (-initial_imp[f], f))
                                  for members in cluster_members.values())
         logging.info(f"[{target}] Stage 1 (Clustering): Reduced from {len(X.columns)} to {len(stage1_features)} independent features.")
+
+        if stop_after == 'stage1':
+            return stage1_features
 
         # If we have very few features, just return what we have
         if len(stage1_features) <= n_min:

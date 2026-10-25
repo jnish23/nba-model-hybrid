@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 import pandas as pd
 
 from team.train_baseline import BaselineModel
@@ -147,3 +148,19 @@ def test_averaging_the_bagged_importances_makes_the_lists_steadier_across_seeds(
         return float(np.mean([len(a & b) / len(a | b) for i, a in enumerate(lists) for b in lists[i + 1:]]))
 
     assert mean_jaccard(5) > mean_jaccard(1)                 # one bagged fit picks a different near-duplicate for each seed
+
+
+def test_stop_after_returns_the_selectors_own_intermediate_lists():
+    df = _frame()
+    df['diff_const'] = 1.0                                                    # removed by the zero-variance filter
+    sel = _selector(df)
+    pool = sel._select_features_from_subset(df, 'target_point_diff', stop_after='pool')
+    stage1 = sel._select_features_from_subset(df, 'target_point_diff', stop_after='stage1')
+    final = sel._select_features_from_subset(df, 'target_point_diff')
+    assert 'diff_const' not in pool and 'diff_noise00' in pool
+    assert set(final) <= set(stage1) <= set(pool)                             # nested, by construction
+    assert len(stage1) < len(pool)                                            # the near-duplicate copies are clustered away
+    for j in range(4):
+        assert sum(c in stage1 for c in (f'diff_f{j:02d}', f'diff_copy{j}a', f'diff_copy{j}b')) == 1
+    with pytest.raises(ValueError):
+        sel._select_features_from_subset(df, 'target_point_diff', stop_after='stage3')

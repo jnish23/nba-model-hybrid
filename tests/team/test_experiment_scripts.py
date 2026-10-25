@@ -224,3 +224,61 @@ def test_bootstrap_ratio_diff_ignores_draws_with_an_empty_cell(module, fn):
     assert (db.W @ db.day_sum(np.where(thin, den, 0.0)) == 0).any()
     out = getattr(mod, fn)(db, num, den, thin, rest)
     assert np.isfinite([out['diff'], out['lo'], out['hi']]).all() and out['lo'] <= out['hi']
+
+
+# ------------------------------------------------------------------ E31b: the no-selection arms against a post-audit reference
+
+def _reference_dir(tmp_path, split, selection='residual'):
+    d = tmp_path / 'E25_with_odds'
+    d.mkdir()
+    import json
+    (d / 'split.json').write_text(json.dumps(split))
+    (d / 'selection.json').write_text(json.dumps({'selection': selection}))
+    return d
+
+
+def test_e31b_refuses_a_reference_made_under_the_old_scheme(tmp_path, monkeypatch):
+    from experiments import e31b_nosel as e31b, lib
+    monkeypatch.setattr(lib, 'OUT', tmp_path)
+    old = tmp_path / 'E25_with_odds'
+    old.mkdir()                                                               # no split.json / selection.json: a pre-audit run
+    with pytest.raises(SystemExit):
+        e31b.require_new_defaults('E25_with_odds')
+    import shutil
+    shutil.rmtree(old)
+    _reference_dir(tmp_path, {'calib_cap': 1300, 'refit_on_all': True, 'ml_calibrator': 'isotonic'})     # capped and refit, but the old calibrator
+    with pytest.raises(SystemExit):
+        e31b.require_new_defaults('E25_with_odds')
+    shutil.rmtree(old)
+    _reference_dir(tmp_path, {'calib_cap': 1300, 'refit_on_all': True, 'ml_calibrator': 'platt'}, selection='raw')
+    with pytest.raises(SystemExit):
+        e31b.require_new_defaults('E25_with_odds')
+    shutil.rmtree(old)
+    _reference_dir(tmp_path, {'calib_cap': 1300, 'refit_on_all': True, 'ml_calibrator': 'platt'})
+    assert e31b.require_new_defaults('E25_with_odds')['calib_cap'] == 1300
+
+
+def test_e31b_arm_lists_nest_reference_inside_stage1_inside_all(tmp_path, monkeypatch):
+    import json
+    from experiments import e31b_nosel as e31b, lib
+    from tests.team.test_experiment_harness import _games
+    m, df = _games(per_season=700)
+    rng = np.random.default_rng(3)
+    for j in range(4):                                                        # near-duplicates: clustering must drop them, 'pool' keeps them
+        df[f'diff_dup{j}'] = df[f'diff_f{j}'] + rng.normal(scale=1e-3, size=len(df))
+    m.features_diff = [c for c in df.columns if c.startswith('diff_')] + ['odds_home_spread']
+    m.features_sep = [c for c in df.columns if c.startswith('diff_')] + ['odds_home_spread', 'odds_total']       # the lines are in the pools
+    monkeypatch.setattr(lib, 'OUT', tmp_path)
+    monkeypatch.setattr(e31b, 'TEST_SEASONS', ['2022-23'])
+    monkeypatch.setattr(e31b, 'load_games', lambda: (m, df))
+    ref_dir = _reference_dir(tmp_path, {'calib_cap': 100, 'refit_on_all': True, 'ml_calibrator': 'platt'})
+    mt, calib, test, n_fl = lib.split_fold(df, '2022-23', calib_cap=100)
+    ref = m.select_market_features(mt.iloc[:n_fl], seed=42)
+    (ref_dir / 'features.json').write_text(json.dumps({'2022-23': ref}))
+    counts = e31b.write_features('E31b_all', 'pool')
+    c = counts['2022-23']['total']
+    assert c['reference'] <= c['stage1'] <= c['all'] and c['stage1'] < c['all']
+    got = json.loads((tmp_path / 'E31b_all' / 'features.json').read_text())['2022-23']
+    assert set(got['ml']) == set(got['spread']) and 'odds_total' in got['total']
+    stage1 = e31b.write_features('E31b_stage1', 'stage1')
+    assert stage1 == counts and len(json.loads((tmp_path / 'E31b_stage1' / 'features.json').read_text())['2022-23']['total']) == c['stage1']
