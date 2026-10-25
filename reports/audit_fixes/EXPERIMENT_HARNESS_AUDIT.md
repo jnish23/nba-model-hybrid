@@ -144,9 +144,26 @@ the repo, and it is sparse (13 / 26 late locked games) rather than empty. A clin
 
 `e26_freeze.py` now passes `legacy=True`, so re-running the freeze rebuilds the registered E26 model rather than a re-selected one.
 
+## Follow-up: ML calibrator under the capped block (evaluation only, harness unchanged)
+
+Same walk-forward (selection fixes + refit), varying the calibration block and the E02 calibrator arms; ML log loss, 8,916 games,
+difference vs the pre-audit run (V0, 0.6225) with day-bootstrap CI:
+
+| Calibration block | isotonic (current) | Platt | cross-fit isotonic | uncalibrated |
+|---|---|---|---|---|
+| 1,300 rows (current cap) | 0.6286 (+0.0061) | **0.6138 (-0.0087 [-0.017, -0.001], 6/7)** | 0.6219 (-0.0006) | 0.6116 |
+| 2,600 rows | 0.6209 (-0.0016) | 0.6123 (-0.0103) | 0.6194 (-0.0031) | 0.6112 |
+| old 20% (~2,300 rows) | 0.6219 (-0.0006) | 0.6120 (-0.0106, 7/7) | 0.6201 (-0.0025) | 0.6110 |
+
+* Within the 1,300-row block, Platt beats isotonic by 0.0148 [-0.023, -0.008] in all 7 seasons; ECE 0.021 -> 0.009.
+* Platt is nearly independent of block size (0.6138 / 0.6123 / 0.6120), so the cap costs it little. Isotonic loses 0.0067 at 1,300 vs 2,600 rows.
+* The raw model probability is slightly better still (Platt vs raw +0.0022 [+0.001, +0.003]): once the odds are inputs, the raw score is
+  already close to calibrated and a calibrator adds mostly noise. Recommendation if ML is kept in the harness: Platt on the capped block.
+* The base-model recency gain (refit, nearer data) is in all rows; the clean contrast is the column difference within a row.
+
 ## Left for the owner
 
-* Whether to move the harness's ML calibrator off isotonic now that the calibration block is one season (see 2).
+* Whether to switch the harness's ML calibrator from isotonic to Platt (measured above; not changed in `lib.py`).
 * Whether the E1 residual-total result should be re-registered and the "0.27-0.3 points worse" notes updated (see 3).
 * Regenerating `E25_*`, `E01_*` and `baseline` under the new defaults was **not** done; existing artifacts are untouched.
 * `experiments/e31_nosel.py` (untracked) was edited to follow its reference run's split via `run_split_params`; that edit is in the working
