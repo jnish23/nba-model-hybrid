@@ -12,6 +12,9 @@ from props.models import calibrate, outcome as oc
 
 BUCKET_EDGES = (15.0, 28.0)
 MAX_C = 1.6
+MIN_C = 1.0                                           # the maps CAN narrow (DispersionScaler(min_c=0.7)), but on the development folds allowing it changed almost nothing and was slightly worse
+                                                      # for rebounds, so the frozen pipeline keeps the floor at 1 (reports/props/phase5_dev_gate.md)
+MIN_SCALE = 0.5
 MIN_ROWS = 300
 
 
@@ -20,10 +23,10 @@ def bucket_of(minutes_mean):
 
 
 def widen(pmf, scale, iterations=5):
-    """Mean-preserving widening of each row's pmf by `scale` (>= 1, one value per row)."""
+    """Mean-preserving rescaling of each row's pmf's spread by `scale` (one value per row; above 1 widens, below 1 narrows)."""
     pmf = np.asarray(pmf, np.float64)
     n, width = pmf.shape
-    scale = np.maximum(np.asarray(scale, float), 1.0)
+    scale = np.maximum(np.asarray(scale, float), MIN_SCALE)
     if np.all(scale == 1.0):
         return pmf.astype(np.float32)
     mean = oc.pmf_mean(pmf)
@@ -43,12 +46,13 @@ def widen(pmf, scale, iterations=5):
         out = np.diff(np.concatenate([np.zeros((n, 1)), cdf], axis=1), axis=1)
         out = np.maximum(out, 0.0)
         # the stretch is cut at zero, which lifts the mean; a higher centre raises the CDF (moves mass down) at rate 1 - 1/scale per unit, so step by the gap over that
-        loc = loc + (oc.pmf_mean(out) - mean) / np.maximum(1 - 1 / scale, 0.05)
+        loc = loc + np.where(scale > 1.0, (oc.pmf_mean(out) - mean) / np.maximum(1 - 1 / scale, 0.05), 0.0)       # compressing never runs into zero: no correction needed
     return (out / out.sum(axis=1, keepdims=True)).astype(np.float32)
 
 
 class DispersionScaler:
-    def __init__(self):
+    def __init__(self, min_c=None):
+        self.min_c = MIN_C if min_c is None else min_c
         self.c = {}                                                                    # (stat, bucket) -> variance inflation
 
     def fit(self, stat, pmf, obs, minutes_mean):
@@ -59,7 +63,7 @@ class DispersionScaler:
             if sel.sum() < MIN_ROWS:
                 self.c[(stat, k)] = 1.0
                 continue
-            self.c[(stat, k)] = float(np.clip(np.mean((obs[sel] - mean[sel]) ** 2) / np.mean(var[sel]), 1.0, MAX_C))
+            self.c[(stat, k)] = float(np.clip(np.mean((obs[sel] - mean[sel]) ** 2) / np.mean(var[sel]), self.min_c, MAX_C))
         return self
 
     def scale_for(self, stat, minutes_mean):

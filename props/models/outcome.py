@@ -126,3 +126,35 @@ def prob_over(pmf, line):
     cdf = np.cumsum(pmf.astype(np.float64), axis=1)
     k = np.clip(k, 0, pmf.shape[1] - 1)
     return 1.0 - np.take_along_axis(cdf, k[:, None], axis=1)[:, 0]
+
+
+def prob_push(pmf, line):
+    """P(X == line) on an integer line; 0 on a half line."""
+    line = np.asarray(line, dtype=float)
+    is_int = np.isclose(line, np.round(line))
+    k = np.clip(np.round(line).astype(int), 0, pmf.shape[1] - 1)
+    p = np.take_along_axis(np.asarray(pmf, dtype=np.float64), k[:, None], axis=1)[:, 0]
+    return np.where(is_int, p, 0.0)
+
+
+def prob_under(pmf, line):
+    """P(X < line): the complement of over and push."""
+    return np.clip(1.0 - prob_over(pmf, line) - prob_push(pmf, line), 0.0, 1.0)
+
+
+def prob_over_no_push(pmf, line):
+    """P(over | no push) = P(X > line) / (1 - P(push)). This, not P(X > line), is the quantity that compares with a de-vigged market probability and with a
+    refunding book's break-even, because a push returns the stake and drops out of the bet."""
+    o, u = prob_over(pmf, line), prob_under(pmf, line)
+    return o / np.maximum(o + u, 1e-12)
+
+
+def prob_under_no_push(pmf, line):
+    return 1.0 - prob_over_no_push(pmf, line)
+
+
+def ev_per_unit(pmf, line, decimal_odds, side='over'):
+    """Expected profit per unit staked: win pays (odds - 1), loss costs 1, a push returns the stake (0)."""
+    p_win = prob_over(pmf, line) if side == 'over' else prob_under(pmf, line)
+    p_lose = prob_under(pmf, line) if side == 'over' else prob_over(pmf, line)
+    return p_win * (np.asarray(decimal_odds, dtype=float) - 1.0) - p_lose

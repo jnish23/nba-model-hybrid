@@ -1,0 +1,6 @@
+# Props dashboard dependencies: the same light stack as the team dashboard (no modelling libraries).
+streamlit==1.37.1
+plotly==5.24.1
+pandas==2.2.2
+numpy==1.26.4
+tzdata==2025.3
