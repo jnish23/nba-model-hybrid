@@ -42,3 +42,20 @@ Treat any comparison that changes the candidate pool as carrying about +-0.03 to
 No decision flips for the team models: F1 on the total is still the only (a) candidate, it is still pace-confounded, and it is still rejected by the walk-forward test.
 The corrected pace feature no longer predicts the total on its own (+0.011 -> -0.000). Of the four opening-line candidates frozen for the E30 forward test, F1 margin and F5 total
 are unchanged; F3 margin no longer passes the find step and F4 margin is borderline only through the multiplicity correction.
+
+## E31b: all features / stage-1 features versus the selector, post-audit pipeline (arm - reference; negative = better)
+
+Run with `python -m experiments.e31b_nosel --out reports/audit_fixes/rerun_new_defaults/reports/experiments` (registered as "E31b" in `PREREGISTRATION.md`). Reference: the regenerated
+`E25_with_odds` (25-34 features per list); stage 1 keeps 113-119 (ML/spread) and 213-217 (total); all keeps 136-140 and 268-276. The reference is nested in stage 1, which is nested in all, in every fold.
+
+| metric | E31b stage 1 | E31b all | E31 stage 1 (old pipeline) | E31 all (old pipeline) |
+|---|---|---|---|---|
+| ML log loss | -0.0006 [-0.0017, +0.0006], 4/7 | -0.0010 [-0.0022, +0.0003], 5/7 | +0.0010 | +0.0012 |
+| Spread MAE | -0.0008 [-0.016, +0.016], 3/7 | -0.0054 [-0.022, +0.011], 3/7 | +0.0008 | -0.0014 |
+| Total MAE | +0.0198 [-0.017, +0.057], 2/7 | +0.0192 [-0.020, +0.059], 3/7 | +0.0204 | +0.0151 |
+
+No interval excludes zero for any metric, in either pipeline. Removing the selector's filtering (stage 2, or both stages) changes nothing detectable for ML or spread. The total's
++0.02 comes from one fold: 2019-20 is +0.176 (stage 1) and +0.163 (all); the other six folds average -0.003 and -0.002. In the old pipeline the same fold went the other way (-0.05 to -0.07),
+so this fold is noise-dominated, not evidence about the selector (the per-fold split is a post-hoc look). The seed-only noise floors quoted in the table of the RESULT.md files were measured
+with the old selector and are shown for scale only; the post-audit selector's noise on totals is larger (see the E29 fresh-selection arm above).
+Reading: the selector is not shown to help or to hurt accuracy, before or after the audit; its value is a shorter, stabler list (25 versus 136-276 features), not measured accuracy.
