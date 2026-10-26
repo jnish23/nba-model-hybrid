@@ -11,6 +11,9 @@ def _src(tmp_path):
     (root / 'dashboard_props').mkdir(parents=True)
     (root / 'dashboard_props' / 'app.py').write_text('app v1')
     (root / 'dashboard_props' / 'logic.py').write_text('logic')
+    (root / 'core').mkdir()
+    for f in ('__init__.py', 'live_feed.py', 'live_feed_overrides.csv'):
+        (root / 'core' / f).write_text(f)
     (root / 'dashboard').mkdir()
     (root / 'dashboard' / 'requirements.txt').write_text('streamlit==1.37.1\n')
     (root / '.env').write_text('ODDS_API_KEY=secret')
@@ -35,6 +38,7 @@ def test_the_bundle_has_the_app_the_requirements_and_the_data_but_nothing_else(t
     assert (dest / 'requirements.txt').read_text() == 'streamlit==1.37.1\n' and (dest / 'dashboard_props' / 'app.py').read_text() == 'app v1'
     assert (dest / 'data' / 'props_dashboard_live' / 'bets.csv').exists() and not (dest / '.env').exists() and not (dest / 'data' / 'props_dashboard_live' / 'secrets.txt').exists()
     assert 'data/props_dashboard/meta.json' in files
+    assert {'core/__init__.py', 'core/live_feed.py', 'core/live_feed_overrides.csv'} <= set(files) and (dest / 'core' / 'live_feed.py').read_text() == 'live_feed.py'
 
 
 def test_publish_pushes_once_then_reports_unchanged_and_pushes_again_when_data_changes(tmp_path):

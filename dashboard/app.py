@@ -24,6 +24,8 @@ from core.odds_rerun import STATUS_FILE_NAME, read_status, rerun_message
 from core.season_utils import date_bounds, nba_today, season_date_range, season_for_date, season_options
 from team.explain import (COLUMNS as EXPLANATION_COLUMNS, MONEYLINE, SPREAD, TOTAL, chart_steps, driver_stats, game_features, game_flags,
                           game_pieces, load_explanations, normalize_game_ids, outcome_sentence, summary_sentence)
+from core import live_feed
+from dashboard import live_scores
 
 # Set page config
 st.set_page_config(
@@ -121,6 +123,35 @@ def _read_predictions():
 
 
 NO_ODDS = "No odds found"
+LIVE_REFRESH_S = 30
+
+
+@st.cache_data(ttl=LIVE_REFRESH_S, show_spinner=False)
+def live_scoreboard(game_date):
+    """ESPN scoreboard of one ET date (core/live_feed.py), shared by every viewer: at most one request per 30 s."""
+    return live_feed.scoreboard(game_date)
+
+
+@st.fragment(run_every=LIVE_REFRESH_S)
+def render_live_scores(games):
+    """Score, period and clock of today's started games next to the model's picks. Display only; nothing shown before the first tip."""
+    try:
+        board = live_feed.attach_nba_ids(live_scoreboard(str(games['game_date'].iloc[0])), games[['game_id', 'game_date', 'home_team', 'away_team']])
+        if board.empty:
+            st.caption("Live scores unavailable right now.")
+            return
+        view = live_scores.live_view(live_scores.pick_sides(games), board)
+    except Exception as e:                       # a live-score problem must never take the schedule down with it
+        live_feed.log.warning('live scores panel: %s: %s', type(e).__name__, e)
+        st.caption("Live scores unavailable right now.")
+        return
+    if view.empty:
+        return
+    st.markdown("**Live scores (live, not final)**")
+    st.caption(f"Updates every {LIVE_REFRESH_S} s (last {pd.Timestamp.now(tz='America/New_York'):%H:%M:%S} ET), scores from ESPN. Each pick is shown against the score right now: "
+               "who leads for the moneyline pick (only games with a 5% moneyline edge have one), the current margin against the spread pick, the combined score against the total pick. "
+               "Results in the log are graded after the nightly update.")
+    st.dataframe(view, hide_index=True, width='stretch')
 
 
 def _read_rerun_status():
@@ -979,6 +1010,8 @@ def main():
                 'Total Pick': todays_games['Total Pick'],
             })
             render_rerun_status(_read_rerun_status(), todays_games['game_date'].iloc[0])
+            if todays_games['game_date'].iloc[0] == today:
+                render_live_scores(todays_games)
             st.caption(f"Games on {todays_games['game_date'].iloc[0]}. Tick **Why?** on a game to see what moves the model's number away from the line.")
             edited = st.data_editor(table, hide_index=True, width='stretch', key="todays_games_table",
                                     disabled=[c for c in table.columns if c != 'Why?'],
