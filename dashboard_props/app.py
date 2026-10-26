@@ -138,12 +138,12 @@ def page_board(D, mode, treatment):
     cfg = {'Model': st.column_config.ProgressColumn('Model P', min_value=0.0, max_value=1.0, format='%.2f'), 'Market': st.column_config.NumberColumn('Market P', format='%.2f'),
            'EV': st.column_config.NumberColumn('EV', format='%.3f'), 'EV now': st.column_config.NumberColumn('EV now', format='%.3f'),
            'Units': st.column_config.NumberColumn('Units', format='%+.2f')}
-    st.dataframe(colour_results(t), use_container_width=True, hide_index=True, column_config=cfg)
+    st.dataframe(colour_results(t), width='stretch', hide_index=True, column_config=cfg)
     with st.expander('All shown bets grouped by game'):
         for game, g in shown.groupby('matchup', sort=False):
             st.markdown(f'**{game}**')
             tg = board_table(g, mode, treatment, reveal, cur, results_now, now, live).drop(columns=['Game'])
-            st.dataframe(colour_results(tg), use_container_width=True, hide_index=True, column_config=cfg)
+            st.dataframe(colour_results(tg), width='stretch', hide_index=True, column_config=cfg)
     st.download_button('Download this slate (CSV)', t.to_csv(index=False).encode('utf-8'), file_name=f'props_board_{day}.csv')
     st.subheader('Inspect a bet')
     labels = {r['bet_id']: bet_label(r) for _, r in shown.iterrows()}
@@ -168,15 +168,15 @@ def detail(D, r, mode, treatment, reveal):
         if reveal and np.isfinite(r['y']):
             fig.add_vline(x=r['y'], line_color='green', annotation_text=f"actual {r['y']:g}", annotation_position='bottom right')
         fig.update_layout(title=f"Model distribution ({L.STAT_LABEL.get(r['stat'], r['stat'])}; coloured = the bet wins)", height=320, margin=dict(l=10, r=10, t=40, b=10), xaxis_title='value', yaxis_title='probability')
-        left.plotly_chart(fig, use_container_width=True)
+        left.plotly_chart(fig, width='stretch')
     if book_px:
         bk = pd.Series(book_px).sort_values(ascending=False)
         fig = go.Figure(go.Bar(x=bk.index, y=bk.values, marker_color=['#2ca02c' if v == bk.max() else '#aec7e8' for v in bk.values], text=L.american(bk.values), textposition='outside'))
         fig.add_hline(y=r['dec_median'], line_dash='dot', annotation_text='median')
         fig.update_layout(title='Price of this bet by book at the flag time (decimal)', height=320, margin=dict(l=10, r=10, t=40, b=10), yaxis_range=[min(1.5, bk.min() - 0.1), bk.max() + 0.15])
-        right.plotly_chart(fig, use_container_width=True)
+        right.plotly_chart(fig, width='stretch')
     hist = pd.DataFrame({'Decision time': ['T-4h', 'T-1h', 'T-5m'], 'Consensus line': [r['line_240'], r['line_60'], r['line_5']], 'Market P(over)': [r['mkt_240'], r['mkt_60'], r['mkt_5']]})
-    st.dataframe(hist, hide_index=True, use_container_width=False)
+    st.dataframe(hist, hide_index=True, width='content')
     if reveal:
         w = L.with_profit(pd.DataFrame([r]), mode, treatment).iloc[0]
         status = r[f'status_{treatment}']
@@ -219,26 +219,26 @@ def page_tracker(D, mode, treatment):
             fig.add_trace(go.Scatter(x=list(c['game_date']) + list(c['game_date'])[::-1], y=list(c['hi']) + list(c['lo'])[::-1], fill='toself', fillcolor='rgba(31,119,180,0.12)',
                                      line=dict(width=0), name='approx. 95% band', hoverinfo='skip'))
     fig.update_layout(title='Cumulative units (flat 1-unit bets)', height=360, margin=dict(l=10, r=10, t=40, b=10), yaxis_title='units')
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
     b1, b2 = st.columns(2)
     fmt = {'roi': '{:+.1%}', 'units': '{:+.0f}', 'bets': '{:,.0f}'}
-    b1.markdown('**By stat**'); b1.dataframe(L.breakdown(d, 'stat', mode, treatment).style.format(fmt), hide_index=True, use_container_width=True)
-    b2.markdown('**By side**'); b2.dataframe(L.breakdown(d, 'side', mode, treatment).style.format(fmt), hide_index=True, use_container_width=True)
+    b1.markdown('**By stat**'); b1.dataframe(L.breakdown(d, 'stat', mode, treatment).style.format(fmt), hide_index=True, width='stretch')
+    b2.markdown('**By side**'); b2.dataframe(L.breakdown(d, 'side', mode, treatment).style.format(fmt), hide_index=True, width='stretch')
     b3, b4 = st.columns(2)
     de = d.assign(ev_band=L.ev_band(d[L.ev_col(mode)]))
     st.markdown('**By EV when flagged (at the chosen price): do the higher-value plays earn more?**')
-    st.dataframe(L.breakdown(de, 'ev_band', mode, treatment).set_index('ev_band').reindex([n for *_, n in L.EV_BANDS]).dropna(how='all').reset_index().style.format(fmt), hide_index=True, use_container_width=True)
+    st.dataframe(L.breakdown(de, 'ev_band', mode, treatment).set_index('ev_band').reindex([n for *_, n in L.EV_BANDS]).dropna(how='all').reset_index().style.format(fmt), hide_index=True, width='stretch')
     st.caption('Bands hold few bets early in the live record, so the ROI per band is noise until there are several hundred settled bets in each.')
-    b3.markdown('**By book (best-price quote)**'); b3.dataframe(L.breakdown(d, 'book', mode, treatment).style.format(fmt), hide_index=True, use_container_width=True)
+    b3.markdown('**By book (best-price quote)**'); b3.dataframe(L.breakdown(d, 'book', mode, treatment).style.format(fmt), hide_index=True, width='stretch')
     dd = d.assign(decision=d['minutes_before'].map(T_LABEL))
-    b4.markdown('**By decision time**'); b4.dataframe(L.breakdown(dd, 'decision', mode, treatment).style.format(fmt), hide_index=True, use_container_width=True)
+    b4.markdown('**By decision time**'); b4.dataframe(L.breakdown(dd, 'decision', mode, treatment).style.format(fmt), hide_index=True, width='stretch')
     st.subheader('Season summary' if D['meta']['mode'] != 'live' else 'Live record summary (placebo CLV and the information slope need a longer record)')
     sm = D['summary'].copy()
     show = sm[['season', 'kind', 'bets', 'player_games', 'roi_best_stands', 'roi_median_stands', 'roi_flat_stands', 'clv_real_pts', 'clv_placebo_mean_pts', 'clv_excess_pts', 'clv_excess_lower_pts', 'placebo_roi',
                'slope4', 'slope4_lo', 'slope4_hi']]
     st.dataframe(show.style.format({'roi_best_stands': '{:+.1%}', 'roi_median_stands': '{:+.1%}', 'roi_flat_stands': '{:+.1%}', 'placebo_roi': '{:+.1%}', 'clv_real_pts': '{:+.2f}',
                                     'clv_placebo_mean_pts': '{:+.2f}', 'clv_excess_pts': '{:+.2f}', 'clv_excess_lower_pts': '{:+.2f}', 'slope4': '{:.2f}', 'slope4_lo': '{:.2f}', 'slope4_hi': '{:.2f}'}),
-                 hide_index=True, use_container_width=True)
+                 hide_index=True, width='stretch')
     st.caption('CLV is in points of consensus probability toward the bet side by T-5; "excess" subtracts the no-information placebo (same k, rule, prices). Slope = realized-minus-market regressed on model-minus-market over the four traded stats.')
 
 
@@ -247,11 +247,11 @@ def page_health(D):
         st.warning(D['meta']['disclosure'], icon='⚠️')
         if len(D['checks']):
             st.markdown('**Checks at export time**')
-            st.dataframe(D['checks'], hide_index=True, use_container_width=True)
+            st.dataframe(D['checks'], hide_index=True, width='stretch')
         st.markdown('**Pipeline runs (latest first)**')
-        st.dataframe(D['pipeline_health'].head(40), hide_index=True, use_container_width=True)
+        st.dataframe(D['pipeline_health'].head(40), hide_index=True, width='stretch')
         st.markdown('**Decision slots (done, missed, no quotes)**')
-        st.dataframe(D['slot_log'].head(60), hide_index=True, use_container_width=True)
+        st.dataframe(D['slot_log'].head(60), hide_index=True, width='stretch')
         st.caption('Forecast-bias and reliability charts need a few hundred settled forecasts; they appear in the backtest view meanwhile.')
         return
     st.caption('Is the forecast still centred, and is it calibrated at the book line? Backtest values here; the live page will use rolling windows.')
@@ -263,14 +263,14 @@ def page_health(D):
         fig.add_trace(go.Scatter(x=g['month'], y=g['ratio'], name=season, mode='lines+markers'))
     fig.add_hline(y=1.0, line_dash='dash')
     fig.update_layout(title='Observed / predicted mean by month (1.0 = centred)', height=320, margin=dict(l=10, r=10, t=40, b=10), yaxis_range=[0.85, 1.15])
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
     rel = D['reliability']
     fig = go.Figure()
     for season, g in rel.groupby('season'):
         fig.add_trace(go.Scatter(x=g['mean_p_model'], y=g['hit_rate'], mode='lines+markers', name=f'{season} model'))
     fig.add_trace(go.Scatter(x=[0.3, 0.7], y=[0.3, 0.7], mode='lines', name='perfect', line=dict(dash='dash', color='grey')))
     fig.update_layout(title='Reliability at the book line, traded stats (model P(over) deciles vs hit rate)', height=340, margin=dict(l=10, r=10, t=40, b=10), xaxis_title='model P(over)', yaxis_title='hit rate')
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
 
 def page_about(D):
