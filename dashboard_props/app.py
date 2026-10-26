@@ -52,25 +52,6 @@ def bet_label(r):
     return f"{r['player_name']} · {r['side'].upper()} {L.STAT_LABEL.get(r['stat'], r['stat'])} {r['line']:g}"
 
 
-NOW_COLS = {'median': ('dec_median_now', 'ev_median_now'), 'best': ('dec_best_now', 'ev_best_now'), 'flat': (None, 'ev_flat_now')}
-
-
-def add_now(t, d, cur, mode, now):
-    """Live pending view: the price, line and EV at the latest snapshot next to the recorded bet, and whether it would still qualify. A game that has already tipped has no price to take
-    ('game started'); an upcoming game with no quote in the latest snapshot says 'no quote'."""
-    c = d[['bet_id']].merge(cur if cur is not None and len(cur) else pd.DataFrame(columns=['bet_id'] + list(NOW_COLS['best']) + ['ev_flat_now', 'line_now', 'still_qualifies']), on='bet_id', how='left')
-    dec_n, ev_n = NOW_COLS[mode]
-    dec = c[dec_n].to_numpy(float) if dec_n else np.where(c['ev_flat_now'].notna(), L.FLAT_110, np.nan)
-    gone = L.started(d, now)
-    t = t.copy()
-    price = np.where(np.isfinite(dec), L.american(np.nan_to_num(dec, nan=2.0)), np.where(gone, 'game started', 'no quote'))
-    t['Price now'] = price
-    t['Line now'] = c['line_now'].to_numpy(float)
-    t['EV now'] = c[ev_n].to_numpy(float)
-    t['Still bet?'] = np.where(c['still_qualifies'].isna(), '', np.where(c['still_qualifies'] == 1, 'yes', 'no'))
-    return t
-
-
 def board_table(d, mode, treatment, reveal, cur=None, results_now=None, now=None, live=False):
     ev_c, dec_c = L.ev_col(mode), L.dec_col(mode)
     side_model = L.side_prob(d, 'p_over_star')
@@ -85,7 +66,7 @@ def board_table(d, mode, treatment, reveal, cur=None, results_now=None, now=None
         'Model': side_model, 'Market': side_mkt, 'EV': d[ev_c].to_numpy(),
         'Flagged': d['minutes_before'].map(T_LABEL).to_numpy(), 'Books': d['n_at_line'].to_numpy()})
     if live:
-        t = add_now(t, d, cur, mode, now if now is not None else pd.Timestamp.now(tz='UTC'))
+        t = L.with_odds_now(t, d, cur, mode, now if now is not None else pd.Timestamp.now(tz='UTC'))
     if reveal:
         r = L.results_for_display(d, results_now, mode, treatment)
         t['Actual'] = r['Actual'].to_numpy()

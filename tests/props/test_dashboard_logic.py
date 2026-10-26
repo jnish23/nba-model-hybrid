@@ -150,3 +150,17 @@ def test_results_for_display_prefers_the_official_result_and_marks_provisional_o
 
 def test_ev_band_labels():
     assert list(L.ev_band([-0.02, 0.0, 0.029, 0.03, 0.08, 0.1, 0.4])) == ['below 0%', '0 to 3%', '0 to 3%', '3 to 6%', '6 to 10%', '10% and up', '10% and up']
+
+
+def test_odds_now_columns_survive_an_empty_or_partial_current_frame():
+    d = make_bets(4)
+    d['tip_ref_utc'] = ['2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', '2026-01-03T00:00:00Z', '2026-01-03T00:00:00Z']
+    now = pd.Timestamp('2026-01-02T00:00:00Z')
+    t = pd.DataFrame({'Player': d['player_name']})
+    for cur in (None, pd.DataFrame(), pd.DataFrame(columns=['bet_id', 'line_now']), pd.read_csv(__import__('io').StringIO('bet_id,as_of_utc,line_now\n'))):    # the last is what an empty current.csv reads back as
+        for mode in ('median', 'best', 'flat'):
+            out = L.with_odds_now(t, d, cur, mode, now)
+            assert list(out['Price now']) == ['game started', 'game started', 'no quote', 'no quote']
+    cur = pd.DataFrame({'bet_id': [d['bet_id'].iloc[2]], 'line_now': [5.5], 'dec_median_now': [1.91], 'dec_best_now': [2.05], 'ev_median_now': [0.02], 'ev_best_now': [0.05], 'ev_flat_now': [0.01], 'still_qualifies': [1]})
+    out = L.with_odds_now(t, d, cur, 'best', now)
+    assert list(out['Price now']) == ['game started', 'game started', '+105', 'no quote'] and out['Still bet?'].iloc[2] == 'yes' and out['EV now'].iloc[2] == 0.05
