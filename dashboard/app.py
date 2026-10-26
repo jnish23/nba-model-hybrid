@@ -257,7 +257,7 @@ def render_explanation(expl, game, settled=False):
             for flag in game_flags(expl, gid, market).itertuples():
                 (st.warning if flag.severity == 'warn' else st.info)(flag.label)
             st.plotly_chart(explanation_chart(chart_steps(pieces, scale=100.0 if market == MONEYLINE else 1.0), percent=market == MONEYLINE),
-                            use_container_width=True, key=f"why_{gid}_{market}_{'s' if settled else 't'}")
+                            width='stretch', key=f"why_{gid}_{market}_{'s' if settled else 't'}")
             with st.expander("Feature detail"):
                 st.caption("Every input of the model, biggest push first. The chart sums these by group; the line's own push is shown there as "
                            "'how much the model trusts the opening line'."
@@ -268,7 +268,7 @@ def render_explanation(expl, game, settled=False):
                     'Factor': detail['label'], 'Group': detail['group'], 'This game': detail['value'].round(2),
                     'League percentile': (100 * detail['pctile']).round(0),
                     ('Contribution (log-odds)' if market == MONEYLINE else 'Contribution (pts)'): detail['contribution'].round(3 if market == MONEYLINE else 2)}),
-                    hide_index=True, use_container_width=True,
+                    hide_index=True, width='stretch',
                     column_config={'League percentile': st.column_config.NumberColumn(
                         help="Where this game's value ranks among recent seasons' games (50 = typical, 95 = higher than 95% of them).", format="%d")})
 
@@ -980,7 +980,7 @@ def main():
             })
             render_rerun_status(_read_rerun_status(), todays_games['game_date'].iloc[0])
             st.caption(f"Games on {todays_games['game_date'].iloc[0]}. Tick **Why?** on a game to see what moves the model's number away from the line.")
-            edited = st.data_editor(table, hide_index=True, use_container_width=True, key="todays_games_table",
+            edited = st.data_editor(table, hide_index=True, width='stretch', key="todays_games_table",
                                     disabled=[c for c in table.columns if c != 'Why?'],
                                     column_config={'Why?': st.column_config.CheckboxColumn('Why?', width='small')})
             st.metric("Total Games", len(todays_games))
@@ -1307,21 +1307,21 @@ def main():
             # Charts
             # ROI over time
             fig_roi = px.line(sim_df[sim_df['bet_outcome'] != 'No Bet'], x='game_date', y='cumulative_profit', title=f'Cumulative Profit ({bet_type})')
-            st.plotly_chart(fig_roi, use_container_width=True)
+            st.plotly_chart(fig_roi, width='stretch')
             
             # Monthly Breakdown
             sim_df['month'] = pd.to_datetime(sim_df['game_date']).dt.strftime('%Y-%m')
             monthly_results = sim_df[sim_df['bet_outcome'] != 'No Bet'].groupby('month')['bet_result'].sum().reset_index()
             
             fig_monthly = px.bar(monthly_results, x='month', y='bet_result', title='Profit by Month')
-            st.plotly_chart(fig_monthly, use_container_width=True)
+            st.plotly_chart(fig_monthly, width='stretch')
             
         st.markdown("### Detailed Log")
         st.caption("Tick **Why?** on a game to see what moved the model's numbers away from the line, and how the game ended.")
         log_cols = ['game_date', 'matchup', 'bet_outcome', 'bet_result', 'ml_prob', 'spread_pred', 'total_pred', 'odds_home_ml', 'odds_home_spread', 'odds_total', 'home_score', 'away_score']
         log_table = sim_df[log_cols].copy()
         log_table.insert(0, 'Why?', False)
-        ticked = st.data_editor(log_table, key="detailed_log_table", use_container_width=True, hide_index=True, disabled=log_cols,
+        ticked = st.data_editor(log_table, key="detailed_log_table", width='stretch', hide_index=True, disabled=log_cols,
                                 column_config={'Why?': st.column_config.CheckboxColumn('Why?', width='small')})
         picked = ticked.index[ticked['Why?']]
         if len(picked):
@@ -1358,7 +1358,7 @@ def main():
                     st.dataframe(
                         actual_df,
                         hide_index=True,
-                        use_container_width=True,
+                        width='stretch',
                         column_config={
                             'Split': st.column_config.TextColumn('Split', width='medium'),
                             'GP': st.column_config.NumberColumn('GP', width='small'),
@@ -1370,7 +1370,7 @@ def main():
                     st.dataframe(
                         model_df,
                         hide_index=True,
-                        use_container_width=True,
+                        width='stretch',
                         column_config={
                             'Split': st.column_config.TextColumn('Split', width='medium'),
                             'Bets': st.column_config.NumberColumn('Bets', width='small'),
@@ -1388,7 +1388,7 @@ def main():
                                      'odds_home_ml', 'odds_home_spread', 'odds_total',
                                      'ml_prob', 'spread_pred', 'total_pred']
                         st.dataframe(team_games[[c for c in show_cols if c in team_games.columns]],
-                                     hide_index=True, use_container_width=True)
+                                     hide_index=True, width='stretch')
                     else:
                         st.write("No completed games.")
 
@@ -1408,7 +1408,7 @@ def main():
                 st.dataframe(
                     league_df,
                     hide_index=True,
-                    use_container_width=True,
+                    width='stretch',
                     height=1200,
                     column_config={
                         'Team': st.column_config.TextColumn("Team", width="medium"),
@@ -1455,7 +1455,7 @@ def render_drivers(df, start_date, end_date):
         'Verdict': stats['verdict']})
     if market == MONEYLINE:
         table = table.drop(columns=['Landed on the pushed side'])
-    st.dataframe(table, hide_index=True, use_container_width=True, column_config={
+    st.dataframe(table, hide_index=True, width='stretch', column_config={
         'Share of all pushes': st.column_config.NumberColumn(format="%.1f%%"),
         'Landed on the pushed side': st.column_config.NumberColumn(format="%.1f%%", help="Of the games where this pushed the number at least a little, how often the game landed on that side of the line. 50% = a coin flip."),
         f'Result beyond the line ({unit})': st.column_config.NumberColumn(help="Average result beyond the line, in the direction this group pushed. Positive = the push was right on average; the chart below shows the 95% interval.")})
@@ -1468,7 +1468,7 @@ def render_drivers(df, start_date, end_date):
         fig.update_yaxes(autorange='reversed')
         fig.update_xaxes(title=f"Result beyond the line in the pushed direction ({unit}), 95% interval: right of 0 = the push was right")
         fig.update_layout(height=120 + 34 * len(chart), margin=dict(l=0, r=10, t=10, b=0))
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
 
 
 if __name__ == "__main__":
