@@ -87,6 +87,31 @@ def board(df, mode='median', min_ev=0.0, stats=None, sides=None, top_n=15, sort=
     return d.head(top_n), max(len(d) - top_n, 0)
 
 
+NOW_COLS = {'median': ('dec_median_now', 'ev_median_now'), 'best': ('dec_best_now', 'ev_best_now'), 'flat': (None, 'ev_flat_now')}
+NOW_FRAME_COLS = ['bet_id', 'line_now', 'dec_median_now', 'dec_best_now', 'ev_median_now', 'ev_best_now', 'ev_flat_now', 'still_qualifies']
+
+
+def with_odds_now(t, d, cur, mode, now):
+    """
+    Live pending view: the price, line and EV at the latest snapshot next to the recorded bet, and whether it would still qualify. `cur` may be None or empty (no upcoming game has a quote:
+    the file then has only a header, or lacks columns). A game that has already tipped has no price to take ('game started'); an upcoming game without a quote says 'no quote'.
+    """
+    have = cur if cur is not None and len(cur) else pd.DataFrame(columns=NOW_FRAME_COLS)
+    for col in NOW_FRAME_COLS:
+        if col not in have.columns:
+            have = have.assign(**{col: np.nan})
+    c = d[['bet_id']].merge(have[NOW_FRAME_COLS], on='bet_id', how='left')
+    dec_n, ev_n = NOW_COLS[mode]
+    dec = c[dec_n].to_numpy(float) if dec_n else np.where(c['ev_flat_now'].notna(), FLAT_110, np.nan)
+    gone = started(d, now)
+    t = t.copy()
+    t['Price now'] = np.where(np.isfinite(dec), american(np.nan_to_num(dec, nan=2.0)), np.where(gone, 'game started', 'no quote'))
+    t['Line now'] = c['line_now'].to_numpy(float)
+    t['EV now'] = c[ev_n].to_numpy(float)
+    t['Still bet?'] = np.where(c['still_qualifies'].isna(), '', np.where(c['still_qualifies'] == 1, 'yes', 'no'))
+    return t
+
+
 def results_for_display(d, results_now, mode, treatment):
     """
     Result, Actual and Units per bet for the Board: the official settlement where the bet is settled, else the provisional grade from the finished game's box score (marked
