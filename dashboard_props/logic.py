@@ -55,18 +55,75 @@ def side_prob(df, col_over):
     return np.where(df['side'].to_numpy() == 'over', p, 1.0 - p)
 
 
-def board(df, mode='median', min_ev=0.0, stats=None, sides=None, top_n=15):
+SORTS = {'ev': 'Highest EV at the chosen price', 'ev_now': 'Highest EV now (upcoming games)', 'tip': 'Tip time, then EV'}
+
+
+def started(df, now):
+    """True for bets whose game has already tipped (reference tip before `now`)."""
+    return (pd.to_datetime(df['tip_ref_utc'], utc=True) <= now).to_numpy()
+
+
+def board(df, mode='median', min_ev=0.0, stats=None, sides=None, top_n=15, sort='ev', upcoming_only=False, now=None, cur=None):
     """
     The rule-qualified bets of one slate, filtered and ranked by expected value AT THE CHOSEN PRICE. Returns (shown, hidden_count). The bets themselves are the frozen rule's
-    (selected at the best price); at a worse price some are no longer worth taking, which is what `min_ev` exposes.
+    (selected at the best price); at a worse price some are no longer worth taking, which is what `min_ev` exposes. `sort` is one of SORTS ('ev_now' uses the odds-now frame `cur`;
+    bets without a current quote go last); `upcoming_only` drops games that have already tipped (needs `now`).
     """
     d = df
     if stats:
         d = d[d['stat'].isin(stats)]
     if sides:
         d = d[d['side'].isin(sides)]
-    d = d[d[ev_col(mode)] >= min_ev].sort_values(ev_col(mode), ascending=False)
+    if upcoming_only and now is not None:
+        d = d[~started(d, now)]
+    d = d[d[ev_col(mode)] >= min_ev]
+    if sort == 'ev_now' and cur is not None and len(cur):
+        ev_now = d[['bet_id']].merge(cur[['bet_id', 'ev_best_now']], on='bet_id', how='left')['ev_best_now'].to_numpy()
+        d = d.assign(_ev_now=ev_now).sort_values('_ev_now', ascending=False, na_position='last').drop(columns='_ev_now')
+    elif sort == 'tip':
+        d = d.assign(_tip=pd.to_datetime(d['tip_ref_utc'], utc=True)).sort_values(['_tip', ev_col(mode)], ascending=[True, False]).drop(columns='_tip')
+    else:
+        d = d.sort_values(ev_col(mode), ascending=False)
     return d.head(top_n), max(len(d) - top_n, 0)
+
+
+def results_for_display(d, results_now, mode, treatment):
+    """
+    Result, Actual and Units per bet for the Board: the official settlement where the bet is settled, else the provisional grade from the finished game's box score (marked
+    '(prov.)'), else blank. Returns a DataFrame aligned with `d`.
+    """
+    official = d[f'status_{treatment}'].to_numpy(dtype=object) if f'status_{treatment}' in d else np.full(len(d), np.nan, dtype=object)
+    actual = d['y'].to_numpy(dtype=float)
+    dec = d[dec_col(mode)].to_numpy(dtype=float)
+    status = np.where(pd.isna(official), '', official).astype(object)
+    units = np.where(np.isin(status, ['win', 'loss', 'push', 'void']), profit(status.astype(str), dec), np.nan)
+    if results_now is not None and len(results_now):
+        r = d[['bet_id']].merge(results_now[['bet_id', 'provisional', 'actual']], on='bet_id', how='left')
+        prov = r['provisional'].to_numpy(dtype=object)
+        use = (status == '') & ~pd.isna(prov)
+        status = np.where(use, [f'{p} (prov.)' for p in prov], status)
+        actual = np.where(use, r['actual'].to_numpy(dtype=float), actual)
+        pv = np.array([p if isinstance(p, str) else '' for p in prov], dtype=object)
+        units = np.where(use, profit(pv.astype(str), dec), units)
+    return pd.DataFrame({'Result': status, 'Actual': actual, 'Units': units})
+
+
+def result_kind(result):
+    """'win' / 'loss' / 'other' / '' for a Result cell (official or provisional)."""
+    r = str(result)
+    return 'win' if r.startswith('win') else 'loss' if r.startswith('loss') else ('other' if r else '')
+
+
+EV_BANDS = [(-np.inf, 0.0, 'below 0%'), (0.0, 0.03, '0 to 3%'), (0.03, 0.06, '3 to 6%'), (0.06, 0.10, '6 to 10%'), (0.10, np.inf, '10% and up')]
+
+
+def ev_band(ev):
+    """Label of the EV band of each value (EV as a fraction)."""
+    ev = np.asarray(ev, dtype=float)
+    out = np.full(len(ev), '', dtype=object)
+    for lo, hi, name in EV_BANDS:
+        out[(ev >= lo) & (ev < hi)] = name
+    return out
 
 
 def cluster_bootstrap_ratio(num, den, clusters, n_boot=1000, seed=0, alpha=0.05):
