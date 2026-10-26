@@ -22,7 +22,7 @@ RESULT_COLS = ['minutes_actual', 'y', 'played', 'status_stands', 'status_flagged
 HISTORY_COLS = ['line_240', 'line_60', 'line_5', 'mkt_240', 'mkt_60', 'mkt_5']
 
 
-def export_live(live_db, out_dir, config, n_boot=1000, checks=None, current=None):
+def export_live(live_db, out_dir, config, n_boot=1000, checks=None, current=None, results_now=None):
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(f'file:{live_db}?mode=ro', uri=True) as conn:
@@ -64,6 +64,8 @@ def export_live(live_db, out_dir, config, n_boot=1000, checks=None, current=None
         checks.to_csv(out / 'checks.csv', index=False)
     if current is not None:
         current.to_csv(out / 'current.csv', index=False)
+    if results_now is not None:
+        results_now.to_csv(out / 'results_now.csv', index=False)
     rule = json.loads(Path(config['rule_file']).read_text(encoding='utf-8'))
     meta = {'mode': 'live', 'rule': rule, 'rule_sha256': config['rule_sha256'], 'code_commit': bets['code_commit'].iloc[-1] if len(bets) else '', 'features_db_sha256': config['features_db_sha256'],
             'model_version': config['model_version'], 'roster_rule': config['roster_rule'], 'built_at_utc': pd.Timestamp.now(tz='UTC').strftime('%Y-%m-%dT%H:%M:%SZ'),

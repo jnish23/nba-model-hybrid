@@ -39,7 +39,7 @@ def load(data_dir, stamp=None):
     out = {'bets': bets, 'summary': pd.read_csv(d / 'season_summary.csv'), 'reliability': pd.read_csv(d / 'reliability.csv'), 'bias': pd.read_csv(d / 'bias_monthly.csv'),
            'meta': json.loads((d / 'meta.json').read_text(encoding='utf-8')), 'pmf': json.loads((d / 'pmf.json').read_text(encoding='utf-8')),
            'books': json.loads((d / 'books.json').read_text(encoding='utf-8'))}
-    for name in ('pipeline_health', 'slot_log', 'checks', 'current'):
+    for name in ('pipeline_health', 'slot_log', 'checks', 'current', 'results_now'):
         out[name] = pd.read_csv(d / f'{name}.csv') if (d / f'{name}.csv').exists() else pd.DataFrame()
     return out
 
@@ -55,22 +55,23 @@ def bet_label(r):
 NOW_COLS = {'median': ('dec_median_now', 'ev_median_now'), 'best': ('dec_best_now', 'ev_best_now'), 'flat': (None, 'ev_flat_now')}
 
 
-def add_now(t, d, cur, mode):
-    """Current odds next to the recorded ones (live pending bets only): the price, line and EV at the latest snapshot, and whether the bet would still qualify."""
-    if cur is None or cur.empty:
-        return t
-    c = d[['bet_id']].merge(cur, on='bet_id', how='left')
+def add_now(t, d, cur, mode, now):
+    """Live pending view: the price, line and EV at the latest snapshot next to the recorded bet, and whether it would still qualify. A game that has already tipped has no price to take
+    ('game started'); an upcoming game with no quote in the latest snapshot says 'no quote'."""
+    c = d[['bet_id']].merge(cur if cur is not None and len(cur) else pd.DataFrame(columns=['bet_id'] + list(NOW_COLS['best']) + ['ev_flat_now', 'line_now', 'still_qualifies']), on='bet_id', how='left')
     dec_n, ev_n = NOW_COLS[mode]
     dec = c[dec_n].to_numpy(float) if dec_n else np.where(c['ev_flat_now'].notna(), L.FLAT_110, np.nan)
+    gone = L.started(d, now)
     t = t.copy()
-    t['Price now'] = np.where(np.isfinite(dec), L.american(np.nan_to_num(dec, nan=2.0)), '')
-    t['Line now'] = c['line_now'].to_numpy()
-    t['EV now'] = c[ev_n].to_numpy()
+    price = np.where(np.isfinite(dec), L.american(np.nan_to_num(dec, nan=2.0)), np.where(gone, 'game started', 'no quote'))
+    t['Price now'] = price
+    t['Line now'] = c['line_now'].to_numpy(float)
+    t['EV now'] = c[ev_n].to_numpy(float)
     t['Still bet?'] = np.where(c['still_qualifies'].isna(), '', np.where(c['still_qualifies'] == 1, 'yes', 'no'))
     return t
 
 
-def board_table(d, mode, treatment, reveal, cur=None):
+def board_table(d, mode, treatment, reveal, cur=None, results_now=None, now=None, live=False):
     ev_c, dec_c = L.ev_col(mode), L.dec_col(mode)
     side_model = L.side_prob(d, 'p_over_star')
     side_mkt = L.side_prob(d, 'p_over_market')
@@ -83,12 +84,23 @@ def board_table(d, mode, treatment, reveal, cur=None):
         'Best': [f'{a} {b}' for a, b in zip(L.american(d['dec_best']), d['book'])],
         'Model': side_model, 'Market': side_mkt, 'EV': d[ev_c].to_numpy(),
         'Flagged': d['minutes_before'].map(T_LABEL).to_numpy(), 'Books': d['n_at_line'].to_numpy()})
+    if live:
+        t = add_now(t, d, cur, mode, now if now is not None else pd.Timestamp.now(tz='UTC'))
     if reveal:
-        w = L.with_profit(d, mode, treatment)
-        t['Actual'] = d['y'].to_numpy()
-        t['Result'] = d[f'status_{treatment}'].to_numpy()
-        t['Units'] = w['profit'].to_numpy()
-    return add_now(t, d, cur, mode)
+        r = L.results_for_display(d, results_now, mode, treatment)
+        t['Actual'] = r['Actual'].to_numpy()
+        t['Result'] = r['Result'].to_numpy()
+        t['Units'] = r['Units'].to_numpy()
+    return t
+
+
+def colour_results(t):
+    """Row shading by result: green win, red loss, grey push/void; a provisional result (finished game, not yet officially settled) is shaded the same."""
+    if 'Result' not in t.columns:
+        return t
+    shade = {'win': 'background-color: rgba(46, 160, 67, 0.30)', 'loss': 'background-color: rgba(218, 54, 51, 0.30)', 'other': 'background-color: rgba(128, 128, 128, 0.18)', '': ''}
+    kinds = [L.result_kind(r) for r in t['Result']]
+    return t.style.apply(lambda row: [shade[kinds[row.name]]] * len(row), axis=1)
 
 
 def page_board(D, mode, treatment):
@@ -105,28 +117,52 @@ def page_board(D, mode, treatment):
     f1, f2, f3, f4 = st.columns(4)
     stats = f1.multiselect('Stat', STAT_CHOICES, default=STAT_CHOICES, format_func=lambda s: L.STAT_LABEL[s])
     sides = f2.multiselect('Side', ['over', 'under'], default=['over', 'under'])
-    min_ev = f3.slider('Min EV at the chosen price (%)', -5.0, 10.0, 0.0, 0.5) / 100.0
-    top_n = f4.slider('Rows shown', 5, 60, 15, 5)
+    min_ev = f3.slider('Min EV at the chosen price (%)', -20.0, 20.0, -20.0, 0.5, help='Raise it to see only the highest-value plays at the price you chose. At the far left every bet of the slate is shown.') / 100.0
     day_df = bets[(bets['season'] == season) & (bets['game_date'] == day)]
-    shown, hidden = L.board(day_df, mode, min_ev, stats, sides, top_n)
-    st.caption(f'{len(day_df)} rule-qualified bets on {day} across {day_df["game_id"].nunique()} games; {len(shown)} shown'
-               + (f', {hidden} more pass the filters (raise "Rows shown")' if hidden else '') + f'. EV and price use: {L.PRICE_MODES[mode]}.')
+    sort_options = list(L.SORTS) if live else ['ev', 'tip']
+    sort = f4.selectbox('Sort by', sort_options, format_func=lambda k: L.SORTS[k])
+    now = pd.Timestamp.now(tz='UTC')
+    upcoming_only = st.checkbox('Only games that have not started', value=False, help='Hides games that have already tipped, so every row shown can still be bet.') if live else False
+    cur = D.get('current')
+    results_now = D.get('results_now')
+    n_all = len(day_df)
+    top_n = max(n_all, 1)
+    if n_all > 5:
+        top_n = st.slider('Rows shown', 5, n_all, n_all, 1, help='Every bet of the slate is shown by default.')
+    shown, hidden = L.board(day_df, mode, min_ev, stats, sides, top_n, sort=sort, upcoming_only=upcoming_only, now=now, cur=cur)
+    below = int((day_df[L.ev_col(mode)] < min_ev).sum())
+    st.caption(f'{n_all} rule-qualified bets on {day} across {day_df["game_id"].nunique()} games; {len(shown)} shown'
+               + (f', {hidden} more pass the filters (raise "Rows shown")' if hidden else '') + (f'; {below} hidden by the minimum-EV filter' if below else '')
+               + f'. EV and price use: {L.PRICE_MODES[mode]}. Sorted by: {L.SORTS[sort].lower()}.')
     if shown.empty:
         st.info('No bets pass the filters on this slate.')
         return
-    cur = D.get('current')
-    if live and cur is not None and len(cur):
-        asof = pd.to_datetime(cur['as_of_utc'], utc=True).max().tz_convert('America/New_York')
-        st.caption(f"Odds now: latest snapshot {asof:%a %H:%M} ET ({cur['snapshot_minutes_now'].min():.0f} min before the earliest tip it covers). 'Price now', 'Line now' and 'EV now' re-value the recorded bet "
-                   f"at today's prices and line; the recorded bet itself never changes. The odds collector snapshots about every 30 minutes, so a later refresh can show newer prices.")
-    t = board_table(shown, mode, treatment, reveal, cur)
+    if live:
+        n_up = int((~L.started(shown, now)).sum())
+        st.caption(f'{n_up} of the {len(shown)} rows are for games that have not started (these can still be bet; "Price now" is their current price). The others have tipped: '
+                   f'"Price now" reads "game started" and the result fills in once the box score is final.')
+        if cur is not None and len(cur):
+            asof = pd.to_datetime(cur['as_of_utc'], utc=True).max().tz_convert('America/New_York')
+            st.caption(f"Odds now: latest snapshot {asof:%a %H:%M} ET. 'Price now', 'Line now' and 'EV now' re-value the recorded bet at today's prices and line; the recorded bet itself never changes. "
+                       f"The odds collector snapshots about every 30 minutes, so a later refresh can show newer prices.")
+        if reveal:
+            st.caption('Green = win, red = loss, grey = push or void. "(prov.)" is a provisional grade from the final box score; the official settlement follows the next morning sync.')
+        settled = bets[bets[f'status_{treatment}'].notna()]
+        if len(settled):
+            s_ = L.roi_summary(settled[settled[L.ev_col(mode)] >= min_ev], mode, treatment, n_boot=300)
+            if s_['bets']:
+                st.caption(f"Live record so far for settled bets with EV of at least {100 * min_ev:.1f}% at this price: {s_['bets']} bets, ROI {pct(s_['roi'])} "
+                           f"(95% interval {pct(s_['lo'])} to {pct(s_['hi'])}). {L.noise_note(s_['bets'])}")
+    t = board_table(shown, mode, treatment, reveal, cur, results_now, now, live)
     cfg = {'Model': st.column_config.ProgressColumn('Model P', min_value=0.0, max_value=1.0, format='%.2f'), 'Market': st.column_config.NumberColumn('Market P', format='%.2f'),
-           'EV': st.column_config.NumberColumn('EV', format='%.3f'), 'EV now': st.column_config.NumberColumn('EV now', format='%.3f')}
-    st.dataframe(t, use_container_width=True, hide_index=True, column_config=cfg)
+           'EV': st.column_config.NumberColumn('EV', format='%.3f'), 'EV now': st.column_config.NumberColumn('EV now', format='%.3f'),
+           'Units': st.column_config.NumberColumn('Units', format='%+.2f')}
+    st.dataframe(colour_results(t), use_container_width=True, hide_index=True, column_config=cfg)
     with st.expander('All shown bets grouped by game'):
         for game, g in shown.groupby('matchup', sort=False):
             st.markdown(f'**{game}**')
-            st.dataframe(board_table(g, mode, treatment, reveal, cur).drop(columns=['Game']), use_container_width=True, hide_index=True, column_config=cfg)
+            tg = board_table(g, mode, treatment, reveal, cur, results_now, now, live).drop(columns=['Game'])
+            st.dataframe(colour_results(tg), use_container_width=True, hide_index=True, column_config=cfg)
     st.download_button('Download this slate (CSV)', t.to_csv(index=False).encode('utf-8'), file_name=f'props_board_{day}.csv')
     st.subheader('Inspect a bet')
     labels = {r['bet_id']: bet_label(r) for _, r in shown.iterrows()}
@@ -208,6 +244,10 @@ def page_tracker(D, mode, treatment):
     b1.markdown('**By stat**'); b1.dataframe(L.breakdown(d, 'stat', mode, treatment).style.format(fmt), hide_index=True, use_container_width=True)
     b2.markdown('**By side**'); b2.dataframe(L.breakdown(d, 'side', mode, treatment).style.format(fmt), hide_index=True, use_container_width=True)
     b3, b4 = st.columns(2)
+    de = d.assign(ev_band=L.ev_band(d[L.ev_col(mode)]))
+    st.markdown('**By EV when flagged (at the chosen price): do the higher-value plays earn more?**')
+    st.dataframe(L.breakdown(de, 'ev_band', mode, treatment).set_index('ev_band').reindex([n for *_, n in L.EV_BANDS]).dropna(how='all').reset_index().style.format(fmt), hide_index=True, use_container_width=True)
+    st.caption('Bands hold few bets early in the live record, so the ROI per band is noise until there are several hundred settled bets in each.')
     b3.markdown('**By book (best-price quote)**'); b3.dataframe(L.breakdown(d, 'book', mode, treatment).style.format(fmt), hide_index=True, use_container_width=True)
     dd = d.assign(decision=d['minutes_before'].map(T_LABEL))
     b4.markdown('**By decision time**'); b4.dataframe(L.breakdown(dd, 'decision', mode, treatment).style.format(fmt), hide_index=True, use_container_width=True)

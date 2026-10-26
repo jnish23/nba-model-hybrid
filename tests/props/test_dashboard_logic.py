@@ -120,3 +120,33 @@ def test_streamlit_app_boots_on_the_live_export(tmp_path, monkeypatch):
     assert any('LIVE PAPER RECORD' in w.value for w in app.warning)
     app.sidebar.radio[1].set_value('best').run()
     assert not app.exception, [e.value for e in app.exception]
+
+
+def test_board_sort_options_and_upcoming_filter():
+    d = make_bets(24)
+    now = pd.Timestamp('2026-01-06T12:00:00Z')
+    up, _ = L.board(d, 'best', min_ev=-1, top_n=100, upcoming_only=True, now=now)
+    assert (pd.to_datetime(up['tip_ref_utc'], utc=True) > now).all() and 0 < len(up) < len(d)
+    by_tip, _ = L.board(d, 'best', min_ev=-1, top_n=100, sort='tip')
+    tips = pd.to_datetime(by_tip['tip_ref_utc'], utc=True)
+    assert tips.is_monotonic_increasing and by_tip.groupby('tip_ref_utc')['ev_best'].apply(lambda s: s.is_monotonic_decreasing).all()
+    cur = pd.DataFrame({'bet_id': d['bet_id'].iloc[:3], 'ev_best_now': [0.01, 0.09, 0.05]})
+    by_now, _ = L.board(d, 'best', min_ev=-1, top_n=100, sort='ev_now', cur=cur)
+    assert list(by_now['bet_id'].iloc[:3]) == [d['bet_id'].iloc[1], d['bet_id'].iloc[2], d['bet_id'].iloc[0]] and len(by_now) == len(d)       # no quote: last
+
+
+def test_results_for_display_prefers_the_official_result_and_marks_provisional_ones():
+    d = make_bets(3)
+    d['status_stands'] = ['win', np.nan, np.nan]
+    d['y'] = [6.0, np.nan, np.nan]
+    prov = pd.DataFrame({'bet_id': d['bet_id'], 'provisional': ['loss', 'loss', 'void'], 'actual': [1.0, 2.0, np.nan]})
+    r = L.results_for_display(d, prov, 'best', 'stands')
+    assert list(r['Result']) == ['win', 'loss (prov.)', 'void (prov.)'] and r['Actual'].iloc[1] == 2.0 and r['Actual'].iloc[0] == 6.0         # official wins over provisional
+    assert np.allclose(r['Units'].iloc[:2], [1.05, -1.0]) and r['Units'].iloc[2] == 0
+    none = L.results_for_display(d, None, 'best', 'stands')
+    assert list(none['Result']) == ['win', '', ''] and np.isnan(none['Units'].iloc[1])
+    assert [L.result_kind(x) for x in ['win', 'loss (prov.)', 'push', 'void (prov.)', '']] == ['win', 'loss', 'other', 'other', '']
+
+
+def test_ev_band_labels():
+    assert list(L.ev_band([-0.02, 0.0, 0.029, 0.03, 0.08, 0.1, 0.4])) == ['below 0%', '0 to 3%', '0 to 3%', '3 to 6%', '6 to 10%', '10% and up', '10% and up']

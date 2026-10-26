@@ -51,3 +51,16 @@ def test_publish_refuses_a_remote_that_is_not_confirmed_private(tmp_path, monkey
     monkeypatch.setattr(publish, 'is_private', lambda remote: False)
     with pytest.raises(RuntimeError, match='not confirmed to be a private'):
         publish.publish(_bare(tmp_path), tmp_path / 'c', _src(tmp_path))
+
+
+def test_throttled_publish_skips_volatile_only_changes_until_the_interval_has_passed(tmp_path):
+    root, remote, clone = _src(tmp_path), _bare(tmp_path), tmp_path / 'clone'
+    (root / 'data' / 'props_dashboard_live' / 'checks.csv').write_text('a\n1\n')
+    assert publish.publish(remote, clone, root, require_private=False, now=pd.Timestamp('2026-10-24T14:00:00Z')) == 'pushed'
+    (root / 'data' / 'props_dashboard_live' / 'meta.json').write_text('{"built": 1}')                      # build time / health tables only
+    (root / 'data' / 'props_dashboard_live' / 'checks.csv').write_text('a\n2\n')
+    assert publish.publish(remote, clone, root, require_private=False, now=pd.Timestamp('2026-10-24T14:10:00Z'), min_interval_min=30) == 'unchanged'
+    assert (clone / 'data' / 'props_dashboard_live' / 'meta.json').read_text() == '{}'                      # the clone is back at the last pushed state
+    assert publish.publish(remote, clone, root, require_private=False, now=pd.Timestamp('2026-10-24T14:40:00Z'), min_interval_min=30) == 'pushed'     # 40 min since the last push
+    (root / 'data' / 'props_dashboard_live' / 'bets.csv').write_text('bet_id\nb1\nb2\n')                   # a new bet is news: pushed at once
+    assert publish.publish(remote, clone, root, require_private=False, now=pd.Timestamp('2026-10-24T14:45:00Z'), min_interval_min=30) == 'pushed'
