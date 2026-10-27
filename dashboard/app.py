@@ -148,10 +148,18 @@ def render_live_scores(games):
     if view.empty:
         return
     st.markdown("**Live scores (live, not final)**")
-    st.caption(f"Updates every {LIVE_REFRESH_S} s (last {pd.Timestamp.now(tz='America/New_York'):%H:%M:%S} ET), scores from ESPN. Each pick is shown against the score right now: "
+    st.caption(f"Updates every {LIVE_REFRESH_S} s (last {pd.Timestamp.now(tz='America/New_York'):%H:%M:%S} ET), scores from ESPN. Each pick is shown against the score right now (green / red once it has won / lost): "
                "who leads for the moneyline pick (only games with a 5% moneyline edge have one), the current margin against the spread pick, the combined score against the total pick. "
                "Results in the log are graded after the nightly update.")
-    st.dataframe(view, hide_index=True, width='stretch')
+    st.dataframe(colour_live_scores(view), hide_index=True, width='stretch')
+
+
+def colour_live_scores(view):
+    """Green / red on the ML, Spread and Total cells whose pick is settled won / lost (dashboard/live_scores.py pick_result); the result columns are not shown."""
+    shade = {'won': 'background-color: rgba(46, 160, 67, 0.30)', 'lost': 'background-color: rgba(218, 54, 51, 0.30)'}
+    results = view[list(live_scores.RESULT_COLS.values())]
+    shown = view.drop(columns=results.columns)
+    return shown.style.apply(lambda col: [shade.get(r, '') for r in results[live_scores.RESULT_COLS[col.name]]] if col.name in live_scores.RESULT_COLS else [''] * len(col))
 
 
 def _read_rerun_status():

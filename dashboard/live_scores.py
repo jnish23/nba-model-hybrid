@@ -10,6 +10,7 @@ from team.betting import get_ml_bet
 
 ML_THRESHOLD = 0.05
 LIVE_COLS = ['Game', 'Score', 'Clock', 'ML', 'Spread', 'Total']
+RESULT_COLS = {'ML': 'ml_result', 'Spread': 'spread_result', 'Total': 'total_result'}   # 'won' / 'lost' / '' per pick column, for the app's cell colours
 
 
 def pick_sides(games):
@@ -65,6 +66,29 @@ def total_state(side, line, hs, as_, final=False):
     return f'{label}: busted ({total})' if total > line else f'{label}: {total} now, {_pts(line - total)} below'
 
 
+def pick_result(kind, side, line, home_line, hs, as_, final):
+    """'won' / 'lost' once the pick's outcome is settled by the score, else ''. Final games settle every pick (a push is ''); while live only the total can
+    already be decided (an over already through the line won, an under already through it lost)."""
+    if side is None:
+        return ''
+    if kind == 'total':
+        if pd.isna(line):
+            return ''
+        total = hs + as_
+        if not final:
+            return ('won' if side == 'over' else 'lost') if total > line else ''
+        margin = (total - line) if side == 'over' else (line - total)
+    else:
+        if not final:
+            return ''
+        margin = hs - as_ if side == 'home' else as_ - hs
+        if kind == 'spread':
+            if pd.isna(home_line):
+                return ''
+            margin += home_line if side == 'home' else -home_line
+    return 'won' if margin > 0 else ('lost' if margin < 0 else '')
+
+
 def period_label(period, clock, status):
     if status == 'final':
         return 'Final' + ('' if pd.isna(period) or int(period) <= 4 else (' (OT)' if int(period) == 5 else f' ({int(period) - 4}OT)'))
@@ -76,10 +100,11 @@ def period_label(period, clock, status):
 def live_view(games, board):
     """
     One row per game of `games` (Today's Games rows with pick sides; see pick_sides) that has started, joined to a core/live_feed scoreboard with nba_game_id filled.
-    Scheduled games and games the board does not know are left out.
+    Scheduled games and games the board does not know are left out. The RESULT_COLS columns say which pick cells are settled won or lost.
     """
+    cols = LIVE_COLS + list(RESULT_COLS.values())
     if games is None or games.empty or board is None or board.empty:
-        return pd.DataFrame(columns=LIVE_COLS)
+        return pd.DataFrame(columns=cols)
     started = board[board['status'].isin(['live', 'final'])].dropna(subset=['nba_game_id'])
     picks = games[['game_id', 'ml_side', 'spread_side', 'odds_home_spread', 'total_side', 'odds_total']]   # the log's own score/status columns must not collide with the board's
     d = picks.merge(started, left_on='game_id', right_on='nba_game_id')
@@ -88,5 +113,8 @@ def live_view(games, board):
         h, a, hs, as_, fin = r['home_tricode'], r['away_tricode'], int(r['home_score']), int(r['away_score']), r['status'] == 'final'
         rows.append({'Game': f'{a} @ {h}', 'Score': f'{a} {as_} - {hs} {h}', 'Clock': period_label(r['period'], r['clock'], r['status']),
                      'ML': ml_state(r['ml_side'], h, a, hs, as_, fin), 'Spread': spread_state(r['spread_side'], r['odds_home_spread'], h, a, hs, as_, fin),
-                     'Total': total_state(r['total_side'], r['odds_total'], hs, as_, fin)})
-    return pd.DataFrame(rows, columns=LIVE_COLS)
+                     'Total': total_state(r['total_side'], r['odds_total'], hs, as_, fin),
+                     'ml_result': pick_result('ml', r['ml_side'], None, None, hs, as_, fin),
+                     'spread_result': pick_result('spread', r['spread_side'], None, r['odds_home_spread'], hs, as_, fin),
+                     'total_result': pick_result('total', r['total_side'], r['odds_total'], None, hs, as_, fin)})
+    return pd.DataFrame(rows, columns=cols)

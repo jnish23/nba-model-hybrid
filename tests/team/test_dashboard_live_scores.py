@@ -30,8 +30,11 @@ def test_pick_sides_follow_the_table():
 
 
 def test_live_view_of_a_live_and_a_final_game(board):
-    v = LS.live_view(LS.pick_sides(GAMES), board).set_index('Game')
-    assert list(v.index) == ['MEM @ SAC', 'LAL @ UTA'] and list(LS.live_view(LS.pick_sides(GAMES), board).columns) == LS.LIVE_COLS
+    full = LS.live_view(LS.pick_sides(GAMES), board)
+    assert list(full.columns) == LS.LIVE_COLS + ['ml_result', 'spread_result', 'total_result']
+    assert full[['ml_result', 'spread_result', 'total_result']].values.tolist() == [['', '', ''], ['', 'won', 'won']]   # live under not decided; final LAL has no ML pick
+    v = full[LS.LIVE_COLS].set_index('Game')
+    assert list(v.index) == ['MEM @ SAC', 'LAL @ UTA']
     assert v.loc['MEM @ SAC'].to_dict() == {'Score': 'MEM 92 - 84 SAC', 'Clock': 'Q3 39.5', 'ML': 'MEM (pick) leads by 8',
                                             'Spread': 'MEM +2.5: covering by 10.5', 'Total': 'Under 230: 176 now, 54 below'}
     assert v.loc['LAL @ UTA'].to_dict() == {'Score': 'LAL 132 - 123 UTA', 'Clock': 'Final', 'ML': 'LAL won by 9',
@@ -73,6 +76,18 @@ def test_total_state(side, line, hs, as_, text):
 def test_period_label():
     assert [LS.period_label(p, c, s) for p, c, s in [(2, '0.0', 'live'), (5, '2:00', 'live'), (6, None, 'final'), (4, None, 'final'), (5, None, 'final')]] == \
         ['Q2 0.0', 'OT 2:00', 'Final (2OT)', 'Final', 'Final (OT)']
+
+
+@pytest.mark.parametrize('kind,side,line,home_line,hs,as_,final,res', [
+    ('ml', 'home', None, None, 100, 95, True, 'won'), ('ml', 'away', None, None, 100, 95, True, 'lost'), ('ml', 'home', None, None, 100, 95, False, ''),
+    ('ml', None, None, None, 100, 95, True, ''),
+    ('spread', 'home', None, -3.5, 100, 98, True, 'lost'), ('spread', 'away', None, -3.5, 100, 98, True, 'won'), ('spread', 'home', None, -2.0, 100, 98, True, ''),
+    ('spread', 'home', None, float('nan'), 100, 98, True, ''), ('spread', 'home', None, 5.5, 90, 100, False, ''),
+    ('total', 'over', 224.5, None, 110, 100, True, 'lost'), ('total', 'under', 224.5, None, 110, 100, True, 'won'), ('total', 'under', 210.0, None, 110, 100, True, ''),
+    ('total', 'over', 200.5, None, 110, 100, False, 'won'), ('total', 'under', 200.5, None, 110, 100, False, 'lost'), ('total', 'over', 224.5, None, 110, 100, False, ''),
+    ('total', 'under', 224.5, None, 110, 100, False, ''), ('total', 'over', float('nan'), None, 110, 100, True, '')])
+def test_pick_result(kind, side, line, home_line, hs, as_, final, res):
+    assert LS.pick_result(kind, side, line, home_line, hs, as_, final) == res
 
 
 def test_final_wording():
