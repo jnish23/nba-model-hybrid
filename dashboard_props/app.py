@@ -7,7 +7,9 @@ Two data sources, chosen in the sidebar: the LIVE paper record (scripts/export_p
 2023-24 to 2025-26 (scripts/export_props_dashboard_data.py -> data/props_dashboard/). Plans: reports/props/dashboard_plan.md, reports/props/live_pipeline_plan.md.
 """
 import json
+import logging
 import os
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -21,10 +23,21 @@ except ImportError:                                   # `streamlit run dashboard
     import logic as L
 
 ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:                         # core/ sits at the repository root (here and in the published bundle)
+    sys.path.insert(0, str(ROOT))
+try:
+    from core import live_feed as F
+except ImportError:                                   # an older bundle without core/: the board works, just without the live panel
+    F = None
 BACKTEST_DIR = Path(os.environ.get('PROPS_DASH_DATA', ROOT / 'data' / 'props_dashboard'))
 LIVE_DIR = Path(os.environ.get('PROPS_DASH_LIVE', ROOT / 'data' / 'props_dashboard_live'))
 STAT_CHOICES = ['rebounds', 'assists', 'threes', 'ra']
 T_LABEL = {240: 'T-4h', 60: 'T-1h', 5: 'T-5m'}
+LIVE_REFRESH_S = 30
+if F is not None:
+    F.log.setLevel(logging.INFO)                      # one 'live_feed fetch' line per request in the server log
+    if not F.log.handlers:
+        F.log.addHandler(logging.StreamHandler())
 
 st.set_page_config(page_title='NBA Props', page_icon='🏀', layout='wide')
 
@@ -84,10 +97,62 @@ def colour_results(t):
     return t.style.apply(lambda row: [shade[kinds[row.name]]] * len(row), axis=1)
 
 
+@st.cache_data(ttl=LIVE_REFRESH_S, show_spinner=False)
+def live_scoreboard(game_date):
+    """ESPN scoreboard of one ET date, shared by every viewer: at most one request per date per 30 s."""
+    return F.scoreboard(game_date)
+
+
+@st.cache_data(ttl=LIVE_REFRESH_S, show_spinner=False)
+def live_box(nba_game_id, espn_event_id, roster):
+    """Box lines of one live game for the bet players (`roster`: ((player_id, player_name), ...)), shared by every viewer: at most one request per game per 30 s."""
+    board = pd.DataFrame([{**dict.fromkeys(F.SCOREBOARD_COLS), 'nba_game_id': nba_game_id, 'espn_event_id': espn_event_id, 'status': 'live'}])
+    return F.box(nba_game_id, board, pd.DataFrame(list(roster), columns=['player_id', 'player_name'])).assign(nba_game_id=nba_game_id)
+
+
+def colour_live(t):
+    shade = {'hit': 'background-color: rgba(46, 160, 67, 0.30)', 'busted': 'background-color: rgba(218, 54, 51, 0.30)'}
+    kinds = t['kind'].tolist()
+    return t.drop(columns='kind').style.apply(lambda row: [shade.get(kinds[row.name], '')] * len(row), axis=1)
+
+
+@st.fragment(run_every=LIVE_REFRESH_S)
+def live_panel(bets):
+    """Open bets in games being played right now, against the player's current stat. Shown only while such a game is live; display only."""
+    cand = L.live_candidates(bets, pd.Timestamp.now(tz='UTC'))
+    if F is None or cand is None or cand.empty:
+        return
+    board = pd.concat([live_scoreboard(d) for d in sorted(cand['game_date'].unique())], ignore_index=True)
+    board = F.attach_nba_ids(board, cand[['game_id', 'game_date', 'home_team', 'away_team']].drop_duplicates())
+    if board.empty:
+        st.caption('Live stats unavailable right now.')
+        return
+    games = board[(board['status'] == 'live') & board['nba_game_id'].isin(cand['game_id'])]
+    if games.empty:
+        return
+    parts = []
+    for _, g in games.iterrows():
+        roster = cand.loc[cand['game_id'] == g['nba_game_id'], ['player_id', 'player_name']].drop_duplicates('player_id')
+        parts.append(live_box(g['nba_game_id'], g['espn_event_id'], tuple(map(tuple, roster.itertuples(index=False)))))
+    lines = pd.concat(parts, ignore_index=True)
+    view = L.live_view(cand, board, lines)
+    st.subheader('Live')
+    if lines.empty:
+        st.caption('Live stats unavailable right now.')
+        return
+    st.caption(f"Live, not final: updates every {LIVE_REFRESH_S} s (last {pd.Timestamp.now(tz='America/New_York'):%H:%M:%S} ET). Box scores from ESPN; minutes are whole minutes. "
+               'Green = over already hit, red = under already busted. "On pace" scales the current stat to the expected minutes. The recorded bets and their settlement do not change.')
+    cfg = {'Now': st.column_config.NumberColumn('Now', format='%d'), 'Min': st.column_config.NumberColumn('Min', format='%d'),
+           'On pace': st.column_config.NumberColumn('On pace', format='%.1f')}
+    st.dataframe(colour_live(view), width='stretch', hide_index=True, column_config=cfg)
+
+
 def page_board(D, mode, treatment):
     bets = D['bets']
-    c1, c2, c3 = st.columns([1, 1, 2])
     live = D['meta']['mode'] == 'live'
+    if live:
+        live_panel(bets)
+    c1, c2, c3 = st.columns([1, 1, 2])
     season = c1.selectbox('Season', sorted(bets['season'].unique(), reverse=True))
     in_season = bets[bets['season'] == season]
     dates = sorted(in_season['game_date'].unique(), reverse=True)

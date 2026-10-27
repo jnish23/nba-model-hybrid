@@ -1,0 +1,2 @@
+espn_athlete_id,player_id,note
+# Manual ESPN athlete id -> NBA personId for players core/live_feed.py cannot match by name (the warning in the log names them).

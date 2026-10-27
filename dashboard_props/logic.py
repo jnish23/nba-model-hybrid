@@ -202,3 +202,71 @@ def noise_note(n_bets):
         return 'No settled bets yet.'
     se = 100.0 / np.sqrt(n_bets)
     return f'After {int(n_bets):,} settled bets the standard error of ROI is about {se:.1f} points: records shorter than a few thousand bets cannot tell a 3% edge from luck.'
+
+
+# Live panel (display only: the recorded bet and its settlement never change). Same stat definitions as props/live/scores.py STAT_VALUE, on core/live_feed box columns.
+LIVE_STAT = {'points': lambda b: b['points'], 'rebounds': lambda b: b['rebounds'], 'assists': lambda b: b['assists'], 'threes': lambda b: b['threes'],
+             'ra': lambda b: b['rebounds'] + b['assists'], 'pra': lambda b: b['points'] + b['rebounds'] + b['assists']}
+LIVE_WINDOW_H = 5                                # a tipped game is looked up for this long; no NBA game runs longer
+DEFAULT_MINUTES = 34.0
+MIN_MINUTES_FOR_PACE = 5.0
+LIVE_COLS = ['Game', 'Clock', 'Player', 'Bet', 'Now', 'Min', 'Status', 'On pace', 'kind']
+
+
+def live_candidates(bets, now, window_h=LIVE_WINDOW_H):
+    """Open bets (no official result yet) whose game tipped within the last `window_h` hours: the only ones worth asking the live feed about."""
+    if bets is None or bets.empty:
+        return bets
+    tip = pd.to_datetime(bets['tip_ref_utc'], utc=True)
+    open_ = bets['y'].isna() if 'y' in bets else pd.Series(True, index=bets.index)
+    return bets[open_ & (tip <= now) & (tip > now - pd.Timedelta(hours=window_h))]
+
+
+def period_label(period, clock):
+    """(3, '4:12') -> 'Q3 4:12'; period 5 -> 'OT', 6 -> '2OT'."""
+    if period is None or pd.isna(period):
+        return ''
+    p = int(period)
+    name = f'Q{p}' if p <= 4 else ('OT' if p == 5 else f'{p - 4}OT')
+    return f'{name} {clock}' if isinstance(clock, str) and clock else name
+
+
+def live_status(side, line, current):
+    """('hit' | 'busted' | 'alive', text). Over: hit once current >= line, else how many more it needs. Under: busted once current > line, else how many more it can absorb."""
+    if current is None or pd.isna(current):
+        return 'none', 'not in the box score yet'
+    if side == 'over':
+        return ('hit', 'hit') if current >= line else ('alive', f'needs {int(np.ceil(line - current))} more')
+    return ('busted', 'busted') if current > line else ('alive', f'{int(np.floor(line - current))} more allowed')
+
+
+def on_pace(current, minutes, expected_minutes):
+    """current / minutes * expected minutes (34 when the bet has none; never below minutes already played); NaN before MIN_MINUTES_FOR_PACE minutes."""
+    if current is None or pd.isna(current) or pd.isna(minutes) or minutes < MIN_MINUTES_FOR_PACE:
+        return np.nan
+    exp = expected_minutes if expected_minutes is not None and pd.notna(expected_minutes) and expected_minutes > 0 else DEFAULT_MINUTES
+    return current / minutes * max(exp, minutes)
+
+
+def live_view(bets, board, lines):
+    """
+    One display row per open bet in a live game. `board`: core/live_feed scoreboard (nba_game_id, status, period, clock, scores); `lines`: box rows of those games with an
+    nba_game_id column. Bets whose game is not live on the board are left out; a bet whose player has no box row yet shows no current value.
+    """
+    if bets is None or bets.empty or board is None or board.empty:
+        return pd.DataFrame(columns=LIVE_COLS)
+    live = board[board['status'] == 'live'].dropna(subset=['nba_game_id'])
+    d = bets.merge(live[['nba_game_id', 'period', 'clock', 'home_tricode', 'away_tricode', 'home_score', 'away_score']], left_on='game_id', right_on='nba_game_id')
+    if d.empty:
+        return pd.DataFrame(columns=LIVE_COLS)
+    box = lines if lines is not None and len(lines) else pd.DataFrame(columns=['nba_game_id', 'player_id', 'minutes', 'points', 'rebounds', 'assists', 'threes'])
+    box = box[['nba_game_id', 'player_id', 'minutes', 'points', 'rebounds', 'assists', 'threes']].rename(columns={'nba_game_id': 'game_id'})
+    d = d.merge(box.astype({'player_id': 'int64'}), on=['game_id', 'player_id'], how='left')
+    rows = []
+    for _, r in d.iterrows():
+        cur = LIVE_STAT[r['stat']](r) if r['stat'] in LIVE_STAT and pd.notna(r['minutes']) else np.nan
+        kind, text = live_status(r['side'], r['line'], cur)
+        rows.append({'Game': f"{r['away_tricode']} {int(r['away_score'])} @ {r['home_tricode']} {int(r['home_score'])}", 'Clock': period_label(r['period'], r['clock']),
+                     'Player': r['player_name'], 'Bet': f"{r['side'].upper()} {STAT_LABEL.get(r['stat'], r['stat'])} {r['line']:g}",
+                     'Now': cur, 'Min': r['minutes'], 'Status': text, 'On pace': on_pace(cur, r['minutes'], r.get('expected_minutes')), 'kind': kind})
+    return pd.DataFrame(rows, columns=LIVE_COLS).sort_values(['Game', 'Player'], kind='stable').reset_index(drop=True)
