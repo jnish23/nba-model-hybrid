@@ -115,3 +115,19 @@ def test_csv_mirror_keeps_completed_rows_and_column_alignment(tmp_path):
     assert out.loc['0022500001', ['ml_prob', 'home_score', 'status']].tolist() == ['0.6', '110', 'COMPLETED']
     assert out.loc['0022500002', 'ml_prob'] == '0.4' and out.loc['0022500002', 'status'] == 'PENDING'
     assert out.loc['0022500003', 'status'] == 'PENDING' and len(out) == 3
+
+
+def test_settling_a_game_updates_the_csv_as_well_as_the_db(tmp_path):
+    db, csv = tmp_path / 'x.db', tmp_path / 'p.csv'
+    lg = pl.PredictionLogger(str(db), log_path=str(csv))
+    lg.log_prediction(_entry('0022500001', 0.6))
+    lg.log_prediction(_entry('0022500002', 0.5))
+    box = pd.DataFrame({
+        'gameId': ['0022500001'] * 2, 'gameDate': ['2026-01-01'] * 2, 'teamId': [1, 2],
+        'teamName': ['A', 'B'], 'points': [110, 101], 'matchup': ['A vs. B', 'B @ A'], 'WL': ['W', 'L']})
+    with sqlite3.connect(db) as conn:
+        box.to_sql('team_basic_stats', conn, index=False)
+    lg.update_actual_scores()
+    out = pd.read_csv(csv, dtype=str).set_index('game_id')
+    assert out.loc['0022500001', ['home_score', 'away_score', 'status']].tolist() == ['110', '101', 'COMPLETED']
+    assert out.loc['0022500002', 'status'] == 'PENDING'

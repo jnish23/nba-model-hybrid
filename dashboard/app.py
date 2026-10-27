@@ -301,8 +301,9 @@ def load_data():
 # calculate_implied_prob and calculate_payout are now imported
 
 
-def compute_model_accuracy_and_roi(df):
-    """Compute model's raw-pick correctness and ROI for each bet type (no threshold).
+def compute_model_accuracy_and_roi(df, ml_threshold=0.05):
+    """Compute model's pick correctness and ROI for each bet type. The moneyline pick is the side with the larger edge,
+    kept only when that edge exceeds `ml_threshold` (pass a negative value for every game's raw pick).
     Returns summary dict and df with correctness flags.
     """
     res = {}
@@ -311,11 +312,11 @@ def compute_model_accuracy_and_roi(df):
     d['home_score'] = pd.to_numeric(d['home_score'], errors='coerce')
     d['away_score'] = pd.to_numeric(d['away_score'], errors='coerce')
 
-    # Moneyline pick (model pick based on Edge > 5%)
+    # Moneyline pick: the better-edge side, filtered by ml_threshold
     def ml_pick_func(row):
         # Ensure market_prob is available or let get_ml_bet compute it from odds
         if 'odds_home_ml' not in row: return None
-        pick, _ = get_ml_bet(row, threshold=0.05)
+        pick, _ = get_ml_bet(row, threshold=ml_threshold)
         return pick
 
     d['model_ml_pick'] = d.apply(ml_pick_func, axis=1)
@@ -893,8 +894,11 @@ def main():
     mask = (df['game_date'] >= start_date) & (df['game_date'] <= end_date)
     display_df = df.loc[mask]
 
-    # Compute model accuracy & ROI (no threshold) across available data (use filtered range)
-    model_metrics, model_df = compute_model_accuracy_and_roi(display_df)
+    # Compute model accuracy & ROI across available data (use filtered range). The moneyline pick is the better-edge side;
+    # the sidebar filter keeps only picks whose edge clears the chosen minimum ("All picks" = every game with both prices).
+    ml_filter = st.sidebar.selectbox("Recent Performance: ML picks with edge above", ["All picks", "3%", "5%"], index=2)
+    ml_pick_threshold = {"All picks": -1.0, "3%": 0.03, "5%": 0.05}[ml_filter]
+    model_metrics, model_df = compute_model_accuracy_and_roi(display_df, ml_pick_threshold)
 
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["📅 Today's Games", "Recent Performance", "📊 Predictions Log & Analysis", "📋 Team Breakdown", "🏆 League Summary", "🔍 Model Drivers"])
 
@@ -930,14 +934,11 @@ def main():
                 # Using 5% threshold as default for "ML Pick" display recommendation.
                 # get_ml_bet prices each side with its own moneyline (odds_home_ml / odds_away_ml).
                 pick, edge = get_ml_bet(row, threshold=0.05)
-                
-                if pick == 'home':
-                     return f"BET HOME (Edge {edge*100:.1f}%)"
-                elif pick == 'away':
-                     return f"BET AWAY (Edge {edge*100:.1f}%)"
-                else:
-                     # Optional: Show small edge or Pass
-                     return ""
+                if pick:
+                    return f"BET {pick.upper()} (Edge {edge*100:.1f}%)"
+                # Below the bet threshold the model still leans to the better-edge side; show it unmarked as a lean.
+                lean, lean_edge = get_ml_bet(row, threshold=-1.0)
+                return f"Lean {lean.upper()} ({lean_edge*100:+.1f}%)" if lean else ""
             
             def get_spread_pick(row):
                 if pd.isna(row['odds_home_spread']): return NO_ODDS

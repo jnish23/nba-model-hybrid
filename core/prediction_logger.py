@@ -173,6 +173,24 @@ class PredictionLogger:
 
         logging.info(f"Logged prediction for {row['matchup']}")
 
+    def _mirror_scores_to_csv(self, conn, game_ids):
+        """Copy the just-settled games' scores and status from the DB into the CSV log (log_prediction mirrors DB -> CSV
+        for new rows, but settling happens in the DB only, so the CSV would otherwise stay PENDING)."""
+        if not self.log_path.exists():
+            return
+        done = pd.read_sql(f"SELECT game_id, home_score, away_score, status FROM {TABLE} WHERE status = 'COMPLETED'", conn)
+        done = done[done['game_id'].astype(str).isin([str(g) for g in game_ids])]
+        if done.empty:
+            return
+        csv = pd.read_csv(self.log_path, dtype=str).reindex(columns=COLUMNS)
+        by_id = done.assign(game_id=done['game_id'].astype(str)).set_index('game_id')
+        hit = csv['game_id'].isin(by_id.index)
+        for col in ('home_score', 'away_score', 'status'):
+            vals = csv.loc[hit, 'game_id'].map(by_id[col])
+            csv.loc[hit, col] = vals.astype(int).astype(str) if col != 'status' else vals
+        csv.to_csv(self.log_path, index=False)
+        logging.info(f"Mirrored {int(hit.sum())} settled games into {self.log_path}")
+
     def update_actual_scores(self):
         """
         Check for completed games in DB and update predictions_log.
@@ -259,6 +277,7 @@ class PredictionLogger:
             if updates:
                 conn.commit()
                 logging.info(f"Updated scores for {len(updates)} games")
+                self._mirror_scores_to_csv(conn, updates)
             
             # Debug: show what didn't match
             if len(updates) < len(pending):
