@@ -1,0 +1,19 @@
+{
+  "run_at": "2026-10-26 04:01:08",
+  "training_set": "training_set_v1_reduced_2026-10-26.csv",
+  "games": 16831,
+  "last_game": "2026-10-24",
+  "tuner": "grid",
+  "candidate_suffix": "_with_odds_cand_20261026",
+  "incumbent_suffix": "_with_odds_cand_20261019",
+  "gate": {
+    "skipped": "fewer than 150 games in the last 120 days or <2000 before them"
+  },
+  "candidate": {
+    "model_set_hash": "930363884710f3875abea111a66f2f29244a8fd2b2afae819be4f3bf410ba861",
+    "training_set_hash": "a7b3dbea5f48780b112584632bff982f293147731bb90f4cccd36a98384626f4",
+    "trained_through": "2026-10-24 00:00:00",
+    "calib_holdout": "last 365 days",
+    "created_at": "2026-10-26 04:02:14"
+  }
+}

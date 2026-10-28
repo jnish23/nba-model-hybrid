@@ -1,0 +1,22 @@
+{
+ "verdict": "REJECT",
+ "registered": false,
+ "checks": {
+  "same_games_same_order": true
+ },
+ "pooled_total_mae_diff": -0.013636030641398808,
+ "ci": [
+  -0.04260687296266573,
+  0.012973603771452567
+ ],
+ "seasons_better": "3/7",
+ "gain_shares": [
+  0.0,
+  0.0,
+  0.00018382107576355336,
+  0.0,
+  0.0,
+  0.0,
+  0.0
+ ]
+}
