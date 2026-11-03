@@ -43,3 +43,13 @@ def test_clv_is_the_fair_probability_move_of_the_bet_side_and_blank_when_the_lin
     moved.loc[(moved.player_id == 1) & (moved.slot_minutes == 5), 'line'] = 5.5
     r2 = settle.settle_bets(_bets(), _labels(), moved, 'now', 'r1').set_index('bet_id')
     assert np.isnan(r2.loc['b1', 'clv_prob']) and r2.loc['b1', 'line_move_favour'] == 1.0 and r2.loc['b1', 'line_5'] == 5.5
+
+
+def test_bets_without_signals_settle_with_blank_clv_and_line_history():
+    with_sig = settle.settle_bets(_bets(), _labels(), _signals(), 'now', 'r1')
+    blank = ['clv_prob', 'line_move_favour', 'close_line', 'line_240', 'line_60', 'line_5', 'mkt_240', 'mkt_60', 'mkt_5']
+    for signals in (pd.DataFrame(), None):
+        r = settle.settle_bets(_bets(), _labels(), signals, 'now', 'r1')
+        assert list(r.columns) == list(with_sig.columns)
+        assert r[blank].isna().all().all()
+        pd.testing.assert_frame_equal(r.drop(columns=blank), with_sig.drop(columns=blank))
