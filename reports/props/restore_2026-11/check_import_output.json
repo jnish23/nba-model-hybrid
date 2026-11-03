@@ -1,0 +1,86 @@
+{
+ "counts": {
+  "prop_bets": 814,
+  "prop_results": 742
+ },
+ "game_id_lengths": {
+  "10": 814
+ },
+ "player_id_types": {
+  "integer": 814
+ },
+ "bet_ids_equal": true,
+ "bets_column_differences": {
+  "line_240": {
+   "n": 55,
+   "example": [
+    "2026-27|0022600148|1629675|threes",
+    "2.5",
+    "nan"
+   ]
+  },
+  "line_60": {
+   "n": 72,
+   "example": [
+    "2026-27|0022600147|1629637|assists",
+    "1.5",
+    "nan"
+   ]
+  },
+  "mkt_240": {
+   "n": 55,
+   "example": [
+    "2026-27|0022600148|1629675|threes",
+    "0.5011068140850186",
+    "nan"
+   ]
+  },
+  "mkt_60": {
+   "n": 72,
+   "example": [
+    "2026-27|0022600147|1629637|assists",
+    "0.5788336445256383",
+    "nan"
+   ]
+  }
+ },
+ "columns_in_one_only": [],
+ "differences_on_settled_bets": {},
+ "season_summary": {
+  "bets": {
+   "baseline": 733,
+   "old_file": 733.0,
+   "new": 733.0,
+   "equal_to_6dp": true
+  },
+  "player_games": {
+   "baseline": 461,
+   "old_file": 461.0,
+   "new": 461.0,
+   "equal_to_6dp": true
+  },
+  "roi_best_stands": {
+   "baseline": 0.019716,
+   "old_file": 0.0197160333552556,
+   "new": 0.0197160333552556,
+   "equal_to_6dp": true
+  },
+  "roi_median_stands": {
+   "baseline": -0.020376,
+   "old_file": -0.0203756330623458,
+   "new": -0.0203756330623458,
+   "equal_to_6dp": true
+  },
+  "roi_flat_stands": {
+   "baseline": -0.015503,
+   "old_file": -0.0155029145479349,
+   "new": -0.0155029145479352,
+   "equal_to_6dp": true
+  }
+ },
+ "pmf.json_equal": true,
+ "books.json_equal": true,
+ "update_trigger": "prop_bets is immutable",
+ "delete_trigger": "prop_bets is immutable",
+ "prop_bets_after_trigger_test": 814
+}

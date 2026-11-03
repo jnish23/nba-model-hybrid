@@ -1,0 +1,13 @@
+2026-11-03 11:47:30,325 Traceback (most recent call last):
+  File "C:\Users\jorda\nba-model-hybrid\scripts\props_settle_job.py", line 45, in main
+    print(res[['bet_id', 'y', 'status_stands', 'profit_stands_median', 'clv_prob']].round(3).to_string(index=False))
+          ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\jorda\nba-model-hybrid\.venv\Lib\site-packages\pandas\core\frame.py", line 4119, in __getitem__
+    indexer = self.columns._get_indexer_strict(key, "columns")[1]
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\jorda\nba-model-hybrid\.venv\Lib\site-packages\pandas\core\indexes\base.py", line 6212, in _get_indexer_strict
+    self._raise_if_missing(keyarr, indexer, axis_name)
+  File "C:\Users\jorda\nba-model-hybrid\.venv\Lib\site-packages\pandas\core\indexes\base.py", line 6264, in _raise_if_missing
+    raise KeyError(f"{not_found} not in index")
+KeyError: "['clv_prob'] not in index"
+
