@@ -1,0 +1,11 @@
+table,feature,group_old,non_null_share_old,non_null_share_new,d_non_null,first_season_with_data_old,first_season_with_data_new,non_null_by_season_old,non_null_by_season_new
+player_game_at_T,env_total,market_env,0.7958,0.7982,0.0024000000000000687,,,,
+player_game_at_T,env_n_books,market_env,0.7963,0.7987,0.0023999999999999577,,,,
+player_game_at_T,env_team_spread,market_env,0.7958,0.7981,0.0023000000000000798,,,,
+player_game_at_T,env_team_big_win_prob,market_env,0.7958,0.7981,0.0023000000000000798,,,,
+player_game_at_T,env_team_big_loss_prob,market_env,0.7958,0.7981,0.0023000000000000798,,,,
+player_game_at_T,env_blowout_prob,market_env,0.7958,0.7981,0.0023000000000000798,,,,
+player_game_at_T,env_spread_dispersion,market_env,0.4468,0.4491,0.0023000000000000242,,,,
+player_game_at_T,env_team_win_prob,market_env,0.7942,0.7965,0.0022999999999999687,,,,
+player_game_at_T,env_team_total,market_env,0.7954,0.7977,0.0022999999999999687,,,,
+player_game_at_T,env_opp_total,market_env,0.7954,0.7977,0.0022999999999999687,,,,

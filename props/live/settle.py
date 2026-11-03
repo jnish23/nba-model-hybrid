@@ -39,6 +39,8 @@ def settle_bets(bets, labels, signals, settled_utc, run_id):
     for name, col in (('median', 'dec_median'), ('flat', 'dec_flat')):
         prof, _ = settle_mod.settle(b['best_side'].to_numpy(), b['line'], b[col], b['y'], b['played'], b['lbl_minutes'], b['expected_minutes'], b['book'].to_numpy(), 'stands')
         out[f'profit_stands_{name}'] = prof
+    for c in ('clv_prob', 'line_move_favour', 'close_line', 'line_240', 'line_60', 'line_5', 'mkt_240', 'mkt_60', 'mkt_5'):
+        out[c] = np.nan                                 # bets with no recorded signals (restored after the 2026-10-31 loss) get the columns, blank
     if signals is not None and len(signals):
         cons, hist = signal_context(signals)
         sel = b.assign(consensus_fair_over=b['p_over_market'])

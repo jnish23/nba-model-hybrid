@@ -1,0 +1,64 @@
+{
+ "db_bytes": 684220416,
+ "old_db_bytes": 684130304,
+ "tables": [
+  "player_game_at_T",
+  "player_game_base",
+  "player_game_labels"
+ ],
+ "rows": {
+  "player_game_base": 232782,
+  "player_game_labels": 232782,
+  "player_game_at_T": 698346
+ },
+ "base_rows_by_season": {
+  "2019-20": 28577,
+  "2020-21": 31676,
+  "2021-22": 33848,
+  "2022-23": 34024,
+  "2023-24": 34815,
+  "2024-25": 35087,
+  "2025-26": 34755
+ },
+ "max_game_date": {
+  "player_game_base": "2026-06-13"
+ },
+ "player_game_labels_rows_by_season": {
+  "2019-20": 28577,
+  "2020-21": 31676,
+  "2021-22": 33848,
+  "2022-23": 34024,
+  "2023-24": 34815,
+  "2024-25": 35087,
+  "2025-26": 34755
+ },
+ "player_game_at_T_rows_by_season": {
+  "2019-20": 85731,
+  "2020-21": 95028,
+  "2021-22": 101544,
+  "2022-23": 102072,
+  "2023-24": 104445,
+  "2024-25": 105261,
+  "2025-26": 104265
+ },
+ "at_T_rows_by_minutes_before": {
+  "5": 232782,
+  "60": 232782,
+  "240": 232782
+ },
+ "max_game_date_on_or_before_2026-06-30": true,
+ "features_old": 223,
+ "features_new": 223,
+ "feature_set_identical": true,
+ "only_old": [],
+ "only_new": [],
+ "group_changed": [],
+ "source_changed": [],
+ "dtype_changed": [],
+ "description_changed": [],
+ "n_changed_non_null_or_first_season": 10,
+ "changed_by_group": {
+  "market_env": 10
+ },
+ "moved_more_than_0.01_or_first_season": []
+}
