@@ -147,6 +147,21 @@ def live_panel(bets):
     st.dataframe(colour_live(view), width='stretch', hide_index=True, column_config=cfg)
 
 
+def record_text(r):
+    return f"{r['won']}-{r['lost']}" + (f"-{r['other']}" if r['other'] else '')
+
+
+def render_day_record(rec, day):
+    """Record of the bets in the table below (after the filters): overall with units, and the overs and unders; counts what the table colours, provisional grades included."""
+    today = pd.Timestamp.now(tz='America/New_York').date()
+    st.markdown("**Today's record**" if str(day) == str(today) else f'**Record for {day}**')
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric('Bets (W-L-push/void)', record_text(rec['all']), f"{rec['all']['open']} open", delta_color='off', help='Graded bets only; "open" bets have no result yet. Provisional grades from a finished box score count.')
+    c2.metric('Units', f"{rec['units']:+.2f}", help='Profit of the graded bets at the chosen price, 1 unit per bet.')
+    c3.metric('Overs', record_text(rec['over']), f"{rec['over']['open']} open", delta_color='off')
+    c4.metric('Unders', record_text(rec['under']), f"{rec['under']['open']} open", delta_color='off')
+
+
 def page_board(D, mode, treatment):
     bets = D['bets']
     live = D['meta']['mode'] == 'live'
@@ -199,6 +214,8 @@ def page_board(D, mode, treatment):
             if s_['bets']:
                 st.caption(f"Live record so far for settled bets with EV of at least {100 * min_ev:.1f}% at this price: {s_['bets']} bets, ROI {pct(s_['roi'])} "
                            f"(95% interval {pct(s_['lo'])} to {pct(s_['hi'])}). {L.noise_note(s_['bets'])}")
+    if reveal:
+        render_day_record(L.day_record(shown, L.results_for_display(shown, results_now, mode, treatment)), day)
     t = board_table(shown, mode, treatment, reveal, cur, results_now, now, live)
     cfg = {'Model': st.column_config.ProgressColumn('Model P', min_value=0.0, max_value=1.0, format='%.2f'), 'Market': st.column_config.NumberColumn('Market P', format='%.2f'),
            'EV': st.column_config.NumberColumn('EV', format='%.3f'), 'EV now': st.column_config.NumberColumn('EV now', format='%.3f'),
