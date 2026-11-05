@@ -67,8 +67,8 @@ def total_state(side, line, hs, as_, final=False):
 
 
 def pick_result(kind, side, line, home_line, hs, as_, final):
-    """'won' / 'lost' once the pick's outcome is settled by the score, else ''. Final games settle every pick (a push is ''); while live only the total can
-    already be decided (an over already through the line won, an under already through it lost)."""
+    """'won' / 'lost' / 'push' once the pick's outcome is settled by the score, else ''. Final games settle every pick; while live only the total can
+    already be decided (an over already through the line won, an under already through it lost). A push is not coloured by the app but counts in day_record."""
     if side is None:
         return ''
     if kind == 'total':
@@ -86,7 +86,21 @@ def pick_result(kind, side, line, home_line, hs, as_, final):
             if pd.isna(home_line):
                 return ''
             margin += home_line if side == 'home' else -home_line
-    return 'won' if margin > 0 else ('lost' if margin < 0 else '')
+    return 'won' if margin > 0 else ('lost' if margin < 0 else 'push')
+
+
+def day_record(games, view):
+    """
+    The day's record per market from the same results that colour the live table: {'ML': {'won', 'lost', 'push', 'open'}, 'Spread': ..., 'Total': ...}.
+    `games` is pick_sides(...) of the whole slate and `view` its live_view; 'open' is every pick of the slate not yet settled (not started, in play, or a live total still undecided).
+    """
+    sides = {'ML': 'ml_side', 'Spread': 'spread_side', 'Total': 'total_side'}
+    out = {}
+    for name, col in RESULT_COLS.items():
+        res = view[col] if col in view else pd.Series(dtype=object)
+        won, lost, push = (int((res == k).sum()) for k in ('won', 'lost', 'push'))
+        out[name] = {'won': won, 'lost': lost, 'push': push, 'open': max(int(games[sides[name]].notna().sum()) - won - lost - push, 0)}
+    return out
 
 
 def period_label(period, clock, status):

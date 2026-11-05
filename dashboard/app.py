@@ -140,18 +140,28 @@ def render_live_scores(games):
         if board.empty:
             st.caption("Live scores unavailable right now.")
             return
-        view = live_scores.live_view(live_scores.pick_sides(games), board)
+        games_with_sides = live_scores.pick_sides(games)
+        view = live_scores.live_view(games_with_sides, board)
     except Exception as e:                       # a live-score problem must never take the schedule down with it
         live_feed.log.warning('live scores panel: %s: %s', type(e).__name__, e)
         st.caption("Live scores unavailable right now.")
         return
     if view.empty:
         return
+    render_day_record(live_scores.day_record(games_with_sides, view))
     st.markdown("**Live scores (live, not final)**")
     st.caption(f"Updates every {LIVE_REFRESH_S} s (last {pd.Timestamp.now(tz='America/New_York'):%H:%M:%S} ET), scores from ESPN. Each pick is shown against the score right now (green / red once it has won / lost): "
                "who leads for the moneyline pick (only games with a 5% moneyline edge have one), the current margin against the spread pick, the combined score against the total pick. "
                "Results in the log are graded after the nightly update.")
     st.dataframe(colour_live_scores(view), hide_index=True, width='stretch')
+
+
+def render_day_record(record):
+    """Today's W-L (and pushes) of the ML, Spread and Total picks in the table below, with the picks still open; counts exactly what the table colours green / red."""
+    st.markdown("**Today's record**")
+    for col, (name, label) in zip(st.columns(3), (('ML', 'Moneyline'), ('Spread', 'Spread'), ('Total', 'Total'))):
+        r = record[name]
+        col.metric(label, f"{r['won']}-{r['lost']}" + (f"-{r['push']}" if r['push'] else ''), f"{r['open']} open", delta_color='off')
 
 
 def colour_live_scores(view):
