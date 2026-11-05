@@ -81,9 +81,9 @@ def test_period_label():
 @pytest.mark.parametrize('kind,side,line,home_line,hs,as_,final,res', [
     ('ml', 'home', None, None, 100, 95, True, 'won'), ('ml', 'away', None, None, 100, 95, True, 'lost'), ('ml', 'home', None, None, 100, 95, False, ''),
     ('ml', None, None, None, 100, 95, True, ''),
-    ('spread', 'home', None, -3.5, 100, 98, True, 'lost'), ('spread', 'away', None, -3.5, 100, 98, True, 'won'), ('spread', 'home', None, -2.0, 100, 98, True, ''),
+    ('spread', 'home', None, -3.5, 100, 98, True, 'lost'), ('spread', 'away', None, -3.5, 100, 98, True, 'won'), ('spread', 'home', None, -2.0, 100, 98, True, 'push'),
     ('spread', 'home', None, float('nan'), 100, 98, True, ''), ('spread', 'home', None, 5.5, 90, 100, False, ''),
-    ('total', 'over', 224.5, None, 110, 100, True, 'lost'), ('total', 'under', 224.5, None, 110, 100, True, 'won'), ('total', 'under', 210.0, None, 110, 100, True, ''),
+    ('total', 'over', 224.5, None, 110, 100, True, 'lost'), ('total', 'under', 224.5, None, 110, 100, True, 'won'), ('total', 'under', 210.0, None, 110, 100, True, 'push'),
     ('total', 'over', 200.5, None, 110, 100, False, 'won'), ('total', 'under', 200.5, None, 110, 100, False, 'lost'), ('total', 'over', 224.5, None, 110, 100, False, ''),
     ('total', 'under', 224.5, None, 110, 100, False, ''), ('total', 'over', float('nan'), None, 110, 100, True, '')])
 def test_pick_result(kind, side, line, home_line, hs, as_, final, res):
@@ -96,3 +96,18 @@ def test_final_wording():
     assert LS.spread_state('home', -2.0, 'BOS', 'MIA', 100, 98, final=True) == 'BOS -2: push'
     assert [LS.total_state(s, 224.5, 110, 100, final=True) for s in ('over', 'under')] == ['Over 224.5: lost (210)', 'Under 224.5: won (210)']
     assert LS.total_state('under', 210.0, 110, 100, final=True) == 'Under 210: push (210)'
+
+
+def test_day_record_counts_what_the_table_colours(board):
+    g = LS.pick_sides(GAMES)
+    rec = LS.day_record(g, LS.live_view(g, board))
+    # MEM@SAC live (nothing decided), LAL@UTA final (spread + total won, no ML pick), BOS-MIA not started; ML: 1 pick (SAC game) open
+    assert rec == {'ML': {'won': 0, 'lost': 0, 'push': 0, 'open': 1}, 'Spread': {'won': 1, 'lost': 0, 'push': 0, 'open': 2},
+                   'Total': {'won': 1, 'lost': 0, 'push': 0, 'open': 2}}
+
+
+def test_day_record_counts_pushes_and_handles_no_started_games(board):
+    g = LS.pick_sides(GAMES)
+    assert LS.day_record(g, LS.live_view(g, None))['Spread'] == {'won': 0, 'lost': 0, 'push': 0, 'open': 3}
+    pushed = g.assign(odds_total=[230.0, 255.0, 218.5])          # LAL@UTA finishes on 255
+    assert LS.day_record(pushed, LS.live_view(pushed, board))['Total'] == {'won': 0, 'lost': 0, 'push': 1, 'open': 2}
