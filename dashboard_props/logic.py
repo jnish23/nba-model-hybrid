@@ -139,6 +139,21 @@ def result_kind(result):
     return 'win' if r.startswith('win') else 'loss' if r.startswith('loss') else ('other' if r else '')
 
 
+def day_record(d, results):
+    """
+    Record of the bets in `d` from their Board results (`results`: results_for_display(d, ...), aligned with `d`), counting exactly what the Board colours green / red / grey.
+    Returns {'all' | 'over' | 'under': {'won', 'lost', 'other' (push or void), 'open' (not yet graded)}, 'units': profit of the graded bets}; provisional grades count.
+    """
+    kinds = np.array([result_kind(r) for r in results['Result']], dtype=object)
+    sides = d['side'].to_numpy()
+    out = {}
+    for name, m in (('all', np.ones(len(d), dtype=bool)), ('over', sides == 'over'), ('under', sides == 'under')):
+        out[name] = {'won': int((m & (kinds == 'win')).sum()), 'lost': int((m & (kinds == 'loss')).sum()),
+                     'other': int((m & (kinds == 'other')).sum()), 'open': int((m & (kinds == '')).sum())}
+    out['units'] = float(np.nansum(results['Units'].to_numpy(dtype=float)))
+    return out
+
+
 EV_BANDS = [(-np.inf, 0.0, 'below 0%'), (0.0, 0.03, '0 to 3%'), (0.03, 0.06, '3 to 6%'), (0.06, 0.10, '6 to 10%'), (0.10, np.inf, '10% and up')]
 
 

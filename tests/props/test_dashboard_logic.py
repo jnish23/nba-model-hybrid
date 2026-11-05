@@ -164,3 +164,18 @@ def test_odds_now_columns_survive_an_empty_or_partial_current_frame():
     cur = pd.DataFrame({'bet_id': [d['bet_id'].iloc[2]], 'line_now': [5.5], 'dec_median_now': [1.91], 'dec_best_now': [2.05], 'ev_median_now': [0.02], 'ev_best_now': [0.05], 'ev_flat_now': [0.01], 'still_qualifies': [1]})
     out = L.with_odds_now(t, d, cur, 'best', now)
     assert list(out['Price now']) == ['game started', 'game started', '+105', 'no quote'] and out['Still bet?'].iloc[2] == 'yes' and out['EV now'].iloc[2] == 0.05
+
+
+def test_day_record_counts_what_the_board_colours():
+    d = make_bets(6)
+    d['side'] = ['over', 'over', 'under', 'under', 'under', 'over']
+    d['status_stands'] = ['win', 'loss', 'push', np.nan, np.nan, np.nan]
+    d['y'] = [6.0, 4.0, 5.5, np.nan, np.nan, np.nan]
+    prov = pd.DataFrame({'bet_id': d['bet_id'], 'provisional': [np.nan, np.nan, np.nan, 'win', np.nan, 'void'], 'actual': [np.nan, np.nan, np.nan, 3.0, np.nan, np.nan]})
+    res = L.results_for_display(d, prov, 'best', 'stands')
+    rec = L.day_record(d, res)
+    assert rec['all'] == {'won': 2, 'lost': 1, 'other': 2, 'open': 1}          # win, loss, push, prov. win, prov. void; one still open
+    assert rec['over'] == {'won': 1, 'lost': 1, 'other': 1, 'open': 0} and rec['under'] == {'won': 1, 'lost': 0, 'other': 1, 'open': 1}
+    assert np.isclose(rec['units'], 1.05 - 1.0 + 0.0 + 1.05 + 0.0)
+    empty = L.day_record(d.iloc[:0], L.results_for_display(d.iloc[:0], None, 'best', 'stands'))
+    assert empty['all'] == {'won': 0, 'lost': 0, 'other': 0, 'open': 0} and empty['units'] == 0.0
