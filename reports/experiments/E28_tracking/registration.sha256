@@ -1,0 +1,20 @@
+2026-10-24T10:51:06 (local) - recorded before the first E28 residual was computed
+PREREGISTRATION.md, from '# Tracking and fatigue program' to end: 1bb2a9d994e41eed684d93fe9c57f2cbc0c2ca6bb20791444f3955433afc4564
+experiments/features_tracking.py: fa1723c599b71671ec4db5b18cdbed17d362fd1c4cd495daf3b7301512283f93
+experiments/e28_screen.py: 3433954eec446325b2f7667dfbb02b8b263e99e99903bb783accdfcf01ead5f4
+data/processed/experiments/e28_training_set.csv: 3cd5676147fe4f01cf99e83b9e6e6a000152d56bd9c1f38b185c9ee483ee707a
+
+2026-10-24T10:57:14 (local) - recorded before the first E29 run
+E29 section of PREREGISTRATION.md: 62ca2fcb24520422d196c965bfa70fd1d2f8eee21fce16fe6bbb1aa514523a36
+experiments/e29_run.py: fe1804542b3839867a3ff0f5d8334472b46bf184b60d9d9775f31ebecdeefda0
+
+2026-10-24T11:26:50 (local) - recorded before any E30 forward game was scored
+E30 section of PREREGISTRATION.md: 401a196b990a122c6adf6a7c6db5a2cc8d5e23827497fb48465cfe64a92d6816
+experiments/e30_freeze.py: da2e46a1226a74831113f331279ec3219243e237f6c654757b959e0bc0a5d7ec
+experiments/e30_score.py: fc610e299f35306ace04cca95afbd14ef18a94404125ce710503cd7c706b3a7c
+experiments/e30_signals.py: c37dd77c3d4f643a4a1508ab59f9949c9617183e92cfd113e922ccf656f1f178
+experiments/features_tracking.py: fa1723c599b71671ec4db5b18cdbed17d362fd1c4cd495daf3b7301512283f93
+reports/experiments/E30_forward_tracking/frozen/params.json: 5d8da6187481498092ea53c99886f4a559f0b2bc74bf7bdfb199c2b8d9d4ca7e
+
+2026-10-24T20:23:33 (local) - E30 amendment 1, recorded before any forward game was scored (the pace-shock fix in the harness audit changed this file)
+experiments/features_tracking.py: 2b7e1c29c41d6f68ef0ecd90bf8aca0d2b53de26307a8070e6bcb4f2258962a0   (registered: fa1723c599b71671ec4db5b18cdbed17d362fd1c4cd495daf3b7301512283f93)

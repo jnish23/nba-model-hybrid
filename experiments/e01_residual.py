@@ -3,7 +3,9 @@
 spread target  = margin + opening spread        (prediction = -spread + f(X))
 total target   = total - opening total          (prediction =  total  + f(X))
 ML             = LightGBM init_score = logit(de-vigged opening home probability)
-Same selected features as the baseline; only the targets/offsets change.
+Features are selected against the residual targets with the odds_* columns left out of the pool and of the final lists (the line is
+the offset, not an input); rows without an opening line are dropped inside each fold, not from the global frame. (The first
+version reused the baseline's lists, which were selected on the raw margin / total with the lines in the pool.)
 """
 import json
 import logging
@@ -21,6 +23,7 @@ from experiments.lib import OUT, load_games, load_run, run_walk_forward   # noqa
 from experiments.report import compare, evaluate, fmt_compare, per_season_table   # noqa: E402
 
 NAME = 'E01_residual_targets'
+LINE_COLUMNS = ['odds_home_spread', 'odds_total']
 
 
 def _imp(o):
@@ -90,9 +93,9 @@ def tails(base, exp):
 def main():
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s: %(message)s')
     m, df = load_games()
-    df = df.dropna(subset=['odds_home_spread', 'odds_total']).reset_index(drop=True)
-    test, calib, info = run_walk_forward(NAME, features_from='baseline', df_override=(m, df),
-                                         hooks={'init_scores': init_scores, 'target': target, 'pred_offset': pred_offset})
+    test, calib, info = run_walk_forward(NAME, df_override=(m, df), selection='residual_no_odds',
+                                         hooks={'init_scores': init_scores, 'target': target, 'pred_offset': pred_offset,
+                                                'require_columns': LINE_COLUMNS})
     res = evaluate(NAME, test)
     base, _ = load_run('baseline')
     cmp = compare(NAME, exp_test=test, base_test=base)

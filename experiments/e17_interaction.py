@@ -43,8 +43,9 @@ def ratio_diff(db, num, den, m1, m2):
     n1, d1 = db.day_sum(np.where(m1, num, 0.0)), db.day_sum(np.where(m1, den, 0.0))
     n2, d2 = db.day_sum(np.where(m2, num, 0.0)), db.day_sum(np.where(m2, den, 0.0))
     pt = n1.sum() / d1.sum() - n2.sum() / d2.sum()
-    b = (db.W @ n1) / (db.W @ d1) - (db.W @ n2) / (db.W @ d2)
-    return {'diff': float(pt), 'lo': float(np.quantile(b, .025)), 'hi': float(np.quantile(b, .975))}
+    with np.errstate(divide='ignore', invalid='ignore'):                # a draw that misses every day of a thin cell has 0 / 0
+        b = (db.W @ n1) / (db.W @ d1) - (db.W @ n2) / (db.W @ d2)
+    return {'diff': float(pt), 'lo': float(np.nanquantile(b, .025)), 'hi': float(np.nanquantile(b, .975))}
 
 
 def main():

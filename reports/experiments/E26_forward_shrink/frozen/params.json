@@ -1,0 +1,134 @@
+{
+ "created": "2026-10-24T07:58:22",
+ "history_seasons": [
+  "2019-20",
+  "2020-21",
+  "2021-22",
+  "2022-23",
+  "2023-24",
+  "2024-25",
+  "2025-26"
+ ],
+ "beta": {
+  "spread": {
+   "all_seasons": {
+    "beta": 0.47422132474910234,
+    "ci": [
+     0.20139655352848168,
+     0.7797298821258412
+    ],
+    "n": 8899
+   },
+   "discovery": {
+    "beta": 0.04392901127158005,
+    "ci": [
+     -0.4250738177420062,
+     0.4813419221506113
+    ],
+    "n": 3636
+   }
+  },
+  "total": {
+   "all_seasons": {
+    "beta": 0.2227203618308048,
+    "ci": [
+     0.09852603203223033,
+     0.34659782199166617
+    ],
+    "n": 8899
+   },
+   "discovery": {
+    "beta": 0.22637206478543448,
+    "ci": [
+     0.053051125037664196,
+     0.39991400776296904
+    ],
+    "n": 3636
+   }
+  },
+  "ml": {
+   "all_seasons": {
+    "beta": 0.31956866397965233,
+    "ci": [
+     0.06116993811666413,
+     0.5806396100540896
+    ],
+    "n": 8898
+   },
+   "discovery": {
+    "beta": 0.13393229162660475,
+    "ci": [
+     -0.2804414533717158,
+     0.5043818312553741
+    ],
+    "n": 3635
+   }
+  }
+ },
+ "sigma_shrunk": {
+  "spread": 13.65889514668729,
+  "total": 18.459125097353486
+ },
+ "k_total_blend": {
+  "all_seasons": 0.16630978936040772,
+  "discovery": 0.13338180158937168,
+  "n": 8897
+ },
+ "sigma_blend_total": 18.438220328720302,
+ "no_odds_total": {
+  "features": [
+   "off_points_20g_home",
+   "off_points_20g_away",
+   "def_OPP_PTS_20g_away",
+   "def_OPP_PTS_20g_home",
+   "off_percentagePointsFastBreak_5g_home",
+   "def_OPP_FGA_20g_away",
+   "off_percentagePointsFastBreak_20g_away",
+   "def_OPP_PTS_5g_away",
+   "def_OPP_FGA_20g_home",
+   "off_fieldGoalsAttempted_20g_away",
+   "roster_bpm_home",
+   "off_threePointersAttempted_20g_away",
+   "def_OPP_BLK_20g_home",
+   "off_fieldGoalsAttempted_20g_home",
+   "off_percentagePointsOffTurnovers_trend_away",
+   "def_OPP_AST_20g_home",
+   "def_OPP_FG_PCT_20g_home",
+   "off_freeThrowsAttempted_trend_home",
+   "game_altitude_diff_away",
+   "def_OPP_BLK_trend_away",
+   "def_OPP_PTS_5g_home",
+   "off_defensiveRating_trend_home",
+   "off_freeThrowsAttempted_20g_away",
+   "off_percentageFieldGoalsAttempted3pt_5g_home",
+   "def_OPP_FGA_trend_home",
+   "def_OPP_FTA_20g_home",
+   "off_percentagePointsOffTurnovers_trend_home",
+   "roster_bpm_ewma_away",
+   "season_game_number_home",
+   "off_assists_5g_away",
+   "def_OPP_AST_20g_away",
+   "off_defensiveRebounds_20g_away",
+   "off_percentagePointsOffTurnovers_20g_home",
+   "off_offensiveRating_5g_home",
+   "games_last_7d_home",
+   "is_playoff_away",
+   "tz_delta_home"
+  ],
+  "grid_cfg": 7,
+  "trained_rows": 16795,
+  "trained_through": "2026-06-13",
+  "training_set": "training_set_v1_reduced_2026-10-19.csv",
+  "training_set_sha256": "e5d54fd34c5fd9295b135f5f47572aec709fa655375ec696c5241612f0f1854a",
+  "model_sha256": "7141bbe2e08316f6e62784935dc1e70ce063f15d63f8ceb1547d7000e6bcb3e4"
+ },
+ "feature_code_sha256": {
+  "team/game_features_v2.py": "4a97e21e3a4aa798a0bbcd618143764d6099d1d40a20a28d8daebfa26e3af0de",
+  "core/travel_builder.py": "784dde74e23f7ec2292367b221476320c46dc60ccf25555491584a578ad1b649",
+  "core/injury_report_features.py": "cb350d4d6454a7c5e7184edb23a43f9e8bc063dcfc10ca7d84523ed7d76178e6",
+  "team/train_baseline.py": "e4a5f6520a4258493bbf92edc17b3f9a8756d447147719556d60b841112c342f",
+  "scripts/generate_training_set.py": "997a74927af8b4a82c8ddd5e01a66bf266d41f44fa4594aa3fd38e0c433ae8df",
+  "core/odds_clean.py": "39d180cff268bf77ca71aa87fa74440c7d8e387413f305a008f811cd510c87c9"
+ },
+ "deployed_suffix": "_with_odds_cand_20261019"
+}

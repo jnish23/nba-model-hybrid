@@ -438,12 +438,14 @@ class BaselineModel:
             raise ValueError(f"Unknown target: {target}")
 
 
-    def _select_features_from_subset(self, df_subset, target, n_top=150, n_min=20, importance_type='split', seed=42):
+    def _select_features_from_subset(self, df_subset, target, n_top=150, n_min=20, importance_type='gain', seed=42,
+                                     groups=None, stratify=True, n_permutations=30, z_threshold=1.28,
+                                     exclude_odds=False, legacy=False, n_importance_fits=5, stop_after=None):
         """
         Two-Stage Feature Selection (No Leakage):
         1. Hierarchical Clustering (Spearman) to remove highly correlated redundant features.
         2. Null Importance Selection to filter out noise.
-        
+
         Uses the target-appropriate feature pool (diff for ML/Spread, sep for Totals).
 
         Deterministic: columns are processed in alphabetical order (so the CSV column order cannot
@@ -451,54 +453,79 @@ class BaselineModel:
         in the cluster representative - is broken by feature name.
 
         importance_type: LightGBM importance used to pick each cluster's representative and to compare
-        with the shuffled-target importances. 'split' (default, the production behaviour) counts splits,
-        which favours the noisier of two highly correlated features; 'gain' ranks by loss reduction.
+        with the shuffled-target importances. 'gain' (default) ranks by loss reduction; 'split' counts splits,
+        which rewards a continuous feature that is cut many times for tiny gains over a binary one that needs a single cut.
+        The proxy models bag rows (0.8) and columns (0.5) so that correlated features share the root splits.
+        groups: a per-row label (default: df_subset['seasonYear'] when present and stratify=True); the Stage 2 target is
+        shuffled WITHIN each group, so the era drift in the target (NBA totals rose ~25-30 points over the history) survives in
+        the null fits and a feature is not credited just for being a proxy for the season.
+        n_permutations / z_threshold: Stage 2 keeps a feature whose real importance is above 0 and more than z_threshold
+        null standard deviations above its mean null importance (a 30-draw mean / sd is far steadier than the 90th percentile
+        of 10 draws, which is the 9th-10th order statistic).
+        n_importance_fits: the real importances (the cluster representatives, the padding order and the Stage 2 'actual' value) are the mean of
+        this many bagged proxy fits with different bagging seeds; one bagged fit made the lists depend on the seed (the 20-feature padding
+        follows the initial ranking). Each shuffled-target fit uses its own bagging seed.
+        exclude_odds: drop the odds_* columns from the pool (the caller appends them afterwards; see select_market_features).
+        legacy: reproduce the pre-audit selection exactly ('split' importance, no bagging, unstratified shuffle, 10 draws,
+        90th-percentile rule) - only for rebuilding old artifacts.
         seed: random state of the proxy models and of the shuffled-target permutations (default 42);
         varying it measures how much of a result is selection noise.
+        stop_after: None runs both stages; 'pool' returns the pool after the zero-variance filter, 'stage1' the clustering output (what the
+        no-selection experiments compare against; the lists are exactly the selector's own intermediate ones).
         """
+        if stop_after not in (None, 'pool', 'stage1'):
+            raise ValueError(f"stop_after must be None, 'pool' or 'stage1', got {stop_after!r}")
+        if legacy:
+            importance_type, n_permutations, stratify, n_importance_fits = 'split', 10, False, 1
         # 1. Filter available/valid features from the correct pool
         feature_pool = self._get_pool_for_target(target)
-        available_features = sorted(f for f in feature_pool if f in df_subset.columns)
+        available_features = sorted(f for f in feature_pool if f in df_subset.columns
+                                    and not (exclude_odds and f.startswith('odds_')))
         X = df_subset[available_features].copy().replace([np.inf, -np.inf], np.nan)
-        
+
         # Drop zero-variance columns
         variances = X.var()
         valid_cols = variances[variances > 1e-10].index.tolist()
         X = X[valid_cols]
         y = df_subset[target]
-        
+        if stop_after == 'pool':
+            return list(X.columns)
+        if groups is None and stratify and 'seasonYear' in df_subset.columns:
+            groups = df_subset['seasonYear']
+
         # Initial proxy model to gauge baseline importance
-        if 'win' in target:
-            model = lgb.LGBMClassifier(n_estimators=100, max_depth=4, verbose=-1, random_state=seed, n_jobs=-1,
-                                       deterministic=True, force_row_wise=True,
-                                       importance_type=importance_type)
-        else:
-            model = lgb.LGBMRegressor(n_estimators=100, max_depth=4, verbose=-1, random_state=seed, n_jobs=-1,
-                                      deterministic=True, force_row_wise=True,
-                                      importance_type=importance_type)
-            
-        model.fit(X, y)
-        initial_imp = dict(zip(X.columns, model.feature_importances_))
-        
+        bagging = {} if legacy else dict(colsample_bytree=0.5, subsample=0.8, subsample_freq=1)
+        make_model = lgb.LGBMClassifier if 'win' in target else lgb.LGBMRegressor
+
+        def importances(Xm, ym, n_fits=1, seed_offset=0):
+            imp = 0.0
+            for k in range(n_fits):
+                model = make_model(n_estimators=100, max_depth=4, verbose=-1, random_state=seed + seed_offset + k, n_jobs=-1,
+                                   deterministic=True, force_row_wise=True, importance_type=importance_type, **bagging)
+                imp = imp + model.fit(Xm, ym).feature_importances_
+            return imp / n_fits
+
+        initial_imp = dict(zip(X.columns, importances(X, y, n_importance_fits)))
+
         # ==========================================
         # STAGE 1: Redundancy Filter (Clustering)
         # ==========================================
         # Calculate Spearman rank correlation matrix
         corr_matrix = X.corr(method='spearman').abs()
-        
+
         # Fill NaNs with 0 (no correlation) just in case a column became effectively constant
         corr_matrix = corr_matrix.fillna(0)
-        
+
         # Convert to distance matrix (clip to avoid precision issues < 0)
         dist_matrix = np.clip(1 - corr_matrix, 0, 1)
         dist_array = squareform(dist_matrix, checks=False)
-        
+
         # Hierarchical clustering (average linkage)
         linked = sch.linkage(dist_array, method='average')
-        
+
         # Group features with < 0.15 distance (> 0.85 correlation)
         labels = sch.fcluster(linked, t=0.15, criterion='distance')
-        
+
         # Keep, per cluster, the feature with the highest initial LightGBM importance (ties: smallest name)
         cluster_members = {}
         for feat, label in zip(X.columns, labels):
@@ -506,43 +533,56 @@ class BaselineModel:
         stage1_features = sorted(min(members, key=lambda f: (-initial_imp[f], f))
                                  for members in cluster_members.values())
         logging.info(f"[{target}] Stage 1 (Clustering): Reduced from {len(X.columns)} to {len(stage1_features)} independent features.")
-        
+
+        if stop_after == 'stage1':
+            return stage1_features
+
         # If we have very few features, just return what we have
         if len(stage1_features) <= n_min:
             return sorted(stage1_features, key=lambda f: (-initial_imp[f], f))
-            
+
         # ==========================================
         # STAGE 2: Noise Filter (Null Importance)
         # ==========================================
         X_stage1 = X[stage1_features]
-        n_permutations = 10
         rng = np.random.default_rng(seed)
+        y_arr = y.to_numpy()
+        if groups is None:
+            blocks = [np.arange(len(y_arr))]
+        else:
+            codes = pd.factorize(pd.Series(np.asarray(groups)))[0]
+            blocks = [np.flatnonzero(codes == c) for c in np.unique(codes)]
         null_importances = np.zeros((n_permutations, len(stage1_features)))
-        
+
         for i in range(n_permutations):
-            y_shuffled = rng.permutation(y)
-            model.fit(X_stage1, y_shuffled)
-            null_importances[i, :] = model.feature_importances_
-            
-        # 90th percentile of null importances bounds the noise for each feature
-        null_p90 = np.percentile(null_importances, 90, axis=0)
-        
+            y_shuffled = y_arr.copy()
+            for b in blocks:                                     # one block = the whole sample, or one season
+                y_shuffled[b] = rng.permutation(y_arr[b])
+            null_importances[i, :] = importances(X_stage1, y_shuffled, 1, seed_offset=1000 + i)
+
         # Get actual importance using only the stage1 features
-        model.fit(X_stage1, y)
-        actual_imp = model.feature_importances_
-        
-        # Filter: Actual must be > Null P90 AND > 0
-        final_candidates = []
-        for idx, feat in enumerate(stage1_features):
-            if actual_imp[idx] > null_p90[idx] and actual_imp[idx] > 0:
-                final_candidates.append((feat, actual_imp[idx]))
-                
-        # Sort by actual importance
+        actual_imp = importances(X_stage1, y, n_importance_fits)
+
+        if legacy:
+            # 90th percentile of null importances bounds the noise for each feature
+            null_p90 = np.percentile(null_importances, 90, axis=0)
+            score = actual_imp
+            passed = actual_imp > null_p90
+        else:
+            null_sd = null_importances.std(axis=0, ddof=1)
+            score = (actual_imp - null_importances.mean(axis=0)) / (null_sd + 1e-6)
+            passed = score > z_threshold
+
+        # Filter: Actual must clear the null AND be > 0
+        final_candidates = [(feat, score[idx]) for idx, feat in enumerate(stage1_features)
+                            if passed[idx] and actual_imp[idx] > 0]
+
+        # Sort by actual importance (legacy) or by the z-score
         final_candidates.sort(key=lambda x: (-x[1], x[0]))
         selected = [f[0] for f in final_candidates]
-        
+
         logging.info(f"[{target}] Stage 2 (Null Imp): Reduced from {len(stage1_features)} to {len(selected)} high-signal features.")
-        
+
         # Enforce constraints (n_min and n_top)
         if len(selected) > n_top:
             selected = selected[:n_top]
@@ -555,8 +595,33 @@ class BaselineModel:
                     selected.append(f)
                 if len(selected) == n_min:
                     break
-                    
+
         return selected
+
+    def select_market_features(self, sel_df, min_rows=1500, append_odds=True, **kw):
+        """
+        Feature lists {'ml', 'spread', 'total'} for models that have the opening lines among their inputs.
+
+        With the lines in the pool, a tree on the raw margin / total puts odds_home_spread / odds_total at every root and the
+        shuffled-target fits do not, so the null thresholds are inflated and the team features are judged against the wrong
+        yardstick. Here the team features are selected against what the market misses (margin + home spread for ML and spread,
+        total - opening total for the total) with the odds_* columns excluded from the proxy models, and the pool's odds_*
+        columns are appended to every list afterwards. Rows without a line have no residual and are skipped; if fewer than
+        `min_rows` remain the raw target is used instead (still without the odds columns). append_odds=False leaves the lines out of
+        the lists (a model that takes the line as an offset, not as a feature).
+        """
+        def pick(rows_df, gap_col, gap, raw_col, pool_target):
+            keep = rows_df.assign(**{gap_col: gap}).dropna(subset=[gap_col])
+            if len(keep) >= min_rows:
+                feats = self._select_features_from_subset(keep, gap_col, exclude_odds=True, **kw)
+            else:
+                logging.warning(f"[{gap_col}] only {len(keep)} rows with an opening line (< {min_rows}): selecting on {raw_col}")
+                feats = self._select_features_from_subset(rows_df, raw_col, exclude_odds=True, **kw)
+            odds = sorted(f for f in self._get_pool_for_target(pool_target) if f.startswith('odds_') and f in rows_df.columns) if append_odds else []
+            return feats + [f for f in odds if f not in feats]
+        spread = pick(sel_df, SPREAD_GAP_COL, ResidualSpreadModel.make_target(sel_df), 'target_point_diff', SPREAD_GAP_COL)
+        total = pick(sel_df, TOTAL_GAP_COL, ResidualTotalModel.make_target(sel_df), 'target_total_pts', TOTAL_GAP_COL)
+        return {'ml': list(spread), 'spread': spread, 'total': total}
 
 
 
@@ -684,9 +749,13 @@ class BaselineModel:
 
             # Feature selection on model_train only (no leakage)
             sel_df = self.selection_rows(model_train_df, tuning=tune_per_fold)
-            features_ml = self._select_features_from_subset(sel_df, 'target_home_win')
-            features_spread = self._select_features_from_subset(sel_df, 'target_point_diff')
-            features_total = self._select_features_from_subset(sel_df, 'target_total_pts')
+            if use_odds:
+                picked = self.select_market_features(sel_df)
+                features_ml, features_spread, features_total = picked['ml'], picked['spread'], picked['total']
+            else:
+                features_ml = self._select_features_from_subset(sel_df, 'target_home_win')
+                features_spread = self._select_features_from_subset(sel_df, 'target_point_diff')
+                features_total = self._select_features_from_subset(sel_df, 'target_total_pts')
             
             logging.info(f"Fold {test_season} features - ML: {len(features_ml)}, Spread: {len(features_spread)}, Total: {len(features_total)}")
 
@@ -1367,17 +1436,13 @@ class BaselineModel:
         # Select features from model_train only (no leakage)
         # (FLAML validates on the last 20% of model_train, so selection stops before that block)
         sel_df = self.selection_rows(model_train_df, tuning=True)
-        self.features_ml = self._select_features_from_subset(sel_df, 'target_home_win')
-        if market_aware:
-            # the spread model learns the gap from the opening line: select on the gap (rows without a line have none)
-            sp = sel_df.assign(**{SPREAD_GAP_COL: ResidualSpreadModel.make_target(sel_df)}).dropna(subset=[SPREAD_GAP_COL])
-            self.features_spread = self._select_features_from_subset(sp, SPREAD_GAP_COL)
-            if total_residual:
-                tt = sel_df.assign(**{TOTAL_GAP_COL: ResidualTotalModel.make_target(sel_df)}).dropna(subset=[TOTAL_GAP_COL])
-                self.features_total = self._select_features_from_subset(tt, TOTAL_GAP_COL)
-            else:
-                self.features_total = self._select_features_from_subset(sel_df, 'target_total_pts')
+        if use_odds:
+            # the lines are model inputs: pick the team features by what the market misses (odds excluded from the proxy
+            # models), then append the odds columns - for the total too, whatever its fitted target (select_market_features)
+            picked = self.select_market_features(sel_df)
+            self.features_ml, self.features_spread, self.features_total = picked['ml'], picked['spread'], picked['total']
         else:
+            self.features_ml = self._select_features_from_subset(sel_df, 'target_home_win')
             self.features_spread = self._select_features_from_subset(sel_df, 'target_point_diff')
             self.features_total = self._select_features_from_subset(sel_df, 'target_total_pts')
         

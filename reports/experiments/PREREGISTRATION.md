@@ -392,3 +392,284 @@ Steps:
 The report states the actual standard errors.
 
 **Reading rule.** Supported / not supported against the rules above; no criterion changes after the run; anything else is exploratory. A "supported" label on the historical test is evidence about the scraped close, subject to the contamination caveat; only the forward test says what could be acted on.
+
+## E25 - decorrelation from the market: edge slope and blend (registered 2026-10-24, before any E25 run)
+
+### Why the existing no-odds artifacts are not used (checked first)
+
+- `models/saved/backtest_predictions_no_odds_v2.csv` (2026-01-21, 5,790 games, 2021-22..2025-26 partial): its attached lines are corrupt - 230 games with a moneyline beyond +-2000,
+  355 with both moneylines of the same sign, 553 where the listed spread has the opposite sign of `odds_home_spread_open`. It predates the audit-fixes and team-audit-2 odds pipeline (one-book opening odds, merge guards).
+- `models/saved/backtest_predictions_no_odds.csv` (2026-03-17): one season only (2025-26, 1,014 games); its feature config contains `roster_bpm_ewma_x` and `roster_bpm_ewma_y`, a duplicated-merge artifact that team-audit-2's merge guards now prevent.
+- Both were made by older code than every other experiment here, so they are not comparable with the E1-E24 baseline. The `_no_odds_2026-03-18` model files are final models (no out-of-sample predictions) and are left untouched.
+- The E-series baseline itself was built on `training_set_v1_reduced_2026-10-16.csv`; the current set is `..._2026-10-19.csv`. To compare like with like, all three runs below are regenerated on the 10-19 set with `experiments.lib.run_walk_forward` (same folds, per-fold tuning, seed 42).
+
+### Runs (regenerated, written to reports/experiments/E25_*/)
+
+- `E25_with_odds`: the baseline - opening odds in the feature pools (market as a feature; the deployed total model's form).
+- `E25_residual`: E1's hooks on `E25_with_odds`'s feature sets (market as an offset: spread = -line + f(X), total = line + f(X), ML init score = logit of the de-vigged opening probability; the deployed spread model's form).
+- `E25_no_odds`: `BaselineModel.load_data(use_odds=False)` pools, features selected afresh per fold (no market information at all).
+
+**No-odds validity checks (must all pass before the diagnostic is read):** (1) no selected feature contains `odds` or `close`; (2) the same games as `E25_with_odds`; (3) in every fold the latest training date precedes the first test date;
+(4) per-season spread MAE, total MAE and ML log loss within 0.5 points / 0.5 points / 0.03 of the audit's post-fix no-odds walk-forward (`reports/audit_fixes/walk_forward_no_odds.md`, "new: neutral params") - a larger gap is investigated, not ignored;
+(5) reported only: per fold, the largest absolute correlation (on the model-training rows) between a selected feature and the opening total, opening spread and opening log-odds - a value above 0.9 is a market proxy and is named.
+
+### Quantities (all against the OPENING line; the closing line is a secondary readout)
+
+- Market expectation: total `L = odds_total`; spread `L = -odds_home_spread` (home margin); ML `L = logit(de-vigged opening home probability)` (E1's `devig_open_prob`; games without a moneyline dropped from ML).
+- Edge `e = model - L` (ML on the log-odds scale, using `ml_prob_raw`, before isotonic calibration). Market residual `r = actual - L` (ML: the outcome).
+- **Edge slope beta:** OLS `r ~ 1 + e` (ML: logistic regression of the home win on `e` with offset `L`, plus intercept). beta = 1: the edges are real and full-sized; 0: noise; between: overstated by a factor 1/beta.
+- Error correlation `corr(actual - model, actual - L)` (spread, total).
+- **Blend:** `B = L + k e`, k fitted by least squares without intercept on the discovery seasons (ML: logistic, offset `L`, no intercept), applied unchanged to confirmation. Loss: squared error (spread, total), log loss (ML).
+  Secondary: k walk-forward (k for season s fitted on test seasons before s), 2020-21..2025-26.
+- Day-cluster bootstrap, 1,000 draws (`metrics.RNG_SEED`). Discovery 2019-20..2021-22, confirmation 2022-23..2025-26. Regular season and playoffs both kept (as in the baseline); a regular-season-only rerun is reported.
+
+### Decision rules (fixed now), per market
+
+1. **Edges informative:** confirmation beta's 95% lower bound > 0. **Overstated:** confirmation beta's 95% upper bound < 1.
+2. **Decorrelation adds information (H_DECOR):** in confirmation, beta(no-odds) - beta(with-odds) has a paired bootstrap interval above 0 **and** the no-odds blend's loss is below the opening line's with the paired interval excluding 0.
+   Holm across the three markets on the blend-vs-line p-values.
+3. Reported, no decision: blend(no-odds) vs blend(with-odds) and vs blend(residual); the same against the closing line; decile plots of r against e.
+4. Anything not listed is exploratory. A supported H_DECOR makes the blend a **candidate** (forward test, or the feature route), not a deployment.
+
+## E26 - forward test of edge shrinkage and the totals no-odds blend against ENTRY lines (registered 2026-10-24, before any forward game is scored)
+
+Follows E25. Nothing in the deployed model or the live pipeline changes; this test only reads what the live pipeline already logs.
+Frozen inputs (computed from history only, 2026-10-24T07:58, `experiments/e26_freeze.py`, refuses to overwrite): `reports/experiments/E26_forward_shrink/frozen/params.json` and `no_odds_total.joblib`.
+
+### Frozen quantities
+
+- **Shrink factors beta** (edge slope vs the opening line) for the deployed model's form, estimated on E13's out-of-sample predictions (E1 residual spread, E3 margin-stack ML, baseline total), **all seven seasons 2019-20..2025-26**:
+  spread 0.474 [0.201, 0.780], total 0.223 [0.099, 0.347], ML 0.320 [0.061, 0.581] (log-odds scale).
+  Why all seasons and not discovery only: for a forward test every historical season is "find" data. The discovery-only values are reported but are unstable: spread 0.044 [-0.425, 0.481], total 0.226 [0.053, 0.400], ML 0.134 [-0.280, 0.504].
+- **Totals blend weight** k = 0.166 (E25_no_odds, all seasons; discovery-only 0.133).
+- **No-odds totals model:** LightGBM with 37 features, selected by the harness on the first part of 2013-14..2025-26; grid config 7; refit on all 16,795 games through 2026-06-13. Training set and model SHA-256 recorded.
+  The SHA-256 of the feature-building code (`team/game_features_v2.py`, `core/travel_builder.py`, `core/injury_report_features.py`, `team/train_baseline.py`, `scripts/generate_training_set.py`, `core/odds_clean.py`) is also recorded.
+- **Deployed set:** `_with_odds_cand_20261019`, model_set_hash `0165d3361e4228ad2551a787c66e1cd82ce11bd5b9a4a258b7e79467e7cd02e0`.
+- Residual SDs for the betting readout only: spread 13.66, total 18.46 (shrunk), 18.44 (blend).
+
+### Forward sample
+
+- NBA games (regular season, play-in and playoffs) on or after **2026-10-25** with a final result and an entry line from `core.odds_clean.load_entry_odds` (consensus at noon ET on game day, or 30 minutes before tip if earlier, from `odds_snapshots`). The 2026-10-20..10-24 games are excluded: they were visible before registration.
+- **(a) uses the deployed model's logged prediction** (`predictions_log_v2`). A game is eligible only if its model_set_hash equals the frozen hash **and** its prediction_date is at or before the entry line's fetched_at time, so the prediction existed when the price was available.
+  Games predicted by another model set (after a retrain) are excluded from the primary analysis and reported separately, because beta belongs to this model. The number excluded under each rule is reported.
+- **(b) uses the frozen no-odds model** on point-in-time feature rows rebuilt after the fact (`scripts/generate_training_set.py`). The scorer refuses to run if any of the hashed feature-code files changed, unless it is run from a checkout of the registration commit.
+  Caveat stated now: the rebuilt rows can differ from what a live build would have produced, because of data revisions or a missed injury snapshot; the number of rows with missing injury data is reported.
+
+### Definitions (as in E25, with the entry line in place of the open)
+
+L = `entry_total`; `-entry_home_spread` (home margin); logit(`entry_home_prob`) for ML. Edge e = model - L. Residual r = actual - L; for ML, the outcome.
+Forward edge slope beta_f: OLS `r ~ 1 + e`; for ML, logistic regression with offset L and an intercept. Shrunk prediction L + beta e; blend L + k e_no-odds. Intervals from a day-cluster bootstrap (1,000 draws, `metrics.RNG_SEED`).
+
+### Hypotheses (one-sided) and decisive sample sizes
+
+Power (stated now, from history vs the open; entry lines are sharper, so this is optimistic): comparing the *loss* of shrunk or blended predictions with the line needs 11,000-48,000 games, except shrunk vs unshrunk totals (about 1,400). So the primary tests use the slope, the quantity the loss comparison depends on.
+
+| id | claim | supported iff | decisive at |
+|---|---|---|---|
+| A-total | deployed total edges are overstated vs entry lines (shrinking helps) | 95% upper bound of beta_f < 1 | 1,300 eligible games |
+| A-spread | the same for the deployed spread | 95% upper bound of beta_f < 1 | 2,500 |
+| A-ml | the same for the deployed ML (log-odds) | 95% upper bound of beta_f < 1 | 2,500 |
+| B-total | no-odds total edges carry information vs entry lines (a blend with k > 0 helps) | 95% lower bound of beta_f(no-odds) > 0 | 2,500 |
+
+- Decision at the single decisive look per hypothesis, with Holm across the four (the one-sided bootstrap p is the share of draws on the wrong side of 1, or of 0).
+  Looks at 500 and 1,000 games (and 1,300 for the 2,500-game tests) are reported and **decide nothing**. 1,300 games is about one season; 2,500 is about two.
+- Reported, no decision:
+  - whether each frozen beta lies inside the forward 95% interval (the frozen factor is about right);
+  - per-game loss of shrunk vs unshrunk vs line, and blend vs line vs the shrunk deployed total (paired, day bootstrap);
+  - beta_f against the closing line;
+  - regular season only;
+  - discovery-only factors in place of all-season ones;
+  - a betting readout: unified 5% probability-edge rule on shrunk probabilities (Normal with the frozen SDs for spread and total, -110 because entry prices for those markets are not stored; ML at entry moneyline prices), with bets, hit rate and return with day-bootstrap intervals.
+- **Reading rule.** Supported A-* means the shrink should be applied to the bet rule as a candidate change, with the forward beta reported next to the frozen one. Supported B-total makes the blend a candidate (the feature route or a deployment proposal, which needs the owner's go-ahead).
+  Not supported means not shown at that sample size; with power this low that is not evidence of no effect. No criterion changes after the first look.
+- The scorer, `experiments/e26_score.py`, must be committed together with this section and the frozen folder before the first look at any forward game.
+
+**Power of the registered slope tests** (stated before any forward data). Historical bootstrap standard errors are scaled to the decisive n and assume the true forward beta equals the frozen value; entry lines are sharper than the open, so the true power is likely lower:
+- A-total: SE 0.17 at 1,300 games, power about 1.00;
+- A-spread: SE 0.28 at 2,500, power about 0.60 (the deployed spread's edges are small, SD 0.92 points);
+- A-ml: SE 0.25 at 2,500, power about 0.86;
+- B-total: SE 0.07 at 2,500, power about 0.77.
+
+**Expected thin betting readout** (from a smoke test on history, with the opening line standing in for the entry line): with the frozen shrink factors the 5% probability-edge rule fires about 35 times on totals, 6 on ML and 0 on spread over 2019-20..2025-26. The forward readout will therefore have very few bets and is descriptive only. The smoke test reproduced every frozen beta exactly.
+
+# Tracking and fatigue program (E28 onward; plan in reports/tracking_fatigue/PLAN.md; branch `tracking-fatigue`, cut from `odds-rerun`)
+
+Question: do running load, speed, physical previous games and schedule density, built from tracking data the database already holds, improve the team models (spread, total, moneyline) or the props model.
+Nothing deployed changes in this program before step 6, which needs the owner's go-ahead. E27 is reserved for the E18 totals-calibration test, so this program starts at E28.
+
+## E28-audit - data audit (registered 2026-10-24, before any audit number was computed; descriptive, nothing passes or fails)
+
+Inspecting row counts, column names, coverage and the daily log is allowed before registration; relationships with outcomes are not looked at in the audit. Script: `experiments/e28_audit.py`, output `reports/experiments/E28_tracking/audit.md`.
+
+Seen before registration (not results of the audit, only why the questions below matter): `team_track_stats_v3.speed` is NULL in the rows inspected, and the daily log (`data/raw/daily_inference.log`, 2026-10-20 to 2026-10-24) shows the 9:15 run failing to fetch tracking for a number of 2026-27 games.
+
+Checks:
+1. **Coverage.** Rows and distinct games per season for team tracking, player tracking and hustle; games with both teams present; playoff (`004`) and play-in (`005`) shares; the 2024-25 player-tracking fill share; the 2019-20 bubble and 2020-21.
+2. **Units and sanity.** Parse `minutes` "MM:SS". Team distance per game, mean and SD by season. Player speed range. Player distances summed per team against team `distance` (share within 1%). Outliers: distance 0 with minutes > 0, speed > 6. Whether `speed` is filled anywhere at team level.
+3. **Live availability.** From the daily log: for every game in the log window, the date it first appeared in a "Successfully added" line for each tracking and hustle table, against the game date; the share of 9:15 runs that had the previous night's tracking for all games; the error text. For back-to-back second nights in history: the share whose previous game has tracking in the database at all (the live proxy is only the log window, and that is said).
+4. **Opening-line timing on back-to-backs.** `nba_odds_opening` has no timestamps and `odds_snapshots` starts 2026-10-19, so only what those hold is reported, and what could not be measured is stated.
+5. **Opening-line coverage** by season in `nba_odds_opening`, including seasons before 2019-20.
+
+Stop rule (from the plan): if the previous night's tracking is usually missing at 9:15 and cannot be fetched earlier, the lagged-load families (F1, F2, F3) use "most recent game with data" and the report says so.
+
+## E28 - residual screen of the tracking / fatigue families (registered 2026-10-24, before any residual or mechanism regression was computed)
+
+Written after the audit (`reports/experiments/E28_tracking/audit.md`) and after the feature library (`experiments/features_tracking.py`, tests in `tests/team/test_tracking_features.py`) existed, but before any feature was related to any outcome.
+Only distributions of the features themselves (counts, ranges, missingness) were looked at, to set data-quality rules. No model, deployment or schedule changes.
+
+### Feature definitions as implemented (these are the definitions; deviations from the plan are listed)
+
+All team features for game t use games strictly before t. Variant file: `data/processed/experiments/e28_training_set.csv` = the 10-19 training set plus columns `trk_<name>_home / _away / diff_trk_<name>`; the existing 430 columns and the 16,795 rows are unchanged (checked).
+- **Norm / sd.** Norm = EWMA (span 20) of the team's (or player's) prior valid games, available after 5 prior valid games. SD = rolling 20-game SD of prior valid games (after 8), floored at 1% of |norm|. z = (x - norm) / sd, clipped to +-6.
+- **Data validity.** Team-game tracking is valid iff distance > 0, touches > 0 and 0.05 <= distance per team minute <= 0.095 (the all-zero rows, 350 of them in 2025-26, and 25 broken rows with under 12 miles are missing, never "low load"). Player-game is valid iff minutes >= 5, speed in [2.5, 6.5] mph and distance / hours played in [1.5, 8.0] mph. Team minutes and possessions: `team_game_full.minutes` (identical to the sum of player minutes in every game, audit §2) and pace x minutes / 240.
+- **"Last" features use the most recent game with data**, at most 3 games back (older -> NaN), because tracking was missing for the whole 10-23 slate at the 10-24 run (audit §3). F3 box-score items (`prev_ot`, `prev_close`, `prev_n40`, `prev_opp_pace`) use the previous game itself.
+- **F1.** `dist_per_min_last`, `dist_per_poss_last`; `xload` = z of distance per possession (over the team's prior games); `xload_last`; `xload_4n` = sum of `xload` over the team's games dated 1-4 days before t (0 if there were none, NaN if games were in the window but none had data or the team has no valid xload yet); `rot_xload_last` = minutes-weighted mean of the rotation's (>= 10 min in that game) player z of distance per minute, at least 4 players with a z.
+- **F2.** `rot_speed_z_last` = the same with player speed z; `rot_speed_trend5` = OLS slope over the team's last 5 games of that series (at least 3 valid); `star_speed_z_last` = minutes-weighted mean of the speed z of the 2 players with most minutes in that game (both must have a z).
+- **F3.** `prev_ot` (team minutes > 240), `prev_close` (|plus-minus| <= 5), `prev_n40` (players at 40+ minutes), `prev_hustle_z` = z of contested shots + deflections + loose balls recovered + box-outs (team totals; NaN where the team has no hustle row, i.e. mostly before 2016-17), `prev_opp_pace` = pace of the previous game.
+- **F4.** `g3in4` (3+ games in the window [t-3, t] days), `g4in6` (4+ in [t-5, t]), `games_last7` (games in [t-7, t-1]), `trip_last_game` (road game whose next game, within 7 days, is at home; read from the published schedule), `homecoming` (home game after 3+ consecutive road games, no gap over 7 days), `prev_altitude` (previous game within 7 days at an arena >= 4,000 ft, i.e. DEN or UTA, and this one is not).
+- **F5.** `xload_4n_x_b2b` = `xload_4n` x `is_b2b`; `xload_last_x_dist` = `xload_last` x `dist_miles` / 1000 (both from the training set's existing columns); `one_side_tired` (game level, home perspective): tired score = `xload_4n` + `prev_ot` + `is_b2b`; +1 if home's score is above the 80th percentile and away's below the median, -1 for the reverse, else 0.
+- **Deviation from the plan:** the percentiles of the tired score are expanding (all team-games dated strictly before the game, at least 200) rather than "fitted on each fold's training rows", so the column does not depend on a fold and cannot leak; the plan's wording would need a different column per fold.
+- **Other deviations/additions:** the plausibility rules and clip above; the 7-day continuity guards in F4; the 3-game staleness cap. All fixed before the screen.
+
+### Data and targets
+
+- Games: regular season only (`gameId` prefix 002) for the main test; playoffs and play-in added as a sensitivity run. Games with any NaN in the family's columns are dropped (listwise); the numbers dropped are reported.
+- **(a) model residual** (2019-20 .. 2025-26, the out-of-sample test seasons of the deployed-form runs on the 10-19 training set): total = `target_total_pts - total_pred` (run `E25_with_odds`); margin = `target_point_diff - spread_pred` (run `E25_residual`, the E1 form); home win: logistic regression with the E13 stack probability as offset (stack = logistic on [logit raw ML probability from `E25_with_odds`, E1 margin / sigma from `E25_residual`], fitted per fold on that fold's calibration set, as in `experiments/e13_combined.py`; games common to both runs).
+- **(b) market residual** (opening line): total `target_total_pts - odds_total`; margin `target_point_diff + odds_home_spread`; home win: logistic with offset logit(`open_home_prob`), 2019-20 onward only (the 2013-14..2018-19 archive has closing moneylines only). Lines outside the `core.odds_clean` plausibility bounds (total 170-290, |spread| <= 30) are dropped.
+  Because the audit found 2013-14..2018-19 opening totals and spreads in the training set (archive source, different from the later seasons), (b) total and margin use **2013-14 .. 2021-22 as find seasons**, with the earlier six reported separately as a sensitivity check; ML (b) finds on 2019-20 .. 2021-22.
+- **(c) mechanism** (outcomes of game t, never features): own team's 3P%, FT%, rim (restricted area) FG%, pace, points per possession, one row per team-game, regressed on the family's own-team features plus the opponent's, a home indicator and season dummies. Find 2013-14 .. 2021-22, confirm 2022-23 .. 2025-26.
+- Confirmation seasons everywhere: 2022-23 .. 2025-26.
+
+### Regressors, estimation, tests
+
+- Margin and home-win targets use the family's `diff_trk_*` columns (home minus away; the game-level `trk_one_side_tired` as is). The total target uses the sum home + away of the team-level columns (|`trk_one_side_tired`| for F5). All regressors are standardised with the find-period mean and SD (binary flags too), so a coefficient is "points (or log-odds) per 1 SD".
+- Model: OLS on the residual with season dummies; for the home win, logistic regression with the offset and season dummies. Statistic: **joint Wald test** that all family coefficients are zero, with the covariance taken from a **day-cluster bootstrap** (1,000 draws, `metrics.RNG_SEED`, whole game days resampled; logistic draws by Newton steps from the full-sample fit); p from a chi-square with the numerical rank of the covariance as degrees of freedom (pseudo-inverse, rcond 1e-8).
+- **Find step passes** iff the find-period Wald p < 0.10.
+- **Confirmation.** The find-period coefficient vector is applied unchanged to the confirmation seasons' features to form a signal; the confirmation residual is regressed on that signal (OLS / logistic with offset, season dummies; the signal is standardised on the find period). The slope gamma (1 = the find effect is replicated at full size) has a day-bootstrap interval; **same direction iff gamma > 0**, and its one-sided bootstrap p is the share of draws with gamma <= 0 (add-one).
+- **Tiers.** Reject = fails the find step, or gamma <= 0. **Candidate** = passes the find step, gamma > 0 and **Benjamini-Hochberg q < 0.10** over the 15 family x target confirmation p-values of that residual type (families that failed the find step enter with p = 1; (a) and (b) corrected separately). A family that passes the find step with gamma > 0 but q >= 0.10 is reported as "not confirmed" and is not a candidate. Only (a) candidates go to the walk-forward test (E29) on that market; (b) candidates become betting-angle candidates (step 8, forward tests).
+- **Mechanism rule for F1 and F2 (stated now).** The fatigue story is called **supported** iff, for at least one of 3P%, FT% and pace, the find Wald p < 0.10, gamma > 0 and the one-sided p < 0.0167 (Bonferroni over the three); otherwise the report says that F1/F2 do not move shooting or pace and the story is weak, whatever (a) and (b) show. Rim FG% and points per possession are reported for comparison (the leg-fatigue question of step 7); they decide nothing.
+- Reported but deciding nothing: each coefficient with its bootstrap interval in plain units, the confirmation-period Wald p, the playoffs-included rerun, the six archive seasons alone, and per-season signs of gamma.
+- Anything outside these rules is exploratory and labelled so. No rule changes after the first residual is seen.
+
+### Expected (stated before running)
+
+F4 is expected to be mostly priced (E23 found nothing on favourites on a back-to-back). F1 and F2 are the novel part, and the plausible size on totals is under one point; most families failing is the normal outcome. The power of a joint test on about 3,600 (a) find games is modest: it can see roughly a 0.3-0.5 point shift per SD on totals, not smaller.
+
+## E29 - forced-inclusion walk-forward test of the E28 candidates (registered 2026-10-24, before any E29 run)
+
+### What E28 produced (read before registering this)
+
+Under the registered E28 rules the only candidate on the model-residual screen (a) is **F1 on the total** (find Wald p 0.0044, gamma 0.96, one-sided p 0.001, BH q 0.015). The opening-line screen (b) has four candidates: F1, F3 and F4 on the margin and F5 on the total. Under the plan these go to forward betting tests (step 8), not to this step.
+The exploratory follow-up `reports/experiments/E28_tracking/explore.md` (written after the screen was read, so not registered) shows that the F1 total signal vanishes once the previous game's pace and the team's pace norm are controlled (gamma 0.96 -> 0.06, 95% CI [-1.8, 1.8]). The plan sends every (a) candidate to this step, so the registered test below is run anyway; the two extra arms registered here are there to say what a pass would mean.
+
+### Design (the plan's step 4, for the one market with a candidate)
+
+- Market: total, deployed form = level model (reference run `E25_with_odds`, 10-19 training set, 7 folds 2019-20 .. 2025-26, per-fold tuning from the fixed 8-config grid inside the fold, seed 42).
+- **Forced inclusion.** Each fold's total feature list = the reference run's list for that fold + the family's columns (`features_tracking.family_columns`). The ML and spread lists are the reference's, unchanged, so those two models must reproduce the reference predictions exactly (checked, and a failure invalidates the run). The file `reports/experiments/E29_<arm>/features.json` is written before `run_walk_forward` is called, so the harness reuses it. The data are the 10-19 training set plus the E28 columns (`data/processed/experiments/e28_training_set.csv`); the game ids and row order per fold must equal the reference's (checked).
+- Compared with `metrics.paired` on the same games: total MAE (main), total MSE (companion), with ML log loss and spread MAE for no-harm. Per season, pooled, the noise floor, and the share of the fitted model's gain taken by the family's columns in each fold (a fold counts as non-trivial if the family takes at least 5% of the total-model gain).
+
+### Arms
+
+| arm | total features | status |
+|---|---|---|
+| `E29_F1_total` | reference + F1 (15 columns) | **the registered test** |
+| `E29x_pace_total` | reference + `trk_prev_opp_pace_home / _away / diff_` (the previous game's pace; 3 columns) | exploratory: what pace persistence alone does |
+| `E29x_F1pace_total` | reference + F1 + those 3 | exploratory: does F1 add anything to the pace columns |
+| `E29x_F1pool_total` | fresh feature selection per fold with only the F1 columns added to the pool (the other E28 columns removed from the file) | exploratory: the plan's "secondary" arm; seed 42, so its noise floor applies |
+
+### Decision (fixed now; arm `E29_F1_total` only)
+
+- **Adopt:** `decide.mc` on total MAE (at least 5 of 7 seasons better and the pooled paired day-bootstrap 95% interval excludes 0 in favour) **and** `decide.nh` on total MSE, ML log loss and spread MAE (the last two unchanged by construction).
+- **Candidate:** the pooled total-MAE improvement exceeds the largest seed-only difference for total MAE in `reports/experiments/noise_floor.md` (0.0050 points; the seed-43 and seed-44 runs differ from seed 42 by +0.00499 and +0.00489) and at least 4 of 7 seasons are better.
+- **Reject** otherwise. A candidate is not a model change; it goes to the owner with the numbers.
+- Exploratory arms decide nothing. Anything not listed is exploratory.
+
+### Step 5 (combine), stated now
+
+Only Adopt families (and Candidates, labelled) enter the combined variant. If `E29_F1_total` is a Reject there is nothing to combine: step 5 then reports that no family passed, and no feature list is proposed.
+
+
+### E28 erratum (2026-10-24, after the screen and E29 had run; wording only, no rule changed)
+
+The E28 section calls `gamma` "the slope on the find-period signal (1 = the find effect is replicated at full size)". The signal is standardised to the find-period SD, so `gamma` is points (log-odds for the home win) per SD of the signal and full replication equals the signal's find-period SD, not 1. The decision rules use only the sign and the one-sided p-value of gamma, so every tier stands; the effect sizes first reported in SUMMARY.md were understated and are corrected there.
+
+## E30 - forward test of the four E28 opening-line candidates against ENTRY lines (registered 2026-10-24, before any forward game is scored)
+
+Step 8 of the tracking / fatigue plan. The E28 screen (b) produced four candidates against the opening line; none is a model feature (E29 rejected the feature route). This test asks whether each signal still predicts `actual - entry line` on games nobody has seen, and records closing-line value. Nothing in the deployed model, the live pipeline or the database changes, and the test does not depend on the deployed model set, so a promotion does not end it (unlike E26 (a)).
+Frozen inputs (made from history only on 2026-10-24 by `experiments/e30_freeze.py`, which refuses to overwrite): `reports/experiments/E30_forward_tracking/frozen/params.json`. Scorer: `experiments/e30_score.py`; shared code `experiments/e30_signals.py`; features `experiments/features_tracking.py`. Their SHA-256 are in `params.json` (code) and in `reports/experiments/E28_tracking/registration.sha256`; the scorer refuses to run if the hashed code changed.
+
+### The four tests and their frozen signals
+
+Signal = ((regressors - fit mean) / fit SD) @ coefficients - centre, in points; regressors as in E28 (`diff_trk_*` for the margin, home + away sums for the total). Fitted by OLS with season dummies on `actual - opening line` over the regular seasons 2019-20 .. 2025-26 (the same source as the forward lines; the fit on all 13 seasons is stored for a sensitivity run). Games with any regressor missing have no signal and are not scored.
+
+| test | signal | fit games | signal SD (points) | residual SD | 75th pct of abs signal | slope in the 6 archive seasons, not in the fit (SE) |
+|---|---|---|---|---|---|---|
+| T1 | F1 running load -> home margin | 8132 | 0.580 | 13.50 | 0.641 | 0.55 (0.23) |
+| T2 | F3 physical previous game -> home margin | 8262 | 0.595 | 13.53 | 0.563 | 0.62 (0.39) |
+| T3 | F4 schedule density -> home margin | 8270 | 0.573 | 13.53 | 0.631 | 0.28 (0.24) |
+| T4 | F5 interactions -> game total | 8132 | 0.581 | 18.42 | 0.545 | 1.06 (0.39) |
+
+Coefficients (primary fit; the full lists, with the all-season fit, are in `params.json`):
+
+| test | regressor | fit mean | fit SD | coefficient per SD (95% CI) |
+|---|---|---|---|---|
+| T1 | dist_per_min_last | -0.0000 | 0.0037 | -0.0476 [-0.468, +0.365] |
+| T1 | dist_per_poss_last | 0.0000 | 0.0101 | +0.6006 [+0.066, +1.152] |
+| T1 | xload_last | -0.0016 | 1.5193 | -0.6731 [-1.266, -0.093] |
+| T1 | xload_4n | 0.0219 | 1.9845 | +0.4308 [-0.004, +0.871] |
+| T1 | rot_xload_last | -0.0023 | 0.9362 | +0.3711 [-0.079, +0.781] |
+| T2 | prev_ot | -0.0011 | 0.3122 | -0.4033 [-0.824, -0.006] |
+| T2 | prev_close | -0.0041 | 0.6020 | -0.2655 [-0.550, +0.037] |
+| T2 | prev_n40 | 0.0224 | 0.8904 | -0.0297 [-0.445, +0.361] |
+| T2 | prev_hustle_z | 0.0127 | 1.5317 | +0.3411 [+0.024, +0.643] |
+| T2 | prev_opp_pace | -0.0667 | 6.4563 | +0.0018 [-0.277, +0.304] |
+| T3 | g3in4 | -0.0150 | 0.5871 | -0.2259 [-0.574, +0.158] |
+| T3 | g4in6 | -0.0080 | 0.6136 | -0.1531 [-0.558, +0.255] |
+| T3 | games_last7 | -0.0111 | 0.8037 | -0.1104 [-0.465, +0.239] |
+| T3 | trip_last_game | -0.4271 | 0.4947 | -0.3240 [-0.610, -0.024] |
+| T3 | homecoming | 0.1434 | 0.3505 | -0.1546 [-0.426, +0.136] |
+| T3 | prev_altitude | -0.0313 | 0.2784 | -0.1650 [-0.473, +0.127] |
+| T4 | xload_4n_x_b2b | 0.0034 | 1.0174 | -0.0403 [-0.476, +0.389] |
+| T4 | xload_last_x_dist | -0.0065 | 1.2415 | -0.5501 [-0.983, -0.141] |
+| T4 | one_side_tired | 0.1725 | 0.3779 | -0.1126 [-0.520, +0.279] |
+
+The in-sample slope of `actual - opening line` on each signal is 1 by construction (checked: 1.00, 0.995, 1.005, 1.03). The right-hand column is the slope of the same frozen signals on the six archive seasons that were not in the fit: **0.55, 0.62, 0.28, 1.06**. Against entry lines, which are later and sharper than the opening line, the expected slope is below the archive values, so anywhere from 0 to 0.6 should be expected, not 1.
+
+### Forward sample
+
+Regular-season games on or after **2026-10-25** with a final result and an entry line from `core.odds_clean.load_entry_odds` (consensus at noon ET on game day, or 30 minutes before tip if earlier, from `odds_snapshots`). The 2026-10-20 .. 10-24 games are excluded (visible before registration; used only to check the pipeline). The signal is rebuilt from `nba_stats.db` after the game with the frozen code; every input to game t is from before t (tested), so the content is point-in-time. Whether the previous night's tracking had arrived by noon is a separate matter (audit §3): the scorer flags each game `live_feasible` from the daily log (both teams' previous-game team tracking in the database after the sync of that morning, or older than the log) and reports a run on that subset; T3 (schedule only) needs no tracking. Games with no signal are counted and listed by reason.
+
+### Primary statistic and decisions
+
+- Per test: OLS slope of `actual - entry line` (home margin: `margin + entry_home_spread`; total: `total - entry_total`) on the frozen signal, with an intercept, day-cluster bootstrap (1,000 draws, `metrics.RNG_SEED`); one-sided p for slope > 0 = (1 + draws <= 0) / (1,001).
+- **Two decisive looks per test**, each on the first N eligible games of that test in date order (so later games cannot change a look): **N = 2,460** (about two seasons of regular-season games) and **N = 4,920**. At each look the four one-sided p-values are Holm-adjusted and a test is **supported** iff its adjusted p <= **0.025** (so the two looks together spend 0.05). Looks at 600 and 1,230 games are reported and decide nothing.
+- **Power, stated now** (bootstrap standard errors from the historical fits scaled to N: slope SE 0.51 / 0.49 / 0.47 / 0.62 for T1..T4 at 2,460 games and 0.36 / 0.35 / 0.33 / 0.44 at 4,920): if the true forward slope were 1, power at a look is roughly 50% at 2,460 and 80% at 4,920 before Holm; if it were 0.5, roughly 17% and 30%. **A "not supported" result is therefore not evidence of no effect.** The expected value of the test is mostly the slope estimate and its interval.
+- Reported, deciding nothing: the slope against the closing line; the **closing-line-value readout** (OLS of the move from entry to close, in points, on the signal; positive = the market moved toward the signal); the all-season-fit signal; the `live_feasible` subset; playoffs included; the forward SD of the signal against the frozen one; whether 1 and the archive slope lie inside the forward interval; and a descriptive betting readout (bet the signal's side when |signal| >= the frozen 75th percentile, -110 on the entry line because entry prices for spreads and totals are not stored, flat one unit, with bets, hit rate excluding pushes, return per bet and mean closing-line value in points).
+- **Reading rule.** Supported means the signal is a candidate to enter the bet rule or the model (for the model, only with the owner's go-ahead and a live fix for the tracking gap in audit §3). It is not a deployment. Not supported means not shown at that sample size. No criterion changes after the first look; anything else is exploratory.
+- The freeze and scorer files are written and hashed now (before any forward game was scored); committing them is the owner's call, so the hashes are the only timestamp until then.
+
+### E30 amendment 1 (2026-10-24, before any forward game was scored; procedural, no test, signal or decision rule changes)
+
+After the freeze, `experiments/features_tracking.py` was edited in the experiment-harness audit: `trk_prev_opp_pace` (the F3 column) was the previous game's raw pace, which is mostly the team's own pace level and correlated 0.396 with `odds_total` (home + away); it is now the previous game's pace shock, that pace minus the team's own EWMA pace going into that game (correlation 0.025). Commit `f882c7c`. The file's SHA-256 changed from `fa1723c599b71671ec4db5b18cdbed17d362fd1c4cd495daf3b7301512283f93` (registered) to `2b7e1c29c41d6f68ef0ecd90bf8aca0d2b53de26307a8070e6bcb4f2258962a0`; reverting that one block to `g['pace'].shift(1)` reproduces the registered hash exactly. `e30_signals.py` and `core/travel_builder.py` are unchanged, and `frozen/params.json` is untouched (SHA-256 `5d8da6187481498092ea53c99886f4a559f0b2bc74bf7bdfb199c2b8d9d4ca7e`, as registered).
+- Only F3 contains the column, so only **T2** can be affected; T1, T3 and T4 do not use it. T2's frozen coefficient on it is +0.0018 per SD (registered table), against 0.34 to -0.40 for its other regressors.
+- **Measured effect (12,893 historical games, frozen T2 coefficients, old versus new column):** signal SD 0.5793 versus 0.5792 points; SD of the difference 0.001 points (maximum 0.004); correlation 1.000; the sign differs on 0.06% of games. A scorer dry run on the 18 pre-start games gives identical forward signal SDs for all four tests (T2 0.4372 both ways).
+- **Decision:** the frozen parameters, the four tests, the looks and the Holm rule stand as registered. The signal is evaluated with the current code and the registered mean, SD and coefficients; no refit.
+- **Scoring:** the scorer stops by default because the hashed file changed; it is run with `--allow-code-change`, which records `code_changed: ['experiments/features_tracking.py']` in every `results_<date>.json`. That is the intended reading of the registration ("pass `--allow-code-change` and report it"), not a deviation.
+- Not an amendment, only noted: the re-run of the E28 screen under the corrected column (`reports/audit_fixes/rerun_new_defaults/COMPARISON.md`) no longer lists F3 margin as a candidate against the opening line and lists F4 margin only through the multiplicity correction. The E30 test list was fixed before that re-run and is not changed by it.
+
+## E31 - does the feature selector help? All features versus selected (exploratory; registered 2026-10-24, before any E31 run)
+
+Asked by the owner after the tracking program: the baseline keeps 20-29 of about 400 features (`_select_features_from_subset`: Spearman-cluster dedupe at |rho| > 0.85, then a null-importance noise filter, both on the first 64% of the training rows). Does removing that selection change out-of-sample accuracy? Exploratory: it decides nothing and changes no model.
+- Reference: `E25_with_odds` (baseline form on the 10-19 training set: level models for ML, spread and total, opening odds in the pool, 7 folds 2019-20 .. 2025-26, in-fold 8-config grid, seed 42). Same harness, same folds, same games.
+- Arms, via a pre-written `features.json` per fold: **E31_all** = the full target-appropriate pool (diff pool for ML and spread, separate home/away pool for the total) after the selector's own zero-variance filter on the selection rows; **E31_stage1** = the pool after the clustering step only (no null-importance filter).
+- Check before reading results: the reference's selected list is a subset of the stage-1 list in every fold and target (it must be, by construction); if not, my copy of stage 1 is wrong and the arm is discarded.
+- Reported: paired differences (arm - reference) with `metrics.paired` for ML log loss, spread MAE and total MAE (also MSE), per season, the number of features, run time. Noise floor for comparison: seed-only differences of about 0.003 log loss, 0.011 spread MAE, 0.005 total MAE (`noise_floor.md`). A difference inside the floor is "no detectable difference". No adoption rule; any follow-up would be registered separately.
+
+## E31b - the E31 question under the post-audit pipeline (exploratory; registered 2026-10-24, before any E31b run)
+
+E31 asked whether the feature selector helps, but it measured the pre-audit selector inside the pre-audit harness. The experiment-harness audit (`reports/audit_fixes/EXPERIMENT_HARNESS_AUDIT.md`) changed both: the selector (gain importance, bagged proxy fits averaged over 5 seeds, season-stratified shuffles, z-score rule, and for the market-aware form a residual target with the odds columns kept out of the proxy fits and appended afterwards) and the harness (calibration block capped at 1,300 rows, base models refit on model_train + calibration, Platt ML calibration). Whether E31's "no detectable difference" holds for the selector that would now be deployed is a separate question. Exploratory: it decides nothing and changes no model.
+- Reference: `E25_with_odds` regenerated under those defaults into `reports/audit_fixes/rerun_new_defaults/reports/experiments/` (the saved `reports/experiments/E25_with_odds` is not touched or reused; `experiments/e31b_nosel.py` refuses a reference whose `split.json` / `selection.json` are not the post-audit ones). Same data (10-19 training set), folds (2019-20 .. 2025-26), games, tuning grid and seed 42.
+- Arms, via a pre-written `features.json` per fold that the harness is told to reuse (`features_from`): **E31b_all** = the pool after the selector's zero-variance filter on the selection rows (first 64% of the fold's model_train rows), with the pool's `odds_*` columns; **E31b_stage1** = the clustering output only (no null-importance filter), with the `odds_*` columns. Both are cut from the selector's own intermediate lists (`_select_features_from_subset(stop_after='pool' | 'stage1')` through `select_market_features`), so no second implementation of Stage 1 exists.
+- Check before reading results: in every fold and target, reference list is a subset of the stage-1 list, which is a subset of the all-features list. A violation aborts the arm (the lists are then not the selector's).
+- Reported: paired differences (arm - reference) with `metrics.paired` for ML log loss, spread MAE and total MAE (also MSE), per season, feature counts, run time. The noise floors quoted by E31 (0.003 log loss, 0.011 spread MAE, 0.005 total MAE) were measured with the pre-audit selector; they are shown for scale only, and the post-audit selector's seed noise is not re-measured here. A difference inside them is "no detectable difference". No adoption rule; the result is compared with E31's only descriptively.
+- Not stated in advance: a direction. E31 found nothing; this run is not expected to differ, and a difference would need its own registration before it supported any change.

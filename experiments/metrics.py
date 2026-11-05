@@ -148,7 +148,10 @@ def make_bets(df, thr=0.05, markets=('ml', 'spread', 'total'), rule='edge', flat
     games without one are skipped.
     push_aware=True: spread / total win probabilities account for pushes on whole-number lines (betting.cover_probability, the live rule);
     False reproduces the earlier reports, which used Phi(|edge| / sigma) on every line.
-    Columns: gameId, gameDate, seasonYear, market, side, edge, price, line, close_line, won, push, profit (per $100), entry_basis.
+    Columns: gameId, gameDate, seasonYear, market, side, edge, p_win, price, line, close_line, won, push, profit (per $100), entry_basis.
+    p_win is the win probability the edge was computed from (edge = p_win - break-even). With push_aware=True, on a whole-number line it
+    is P(win | no push) = W / (W + L) - the same population as the bet table, which drops pushes and so has a non-push hit rate - and on a
+    half-point line plain Phi(|edge| / sigma). Downstream code should read it from here instead of recomputing Phi(|edge| / sigma).
     """
     if entry is not None:
         df = apply_entry_prices(df, entry)
@@ -164,8 +167,8 @@ def make_bets(df, thr=0.05, markets=('ml', 'spread', 'total'), rule='edge', flat
         price = np.where(home, oh, oa)
         win_home = df['target_home_win'].to_numpy(float) == 1
         won = np.where(home, win_home, ~win_home)
-        d = base[ok].copy().assign(market='ml', side=np.where(home, 'home', 'away')[ok], edge=edge[ok], price=price[ok],
-                                   line=np.nan, won=won[ok], push=False)
+        d = base[ok].copy().assign(market='ml', side=np.where(home, 'home', 'away')[ok], edge=edge[ok], p_win=np.where(home, p, 1 - p)[ok],
+                                   price=price[ok], line=np.nan, won=won[ok], push=False)
         d['profit'] = np.where(d['won'], _payout(d['price']) * 100, -100.0)
         d['close_prob'] = np.where(home, df['close_home_prob'].to_numpy(float), 1 - df['close_home_prob'].to_numpy(float))[ok] if 'close_home_prob' in df else np.nan
         d['open_prob'] = _imp(d['price'])
@@ -192,7 +195,7 @@ def make_bets(df, thr=0.05, markets=('ml', 'spread', 'total'), rule='edge', flat
         sel = ok & ~push
         d = base[sel].copy().assign(
             market=mk, side=np.where(first, 'home' if mk == 'spread' else 'over', 'away' if mk == 'spread' else 'under')[sel],
-            edge=edge[sel], price=-110.0, line=ln[sel], won=won[sel], push=False)
+            edge=edge[sel], p_win=(edge + BREAK_EVEN_110)[sel], price=-110.0, line=ln[sel], won=won[sel], push=False)
         d['profit'] = np.where(d['won'], 100 / 1.1, -100.0)
         cl = df[close_col].to_numpy(float) if close_col in df else np.full(len(df), np.nan)
         d['close_line'] = cl[sel]

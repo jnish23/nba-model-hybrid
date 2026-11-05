@@ -54,14 +54,14 @@ def extra(test, base, cmp):
     lines = [f'## Games with at least one Out player ({n} games in the training set; subset used for the keep rule)\n', fmt_compare(sub).to_markdown(index=False), '']
     # change in how often / how strongly injury features are used
     import lightgbm as lgb
-    from experiments.lib import GRID, load_games, make_est, split_fold
+    from experiments.lib import GRID, load_games, make_est, run_split_params, split_fold
     rows = []
     for name, csv in (('baseline', None), (NAME, VARIANT)):
         m, df = load_games(str(csv) if csv else None)
         feats = json.loads((OUT / name / 'features.json').read_text())
         info = json.loads((OUT / name / 'fold_info.json').read_text())
         for s in ('2023-24', '2024-25', '2025-26'):
-            mt, calib, tst, n_fl = split_fold(df, s)
+            mt, calib, tst, n_fl = split_fold(df, s, calib_cap=run_split_params(name)['calib_cap'])
             for tgt, kind, col in (('spread', 'reg', 'target_point_diff'), ('total', 'reg', 'target_total_pts'), ('ml', 'clf', 'target_home_win')):
                 f = feats[s][tgt]
                 est = make_est(kind, GRID[info[s][tgt]['cfg']]).fit(mt[f], mt[col])

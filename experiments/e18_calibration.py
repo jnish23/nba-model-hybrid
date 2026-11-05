@@ -6,11 +6,11 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from scipy.stats import norm
 from sklearn.isotonic import IsotonicRegression
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from experiments import metrics as M                                    # noqa: E402
+from team import betting as bt                                          # noqa: E402
 from experiments.e14_blowout_under import DayBoot                        # noqa: E402
 from experiments.lib import TEST_SEASONS, label_calib_folds, load_games, load_run   # noqa: E402
 
@@ -152,7 +152,7 @@ def main():
 
     def cover_ll(pred, sig):
         with np.errstate(invalid='ignore'):
-            p = np.clip(norm.cdf((pred - line) / sig), 1e-6, 1 - 1e-6)
+            p = np.clip(bt.cover_probabilities(pred - line, sig, lines=line), 1e-6, 1 - 1e-6)      # P(over | no push), as the bets use
         ll = -(over * np.log(p) + (1 - over) * np.log(1 - p))
         return np.where(nonpush & np.isfinite(ll), ll, np.nan)
     b_pred, b_sig = corrected['baseline']

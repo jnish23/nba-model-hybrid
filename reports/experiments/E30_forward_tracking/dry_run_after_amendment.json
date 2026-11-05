@@ -1,0 +1,174 @@
+{
+ "dry_run": true,
+ "start": "2026-10-20",
+ "code_changed": [
+  "experiments/features_tracking.py"
+ ],
+ "games_with_result_and_entry": 18,
+ "regular_season": 18,
+ "live_feasible_share": 1.0,
+ "tests": {
+  "T1": {
+   "family": "F1",
+   "target": "margin",
+   "eligible_games": 18,
+   "games_without_signal": 0,
+   "frozen_signal_sd": 0.5802919852797439,
+   "forward_signal_sd": 0.5175084715520272,
+   "running_all_eligible": {
+    "n": 18,
+    "note": "too few games"
+   },
+   "decisive": {},
+   "info_looks": {},
+   "vs_close": {
+    "n": 18,
+    "note": "too few games"
+   },
+   "clv_move_on_signal": {
+    "n": 18,
+    "note": "too few games"
+   },
+   "all_season_fit": {
+    "n": 18,
+    "note": "too few games"
+   },
+   "live_feasible_only": {
+    "games": 18,
+    "n": 18,
+    "note": "too few games"
+   },
+   "with_playoffs": {
+    "n": 18,
+    "note": "too few games"
+   },
+   "betting_readout": {
+    "bets": 4,
+    "hit_rate_excl_pushes": 0.75,
+    "roi_per_bet": 0.43181818181818177,
+    "mean_clv_points": 0.0
+   }
+  },
+  "T2": {
+   "family": "F3",
+   "target": "margin",
+   "eligible_games": 18,
+   "games_without_signal": 0,
+   "frozen_signal_sd": 0.5950080204714842,
+   "forward_signal_sd": 0.43722192038254903,
+   "running_all_eligible": {
+    "n": 18,
+    "note": "too few games"
+   },
+   "decisive": {},
+   "info_looks": {},
+   "vs_close": {
+    "n": 18,
+    "note": "too few games"
+   },
+   "clv_move_on_signal": {
+    "n": 18,
+    "note": "too few games"
+   },
+   "all_season_fit": {
+    "n": 18,
+    "note": "too few games"
+   },
+   "live_feasible_only": {
+    "games": 18,
+    "n": 18,
+    "note": "too few games"
+   },
+   "with_playoffs": {
+    "n": 18,
+    "note": "too few games"
+   },
+   "betting_readout": {
+    "bets": 3,
+    "hit_rate_excl_pushes": 0.3333333333333333,
+    "roi_per_bet": -0.3636363636363636,
+    "mean_clv_points": 0.0
+   }
+  },
+  "T3": {
+   "family": "F4",
+   "target": "margin",
+   "eligible_games": 18,
+   "games_without_signal": 0,
+   "frozen_signal_sd": 0.5732364244736577,
+   "forward_signal_sd": 0.35516988410518735,
+   "running_all_eligible": {
+    "n": 18,
+    "note": "too few games"
+   },
+   "decisive": {},
+   "info_looks": {},
+   "vs_close": {
+    "n": 18,
+    "note": "too few games"
+   },
+   "clv_move_on_signal": {
+    "n": 18,
+    "note": "too few games"
+   },
+   "all_season_fit": {
+    "n": 18,
+    "note": "too few games"
+   },
+   "live_feasible_only": {
+    "games": 18,
+    "n": 18,
+    "note": "too few games"
+   },
+   "with_playoffs": {
+    "n": 18,
+    "note": "too few games"
+   },
+   "betting_readout": {
+    "bets": 0
+   }
+  },
+  "T4": {
+   "family": "F5",
+   "target": "total",
+   "eligible_games": 18,
+   "games_without_signal": 0,
+   "frozen_signal_sd": 0.5813775186422734,
+   "forward_signal_sd": 1.0488943961419774,
+   "running_all_eligible": {
+    "n": 18,
+    "note": "too few games"
+   },
+   "decisive": {},
+   "info_looks": {},
+   "vs_close": {
+    "n": 18,
+    "note": "too few games"
+   },
+   "clv_move_on_signal": {
+    "n": 18,
+    "note": "too few games"
+   },
+   "all_season_fit": {
+    "n": 18,
+    "note": "too few games"
+   },
+   "live_feasible_only": {
+    "games": 18,
+    "n": 18,
+    "note": "too few games"
+   },
+   "with_playoffs": {
+    "n": 18,
+    "note": "too few games"
+   },
+   "betting_readout": {
+    "bets": 3,
+    "hit_rate_excl_pushes": 0.3333333333333333,
+    "roi_per_bet": -0.3636363636363636,
+    "mean_clv_points": 0.16666666666666666
+   }
+  }
+ },
+ "holm_at_decisive_looks": {}
+}

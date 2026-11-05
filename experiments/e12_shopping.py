@@ -84,6 +84,36 @@ def settle(result, price_payout):
     return np.where(result > 0, price_payout, np.where(result < 0, -1.0, 0.0)) * 100
 
 
+def both_sides_control(base, mats, market):
+    """
+    Control for best-line settlement: bet BOTH sides of every game at the best available line (-110), so the model plays no part. An
+    efficient market should lose here (vig); a positive ROI means the shopping gain is a feature of the quotes, not of the bets.
+    spread: home at the highest home handicap and away at the highest away handicap; total: over at the lowest total and under at
+    the highest. Returns {'roi': % of staked, 'n': games with a quote on both sides}.
+    """
+    a = base.set_index('gameId')
+    profit = []
+    for gid in base['gameId']:
+        if market == 'spread':
+            if gid not in mats['hs'].index:
+                continue
+            hl, al = mats['hs'].loc[gid].dropna(), mats['as'].loc[gid].dropna()
+            if hl.empty or al.empty:
+                continue
+            m_ = a.loc[gid, 'target_point_diff']
+            res = (m_ + hl.max(), -m_ + al.max())
+        else:
+            if gid not in mats['tot'].index:
+                continue
+            tots = mats['tot'].loc[gid].dropna()
+            if tots.empty:
+                continue
+            t_ = a.loc[gid, 'target_total_pts']
+            res = (t_ - tots.min(), tots.max() - t_)
+        profit.append(settle(np.array([res[0]]), 100 / 110)[0] + settle(np.array([res[1]]), 100 / 110)[0])
+    return {'roi': float(np.sum(profit) / (200 * len(profit)) * 100) if profit else float('nan'), 'n': len(profit)}
+
+
 def main():
     base, _ = load_run('baseline')
     mats, n_snap = load_multibook()
@@ -216,19 +246,12 @@ def main():
         hw = a.loc[gid, 'target_home_win'] == 1
         ctl.append((payout(h).max() * 100 if hw else -100.0) + (payout(aw).max() * 100 if not hw else -100.0))
     ctl_roi = float(np.sum(ctl) / (200 * len(ctl)) * 100)
-    sp_ctl = []
-    for gid in base['gameId']:
-        if gid not in mats['hs'].index:
-            continue
-        hl, al = mats['hs'].loc[gid].dropna(), mats['as'].loc[gid].dropna()
-        if hl.empty or al.empty:
-            continue
-        m_ = a.loc[gid, 'target_point_diff']
-        sp_ctl.append(settle(np.array([m_ + hl.max()]), 100 / 110)[0] + settle(np.array([-m_ + al.max()]), 100 / 110)[0])
-    sp_roi = float(np.sum(sp_ctl) / (200 * len(sp_ctl)) * 100)
+    sp_both, tot_both = both_sides_control(base, mats, 'spread'), both_sides_control(base, mats, 'total')
+    sp_roi, tot_roi = sp_both['roi'], tot_both['roi']
     lines += ['## Control: bet BOTH sides of every game at the best available price/line (an efficient market should lose here)\n',
               f'- moneyline, both sides at best price: ROI {ctl_roi:+.2f}% over {len(ctl)} games',
-              f'- spread, both sides at the best line (-110): ROI {sp_roi:+.2f}% over {len(sp_ctl)} games', '']
+              f'- spread, both sides at the best line (-110): ROI {sp_roi:+.2f}% over {sp_both["n"]} games',
+              f'- total, over at the lowest and under at the highest total (-110): ROI {tot_roi:+.2f}% over {tot_both["n"]} games', '']
     # ---------------- consensus as the market reference
     _, df = load_games()
     odds = oc.load_clean_odds(ROOT / 'data' / 'nba_stats.db')
@@ -241,15 +264,15 @@ def main():
               f"- mean |model - open consensus| = {np.abs(j['ml_prob'] - j['open_home_prob']).mean():.3f}; share of games with model-open gap > 5 pts: {(np.abs(j['ml_prob'] - j['open_home_prob']) > .05).mean():.1%}", '']
     sp_row, ml_row = rows[0], mrows[0]
     dec = {'spread': False, 'total': False, 'ml': False}
-    for mk, r in (('spread', rows[0]), ('total', rows[1])):
+    for mk, ctl_mk in (('spread', sp_roi), ('total', tot_roi)):
         d = out[mk + '_d']
-        dec[mk] = bool(d['ci'][0] > 0 and sp_roi <= 0)
+        dec[mk] = bool(d['ci'][0] > 0 and ctl_mk <= 0)             # each market is judged against ITS OWN both-sides control
     dec['ml'] = bool(d_ml['ci'][0] > 0 and ctl_roi <= 0)
     lines += ['## Decision (pre-registered: adopt best-price settlement as a reporting option only if ROI improves with a CI excluding zero AND the both-sides control has ROI <= 0)\n'] + \
         [f'- {k}: **{"ADOPT as reporting option" if v else "REJECT"}**' for k, v in dec.items()]
     (OUT / NAME).mkdir(parents=True, exist_ok=True)
     (OUT / NAME / 'RESULT.md').write_text('\n'.join(lines), encoding='utf-8')
-    (OUT / NAME / 'decision.json').write_text(json.dumps({'decision': dec, 'control_ml_roi': ctl_roi, 'control_spread_roi': sp_roi, 'odds_snapshots_rows': n_snap}, indent=1))
+    (OUT / NAME / 'decision.json').write_text(json.dumps({'decision': dec, 'control_ml_roi': ctl_roi, 'control_spread_roi': sp_roi, 'control_total_roi': tot_roi, 'odds_snapshots_rows': n_snap}, indent=1))
     print('\n'.join(lines))
 
 
