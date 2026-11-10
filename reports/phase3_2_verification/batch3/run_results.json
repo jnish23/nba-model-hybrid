@@ -1,0 +1,18 @@
+[
+  {
+    "action": "tests",
+    "exit_code": 1
+  },
+  {
+    "action": "db",
+    "exit_code": 0
+  },
+  {
+    "action": "targeted",
+    "exit_code": 0
+  },
+  {
+    "action": "smoke",
+    "exit_code": 0
+  }
+]

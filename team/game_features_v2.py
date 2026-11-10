@@ -391,7 +391,7 @@ class GameFeatureBuilder:
 
 if __name__ == "__main__":
     # Verification
-    db_path = r'c:\Users\jorda\nba-model-hybrid\data\nba_stats.db'
+    db_path = (Path(__file__).resolve().parents[1] / 'data/nba_stats.db')
     builder = GameFeatureBuilder(db_path)
     df = builder.build_training_set()
 

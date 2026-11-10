@@ -1,3 +1,4 @@
+from pathlib import Path
 import sqlite3
 import pandas as pd
 import logging
@@ -8,8 +9,8 @@ from datetime import datetime
 logging.basicConfig(level=logging.INFO, format='%(message)s')
 logger = logging.getLogger()
 
-DB_PATH = r'c:\Users\jorda\nba-model-hybrid\data\nba_stats.db'
-OUTPUT_FILE = r'c:\Users\jorda\nba-model-hybrid\diagnostic_report.txt'
+DB_PATH = (Path(__file__).resolve().parents[1] / 'data/nba_stats.db')
+OUTPUT_FILE = (Path(__file__).resolve().parents[1] / 'diagnostic_report.txt')
 
 TABLES = [
     'player_basic_stats', 'team_basic_stats',

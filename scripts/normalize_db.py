@@ -1,3 +1,4 @@
+from pathlib import Path
 import sqlite3
 import pandas as pd
 import logging
@@ -5,7 +6,7 @@ import logging
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-db_path = r'c:\Users\jorda\nba-model-hybrid\data\nba_stats.db'
+db_path = (Path(__file__).resolve().parents[1] / 'data/nba_stats.db')
 
 # Define mappings based on the plan
 

@@ -14,8 +14,9 @@ import numpy as np
 import pandas as pd
 
 from core.timeutil import et_game_date
-from dashboard_props import logic
+from core import props_board_logic as logic
 from props.betting import evaluate as be, rules
+from props.live.config import resolve_rule_path
 from props.models import evaluate as ev, market_bench as mb, outcome as oc, registry
 from props.models.pipeline import observed
 
@@ -181,10 +182,11 @@ def monthly_bias(season, cfg, stats):
     return pd.concat(out, ignore_index=True)
 
 
-def export_all(out_dir, props_db='data/props_odds.db', features_db='data/props_features_v3.db', rule_path='reports/props/phase5_revised_rule.frozen_rule.json', n_boot=1000, seasons=None):
+def export_all(out_dir, props_db='data/props_odds.db', features_db='data/props_features_v3.db', rule_path=None, n_boot=1000, seasons=None):
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
-    rule = json.loads(Path(rule_path).read_text(encoding='utf-8'))
+    rule_file = resolve_rule_path(rule_path)
+    rule = json.loads(rule_file.read_text(encoding='utf-8'))
     labels = labels_table(features_db)
     bets_all, pmf_all, books_all, summ, rel_all, health = [], {}, {}, [], [], []
     for season, cfg in SEASONS.items():
@@ -204,7 +206,7 @@ def export_all(out_dir, props_db='data/props_odds.db', features_db='data/props_f
     pd.concat(rel_all, ignore_index=True).to_csv(out / 'reliability.csv', index=False)
     pd.concat(health, ignore_index=True).to_csv(out / 'bias_monthly.csv', index=False)
     head = subprocess.run(['git', 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
-    meta = {'mode': 'backtest', 'rule': rule, 'rule_sha256': sha256(rule_path), 'code_commit': head, 'features_db_sha256': sha256(features_db),
+    meta = {'mode': 'backtest', 'rule': rule, 'rule_sha256': sha256(rule_file), 'code_commit': head, 'features_db_sha256': sha256(features_db),
             'built_at_utc': pd.Timestamp.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'), 'seasons': {s: c['kind'] for s, c in SEASONS.items() if not seasons or s in seasons},
             'pricing': {'median': 'median over the bettable books of their quotes at the consensus line', 'best': 'best quote among the bettable books', 'flat': 'flat -110 (1.909)'}}
     (out / 'meta.json').write_text(json.dumps(meta, indent=2), encoding='utf-8')

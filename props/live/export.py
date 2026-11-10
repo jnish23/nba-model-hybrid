@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from dashboard_props import logic
+from core import props_board_logic as logic
 from props.live import settle as live_settle
 
 DISCLOSURE = ('Paper record of the frozen rule with the live model and roster rule v2. The live inputs do not reproduce the training inputs (teammate availability cannot be rebuilt '

@@ -12,7 +12,7 @@ def _src(tmp_path):
     (root / 'dashboard_props' / 'app.py').write_text('app v1')
     (root / 'dashboard_props' / 'logic.py').write_text('logic')
     (root / 'core').mkdir()
-    for f in ('__init__.py', 'live_feed.py', 'live_feed_overrides.csv'):
+    for f in ('__init__.py', 'live_feed.py', 'live_feed_overrides.csv', 'props_board_logic.py'):
         (root / 'core' / f).write_text(f)
     (root / 'dashboard').mkdir()
     (root / 'dashboard' / 'requirements.txt').write_text('streamlit==1.37.1\n')

@@ -1,0 +1,6 @@
+{
+  "rule_sha256": "b597763ab3b13fd9cf295b1de802255ac87fe6e9bbf065103171db49eec2b6fb",
+  "staged_blob_matches_historical_working_bytes": true,
+  "git_attribute": "config/props_frozen_rule.json -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol",
+  "reason": "Prevent automatic line-ending rewriting from invalidating the existing raw-byte pin on a new checkout."
+}

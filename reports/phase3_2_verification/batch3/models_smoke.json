@@ -1,0 +1,51 @@
+[
+  {
+    "check": "model_bundle_loads",
+    "status": "pass",
+    "detail": {
+      "artifacts": 43,
+      "deployed_suffix": "_with_odds_cand_20261019",
+      "model_set_hash": "0165d3361e4228ad2551a787c66e1cd82ce11bd5b9a4a258b7e79467e7cd02e0"
+    }
+  },
+  {
+    "check": "team_features_predictions",
+    "status": "pass",
+    "detail": {
+      "games": 2,
+      "feature_columns": 418,
+      "repeat_exact": true,
+      "fixture_policy": "fixed illustrative opening odds; injury unavailable encoded by existing builder; not new production predictions"
+    }
+  },
+  {
+    "check": "props_features_probabilities",
+    "status": "pass",
+    "detail": {
+      "model": "v3_live_2026-27r1",
+      "rows": 6,
+      "seed": 21,
+      "n_sims": 20000,
+      "repeat_exact": true
+    }
+  },
+  {
+    "check": "exports",
+    "status": "pass",
+    "detail": {
+      "team_rows": 1453,
+      "props_rows": 1021,
+      "deployment_files": 23,
+      "publish_called": false
+    }
+  },
+  {
+    "check": "dashboard_apps",
+    "status": "pass",
+    "detail": {
+      "props_standalone": true,
+      "team_restored_database": true,
+      "external_network": "denied"
+    }
+  }
+]

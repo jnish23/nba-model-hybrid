@@ -1,0 +1,16 @@
+{
+ "what": "Files of reports/milestone1 moved out of Git (Batch 4C group 1). Each is preserved byte for byte in the external archive and was restored into a rehearsal folder and compared before removal.",
+ "archive_root": "external private archive; location and per-file records are in the private trading repository (reports/phase4c_group1)",
+ "files": [
+  {
+   "path": "reports/milestone1/model_fixture_manifest.json",
+   "bytes": 10414,
+   "sha256": "155d16d5b68161fd0955d8786c1f9deeaaa0bddba8335f92ae9e63450eb2a724"
+  },
+  {
+   "path": "reports/milestone1/models_smoke.json",
+   "bytes": 1212,
+   "sha256": "e03cc4b55f40d587e7860f4a21db9940f30413ecf28c18faf761d682769ea766"
+  }
+ ]
+}

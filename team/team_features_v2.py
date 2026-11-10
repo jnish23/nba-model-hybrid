@@ -1,3 +1,4 @@
+from pathlib import Path
 import pandas as pd
 import numpy as np
 import sqlite3
@@ -468,7 +469,7 @@ class TeamFeatureBuilder:
         
 if __name__ == "__main__":
     # verification
-    db_path = r'c:\Users\jorda\nba-model-hybrid\data\nba_stats.db'
+    db_path = (Path(__file__).resolve().parents[1] / 'data/nba_stats.db')
     builder = TeamFeatureBuilder(db_path)
     
     print("--- Verifying Batch Generation ---")

@@ -1,0 +1,21 @@
+{
+  "production_writes": "denied",
+  "models_before": {
+    "failed": 2,
+    "passed": 3
+  },
+  "trading_before": {
+    "failed": 1,
+    "passed": 3
+  },
+  "models_after": {
+    "failed": 0,
+    "passed": 5
+  },
+  "trading_after": {
+    "failed": 0,
+    "passed": 4
+  },
+  "rule_sha256": "b597763ab3b13fd9cf295b1de802255ac87fe6e9bbf065103171db49eec2b6fb",
+  "audit_write_function_present": false
+}

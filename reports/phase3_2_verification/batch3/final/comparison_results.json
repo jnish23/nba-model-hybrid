@@ -1,0 +1,378 @@
+{
+  "passed": true,
+  "checks": [
+    {
+      "check": "team_games.csv",
+      "passed": true,
+      "expected_sha256": "2e4ef97dc7dbff3891f58afa0cc941694abeb419eb085c76ad88535ddaaf3141",
+      "actual_sha256": "2e4ef97dc7dbff3891f58afa0cc941694abeb419eb085c76ad88535ddaaf3141"
+    },
+    {
+      "check": "team_features.csv",
+      "passed": true,
+      "expected_sha256": "6a48140563171c2430cdfe714fdba36b86cfe9194ac4ace17e6d3537a6673257",
+      "actual_sha256": "6a48140563171c2430cdfe714fdba36b86cfe9194ac4ace17e6d3537a6673257"
+    },
+    {
+      "check": "team_predictions.csv",
+      "passed": true,
+      "expected_sha256": "cddc77e124cbb88253f7eeb1f1c0738e201c0332c886eb324a42e60c6edee8c3",
+      "actual_sha256": "cddc77e124cbb88253f7eeb1f1c0738e201c0332c886eb324a42e60c6edee8c3"
+    },
+    {
+      "check": "props_features.csv",
+      "passed": true,
+      "expected_sha256": "2534ae3b015b170daf7441a2e717e126ccee211413b2c7706ab39355eee4235e",
+      "actual_sha256": "2534ae3b015b170daf7441a2e717e126ccee211413b2c7706ab39355eee4235e"
+    },
+    {
+      "check": "probability_array_keys",
+      "passed": true
+    },
+    {
+      "check": "probability_array/minutes",
+      "passed": true,
+      "dtype": "float64",
+      "shape": [
+        6
+      ],
+      "expected_array_sha256": "894c0f342ea64dde27027a1b3d7d39d44a4d060ac427f160fd674c0dd8cf0ca8",
+      "actual_array_sha256": "894c0f342ea64dde27027a1b3d7d39d44a4d060ac427f160fd674c0dd8cf0ca8"
+    },
+    {
+      "check": "probability_array/points",
+      "passed": true,
+      "dtype": "float32",
+      "shape": [
+        6,
+        61
+      ],
+      "expected_array_sha256": "f91de4152d1ce9a67942c52b5214e0b932beacdaaf182112e0b1d51bd543afb3",
+      "actual_array_sha256": "f91de4152d1ce9a67942c52b5214e0b932beacdaaf182112e0b1d51bd543afb3"
+    },
+    {
+      "check": "probability_array/rebounds",
+      "passed": true,
+      "dtype": "float32",
+      "shape": [
+        6,
+        31
+      ],
+      "expected_array_sha256": "260621b49866b067a4a63f2ec7ef92b4ae00c6db6ada4d5f9fa55ff7e67cf73b",
+      "actual_array_sha256": "260621b49866b067a4a63f2ec7ef92b4ae00c6db6ada4d5f9fa55ff7e67cf73b"
+    },
+    {
+      "check": "probability_array/assists",
+      "passed": true,
+      "dtype": "float32",
+      "shape": [
+        6,
+        31
+      ],
+      "expected_array_sha256": "2cd31c43255228ad1c75cedcc0e54a72aa1f62247f2a3ed14a969cf767e79757",
+      "actual_array_sha256": "2cd31c43255228ad1c75cedcc0e54a72aa1f62247f2a3ed14a969cf767e79757"
+    },
+    {
+      "check": "probability_array/threes",
+      "passed": true,
+      "dtype": "float32",
+      "shape": [
+        6,
+        16
+      ],
+      "expected_array_sha256": "16a62e9f09929105808b2f64aad35c87b279d1902d5bde68b2e040498be84b07",
+      "actual_array_sha256": "16a62e9f09929105808b2f64aad35c87b279d1902d5bde68b2e040498be84b07"
+    },
+    {
+      "check": "probability_array/pra",
+      "passed": true,
+      "dtype": "float32",
+      "shape": [
+        6,
+        101
+      ],
+      "expected_array_sha256": "e1477129ed10f6b26a84037698ebc72f77002efed22e7df7f09c5f26c6ea20cf",
+      "actual_array_sha256": "e1477129ed10f6b26a84037698ebc72f77002efed22e7df7f09c5f26c6ea20cf"
+    },
+    {
+      "check": "probability_array/pr",
+      "passed": true,
+      "dtype": "float32",
+      "shape": [
+        6,
+        81
+      ],
+      "expected_array_sha256": "b415bc148a5270f1f675c3742cf256c1bc17ef755a7edae0cc2bdaa088e1e6ea",
+      "actual_array_sha256": "b415bc148a5270f1f675c3742cf256c1bc17ef755a7edae0cc2bdaa088e1e6ea"
+    },
+    {
+      "check": "probability_array/pa",
+      "passed": true,
+      "dtype": "float32",
+      "shape": [
+        6,
+        81
+      ],
+      "expected_array_sha256": "a0ca185515b9a52ba1cf04ea6530248beea929d4371107fbdb663ee7e561c4ab",
+      "actual_array_sha256": "a0ca185515b9a52ba1cf04ea6530248beea929d4371107fbdb663ee7e561c4ab"
+    },
+    {
+      "check": "probability_array/ra",
+      "passed": true,
+      "dtype": "float32",
+      "shape": [
+        6,
+        61
+      ],
+      "expected_array_sha256": "7504370002f269ac7f1ae24d6e23da8083f0019337f1482f4d2ff49ebf9d7b16",
+      "actual_array_sha256": "7504370002f269ac7f1ae24d6e23da8083f0019337f1482f4d2ff49ebf9d7b16"
+    },
+    {
+      "check": "team_export/file_set",
+      "passed": true,
+      "missing": [],
+      "extra": []
+    },
+    {
+      "check": "team_export/explanations.csv",
+      "passed": true,
+      "expected_sha256": "ad7b438be7cb200b51537f9e50aad172dbaf557b93482842bdf4cf3d38fd9219",
+      "actual_sha256": "ad7b438be7cb200b51537f9e50aad172dbaf557b93482842bdf4cf3d38fd9219"
+    },
+    {
+      "check": "team_export/predictions_log.csv",
+      "passed": true,
+      "expected_sha256": "1cdf3b09a3fa653fc90fb41c57b67bb3c5191a933b4d1b1b026e5520b882fd01",
+      "actual_sha256": "1cdf3b09a3fa653fc90fb41c57b67bb3c5191a933b4d1b1b026e5520b882fd01"
+    },
+    {
+      "check": "props_export/file_set",
+      "passed": true,
+      "missing": [],
+      "extra": []
+    },
+    {
+      "check": "props_export/bets.csv",
+      "passed": true,
+      "expected_sha256": "3ff7d241d9e35406e6e16f7bc192eb9fe65ed2e5ada641ab1bc655f34a3509a0",
+      "actual_sha256": "3ff7d241d9e35406e6e16f7bc192eb9fe65ed2e5ada641ab1bc655f34a3509a0"
+    },
+    {
+      "check": "props_export/bias_monthly.csv",
+      "passed": true,
+      "expected_sha256": "e3e23c1953c27ac4e32b86b06ff675b3cf973e7ac13fca85a28415607d5955c2",
+      "actual_sha256": "e3e23c1953c27ac4e32b86b06ff675b3cf973e7ac13fca85a28415607d5955c2"
+    },
+    {
+      "check": "props_export/books.json",
+      "passed": true,
+      "expected_sha256": "be8992aadfba991c8ffe2367760f95c98d8f34f62e310b45394558d1789d670f",
+      "actual_sha256": "be8992aadfba991c8ffe2367760f95c98d8f34f62e310b45394558d1789d670f"
+    },
+    {
+      "check": "props_export/meta.json",
+      "passed": true,
+      "metadata_difference": {
+        "field": "built_at_utc",
+        "expected": "2026-11-07T05:50:47Z",
+        "actual": "2026-11-08T17:15:06Z"
+      },
+      "expected_sha256": "75f623b3cc5e86d450e89c8ca5d32822d0fce86833fb65007c071478abb22d56",
+      "actual_sha256": "424ae0bdda9c3f73d624b6cbbcea774bc1d1c8cc7deba303098590673b04132c"
+    },
+    {
+      "check": "props_export/pipeline_health.csv",
+      "passed": true,
+      "expected_sha256": "e41fb8e0a1f0b999889c2a808c78a681f0e1437c31e47418a5853cb53dda24df",
+      "actual_sha256": "e41fb8e0a1f0b999889c2a808c78a681f0e1437c31e47418a5853cb53dda24df"
+    },
+    {
+      "check": "props_export/pmf.json",
+      "passed": true,
+      "expected_sha256": "8f54ddf1657ea88e4b17ea4031433c012942148421e5dab03c4be6e2f0eee048",
+      "actual_sha256": "8f54ddf1657ea88e4b17ea4031433c012942148421e5dab03c4be6e2f0eee048"
+    },
+    {
+      "check": "props_export/reliability.csv",
+      "passed": true,
+      "expected_sha256": "b3c34281dca061434ddb24a021b8a103fb7512b5243b5bfd1e5427ccdc58c9c0",
+      "actual_sha256": "b3c34281dca061434ddb24a021b8a103fb7512b5243b5bfd1e5427ccdc58c9c0"
+    },
+    {
+      "check": "props_export/season_summary.csv",
+      "passed": true,
+      "expected_sha256": "f3393fe69d27679df44995d0b6c8835a053fe0656a7687b3b8f0a2c9e86f9888",
+      "actual_sha256": "f3393fe69d27679df44995d0b6c8835a053fe0656a7687b3b8f0a2c9e86f9888"
+    },
+    {
+      "check": "props_export/slot_log.csv",
+      "passed": true,
+      "expected_sha256": "e8f9bf6c4d70dab988985494fc39fc7c85f3c170922bc93add75927160f92a83",
+      "actual_sha256": "e8f9bf6c4d70dab988985494fc39fc7c85f3c170922bc93add75927160f92a83"
+    },
+    {
+      "check": "props_deployment/data/file_set",
+      "passed": true,
+      "missing": [],
+      "extra": []
+    },
+    {
+      "check": "props_deployment/data/props_dashboard/bets.csv",
+      "passed": true,
+      "expected_sha256": "0b76b0aa453e48467246432df0cc5debf85ad3860be5c33774a2207c28ea7f06",
+      "actual_sha256": "0b76b0aa453e48467246432df0cc5debf85ad3860be5c33774a2207c28ea7f06"
+    },
+    {
+      "check": "props_deployment/data/props_dashboard/bias_monthly.csv",
+      "passed": true,
+      "expected_sha256": "59f65550c1984ec7b91612a4335672e43df60dc0de55ffa0cf765841d6298c0d",
+      "actual_sha256": "59f65550c1984ec7b91612a4335672e43df60dc0de55ffa0cf765841d6298c0d"
+    },
+    {
+      "check": "props_deployment/data/props_dashboard/books.json",
+      "passed": true,
+      "expected_sha256": "744694fc50f1a8606a0cf7245a7bafcdef2a8a2b0870f3bc74195e1fb78d7294",
+      "actual_sha256": "744694fc50f1a8606a0cf7245a7bafcdef2a8a2b0870f3bc74195e1fb78d7294"
+    },
+    {
+      "check": "props_deployment/data/props_dashboard/meta.json",
+      "passed": true,
+      "expected_sha256": "8fa630a876e76a02de436adea31d56eeda0a1bbedc826a24022d496ce92aa81e",
+      "actual_sha256": "8fa630a876e76a02de436adea31d56eeda0a1bbedc826a24022d496ce92aa81e"
+    },
+    {
+      "check": "props_deployment/data/props_dashboard/pmf.json",
+      "passed": true,
+      "expected_sha256": "4c43dd09b30a2db1fc0ce698bab6de570a959eadf3fd19edd710b9a43c5ca90b",
+      "actual_sha256": "4c43dd09b30a2db1fc0ce698bab6de570a959eadf3fd19edd710b9a43c5ca90b"
+    },
+    {
+      "check": "props_deployment/data/props_dashboard/reliability.csv",
+      "passed": true,
+      "expected_sha256": "59dfcc336a3722dcd3f6d54fbd2d2e2cfe4175d55d83d63635e50c23945431e1",
+      "actual_sha256": "59dfcc336a3722dcd3f6d54fbd2d2e2cfe4175d55d83d63635e50c23945431e1"
+    },
+    {
+      "check": "props_deployment/data/props_dashboard/season_summary.csv",
+      "passed": true,
+      "expected_sha256": "c9ff87babd8a9e0cc3cc690a7a2bed86f707a1f2c3cdfb501ee487b71725fb02",
+      "actual_sha256": "c9ff87babd8a9e0cc3cc690a7a2bed86f707a1f2c3cdfb501ee487b71725fb02"
+    },
+    {
+      "check": "props_deployment/data/props_dashboard_live/bets.csv",
+      "passed": true,
+      "expected_sha256": "3ff7d241d9e35406e6e16f7bc192eb9fe65ed2e5ada641ab1bc655f34a3509a0",
+      "actual_sha256": "3ff7d241d9e35406e6e16f7bc192eb9fe65ed2e5ada641ab1bc655f34a3509a0"
+    },
+    {
+      "check": "props_deployment/data/props_dashboard_live/bias_monthly.csv",
+      "passed": true,
+      "expected_sha256": "e3e23c1953c27ac4e32b86b06ff675b3cf973e7ac13fca85a28415607d5955c2",
+      "actual_sha256": "e3e23c1953c27ac4e32b86b06ff675b3cf973e7ac13fca85a28415607d5955c2"
+    },
+    {
+      "check": "props_deployment/data/props_dashboard_live/books.json",
+      "passed": true,
+      "expected_sha256": "be8992aadfba991c8ffe2367760f95c98d8f34f62e310b45394558d1789d670f",
+      "actual_sha256": "be8992aadfba991c8ffe2367760f95c98d8f34f62e310b45394558d1789d670f"
+    },
+    {
+      "check": "props_deployment/data/props_dashboard_live/meta.json",
+      "passed": true,
+      "metadata_difference": {
+        "field": "built_at_utc",
+        "expected": "2026-11-07T05:50:47Z",
+        "actual": "2026-11-08T17:15:06Z"
+      },
+      "expected_sha256": "75f623b3cc5e86d450e89c8ca5d32822d0fce86833fb65007c071478abb22d56",
+      "actual_sha256": "424ae0bdda9c3f73d624b6cbbcea774bc1d1c8cc7deba303098590673b04132c"
+    },
+    {
+      "check": "props_deployment/data/props_dashboard_live/pipeline_health.csv",
+      "passed": true,
+      "expected_sha256": "e41fb8e0a1f0b999889c2a808c78a681f0e1437c31e47418a5853cb53dda24df",
+      "actual_sha256": "e41fb8e0a1f0b999889c2a808c78a681f0e1437c31e47418a5853cb53dda24df"
+    },
+    {
+      "check": "props_deployment/data/props_dashboard_live/pmf.json",
+      "passed": true,
+      "expected_sha256": "8f54ddf1657ea88e4b17ea4031433c012942148421e5dab03c4be6e2f0eee048",
+      "actual_sha256": "8f54ddf1657ea88e4b17ea4031433c012942148421e5dab03c4be6e2f0eee048"
+    },
+    {
+      "check": "props_deployment/data/props_dashboard_live/reliability.csv",
+      "passed": true,
+      "expected_sha256": "b3c34281dca061434ddb24a021b8a103fb7512b5243b5bfd1e5427ccdc58c9c0",
+      "actual_sha256": "b3c34281dca061434ddb24a021b8a103fb7512b5243b5bfd1e5427ccdc58c9c0"
+    },
+    {
+      "check": "props_deployment/data/props_dashboard_live/season_summary.csv",
+      "passed": true,
+      "expected_sha256": "f3393fe69d27679df44995d0b6c8835a053fe0656a7687b3b8f0a2c9e86f9888",
+      "actual_sha256": "f3393fe69d27679df44995d0b6c8835a053fe0656a7687b3b8f0a2c9e86f9888"
+    },
+    {
+      "check": "props_deployment/data/props_dashboard_live/slot_log.csv",
+      "passed": true,
+      "expected_sha256": "e8f9bf6c4d70dab988985494fc39fc7c85f3c170922bc93add75927160f92a83",
+      "actual_sha256": "e8f9bf6c4d70dab988985494fc39fc7c85f3c170922bc93add75927160f92a83"
+    },
+    {
+      "check": "props_deployment/dashboard_props/app.py",
+      "passed": true,
+      "expected_sha256": "3d9d829bb357ee45d3bacf9f2e94750905a08a3363a4e0b7d4dc05b8bc1fdd78",
+      "actual_sha256": "3d9d829bb357ee45d3bacf9f2e94750905a08a3363a4e0b7d4dc05b8bc1fdd78"
+    },
+    {
+      "check": "props_deployment/core/__init__.py",
+      "passed": true,
+      "expected_sha256": "68f85e4538517036198da493797f0c4bde77ce705e0188862724b69f57f27096",
+      "actual_sha256": "68f85e4538517036198da493797f0c4bde77ce705e0188862724b69f57f27096"
+    },
+    {
+      "check": "props_deployment/core/live_feed.py",
+      "passed": true,
+      "expected_sha256": "11924445370b0973d1ba6e2c20ee15b9e678698907656747ad281ec97ca188cc",
+      "actual_sha256": "11924445370b0973d1ba6e2c20ee15b9e678698907656747ad281ec97ca188cc"
+    },
+    {
+      "check": "props_deployment/core/live_feed_overrides.csv",
+      "passed": true,
+      "expected_sha256": "0dc8005d5b014fcff528b6c45f1a2f05187d4bd414ed296a6282171e9e7c90fa",
+      "actual_sha256": "0dc8005d5b014fcff528b6c45f1a2f05187d4bd414ed296a6282171e9e7c90fa"
+    },
+    {
+      "check": "props_deployment/requirements.txt",
+      "passed": true,
+      "expected_sha256": "bab8915862d601e7167be7a2b02c1370fd57cb67b3b3747a212e97191227a7fb",
+      "actual_sha256": "bab8915862d601e7167be7a2b02c1370fd57cb67b3b3747a212e97191227a7fb"
+    },
+    {
+      "check": "props_deployment/.streamlit/config.toml",
+      "passed": true,
+      "expected_sha256": "037673e8fa524776994aac7bb181d4196ea0522c144bd8123dc683d7da825458",
+      "actual_sha256": "037673e8fa524776994aac7bb181d4196ea0522c144bd8123dc683d7da825458"
+    },
+    {
+      "check": "props_deployment/README.md",
+      "passed": true,
+      "expected_sha256": "8b3a6e97bc77bcaaf084bfd18de939eded8a03d9e45cf0d4fb18a29dc30295c9",
+      "actual_sha256": "8b3a6e97bc77bcaaf084bfd18de939eded8a03d9e45cf0d4fb18a29dc30295c9"
+    },
+    {
+      "check": "props_deployment/PUBLISHED.json",
+      "passed": true,
+      "expected_sha256": "c0465efd0486d0ce9d4c5f2e0a0fa5a77ac48489a6b01d347772622397159c8d",
+      "actual_sha256": "c0465efd0486d0ce9d4c5f2e0a0fa5a77ac48489a6b01d347772622397159c8d"
+    },
+    {
+      "check": "moved_board_logic_ast",
+      "passed": true
+    },
+    {
+      "check": "standalone_shim_targets_bundled_logic",
+      "passed": true
+    }
+  ],
+  "policy": "Exact bytes and array dtype/shape/bytes; only two explicit built_at_utc fields differ. Generated logic relocation is compared by exact AST and standalone import checks. No numerical tolerance."
+}

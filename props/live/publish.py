@@ -10,7 +10,7 @@ from pathlib import Path
 import pandas as pd
 
 APP_FILES = {'dashboard_props/app.py': 'dashboard_props/app.py', 'dashboard_props/logic.py': 'dashboard_props/logic.py', 'dashboard/requirements.txt': 'requirements.txt',
-             'core/__init__.py': 'core/__init__.py', 'core/live_feed.py': 'core/live_feed.py', 'core/live_feed_overrides.csv': 'core/live_feed_overrides.csv'}   # the live panel's feed
+             'core/props_board_logic.py': 'core/props_board_logic.py', 'core/__init__.py': 'core/__init__.py', 'core/live_feed.py': 'core/live_feed.py', 'core/live_feed_overrides.csv': 'core/live_feed_overrides.csv'}   # the live panel's feed
 DATA_DIRS = {'live': 'data/props_dashboard_live', 'backtest': 'data/props_dashboard'}
 VOLATILE = {'PUBLISHED.json', 'data/props_dashboard_live/meta.json', 'data/props_dashboard_live/checks.csv', 'data/props_dashboard_live/pipeline_health.csv',
             'data/props_dashboard_live/slot_log.csv'}        # change on every refresh without carrying news

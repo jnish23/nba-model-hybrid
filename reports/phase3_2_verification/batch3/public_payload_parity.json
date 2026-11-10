@@ -1,0 +1,473 @@
+{
+  "passed": true,
+  "members": [
+    {
+      "path": "core/__init__.py",
+      "passed": true
+    },
+    {
+      "path": "core/availability_features.py",
+      "passed": true
+    },
+    {
+      "path": "core/bpm_builder.py",
+      "passed": true
+    },
+    {
+      "path": "core/devig.py",
+      "passed": true
+    },
+    {
+      "path": "core/env.py",
+      "passed": true
+    },
+    {
+      "path": "core/injury_downgrades.py",
+      "passed": true
+    },
+    {
+      "path": "core/injury_report_features.py",
+      "passed": true
+    },
+    {
+      "path": "core/injury_report_parser.py",
+      "passed": true
+    },
+    {
+      "path": "core/injury_source_compare.py",
+      "passed": true
+    },
+    {
+      "path": "core/live_feed.py",
+      "passed": true
+    },
+    {
+      "path": "core/live_feed_overrides.csv",
+      "passed": true
+    },
+    {
+      "path": "core/odds_clean.py",
+      "passed": true
+    },
+    {
+      "path": "core/odds_fallback.py",
+      "passed": true
+    },
+    {
+      "path": "core/odds_pick.py",
+      "passed": true
+    },
+    {
+      "path": "core/odds_rerun.py",
+      "passed": true
+    },
+    {
+      "path": "core/player_features.py",
+      "passed": true
+    },
+    {
+      "path": "core/prediction_logger.py",
+      "passed": true
+    },
+    {
+      "path": "core/props_board_logic.py",
+      "passed": true
+    },
+    {
+      "path": "core/sbr.py",
+      "passed": true
+    },
+    {
+      "path": "core/scrape_injury_reports.py",
+      "passed": true
+    },
+    {
+      "path": "core/season_utils.py",
+      "passed": true
+    },
+    {
+      "path": "core/snapshot_odds.py",
+      "passed": true
+    },
+    {
+      "path": "core/timeutil.py",
+      "passed": true
+    },
+    {
+      "path": "core/travel_builder.py",
+      "passed": true
+    },
+    {
+      "path": "core/update_database.py",
+      "passed": true
+    },
+    {
+      "path": "core/odds_vendor/__init__.py",
+      "passed": true
+    },
+    {
+      "path": "core/odds_vendor/base.py",
+      "passed": true
+    },
+    {
+      "path": "core/odds_vendor/theoddsapi.py",
+      "passed": true
+    },
+    {
+      "path": "props/__init__.py",
+      "passed": true
+    },
+    {
+      "path": "props/analysis.py",
+      "passed": true
+    },
+    {
+      "path": "props/backfill.py",
+      "passed": true
+    },
+    {
+      "path": "props/collect.py",
+      "passed": true
+    },
+    {
+      "path": "props/injury_archive.py",
+      "passed": true
+    },
+    {
+      "path": "props/odds_store.py",
+      "passed": true
+    },
+    {
+      "path": "props/parse.py",
+      "passed": true
+    },
+    {
+      "path": "props/player_ids.py",
+      "passed": true
+    },
+    {
+      "path": "props/quality.py",
+      "passed": true
+    },
+    {
+      "path": "props/schedule.py",
+      "passed": true
+    },
+    {
+      "path": "props/tiers.py",
+      "passed": true
+    },
+    {
+      "path": "props/betting/__init__.py",
+      "passed": true
+    },
+    {
+      "path": "props/betting/evaluate.py",
+      "passed": true
+    },
+    {
+      "path": "props/betting/export.py",
+      "passed": true
+    },
+    {
+      "path": "props/betting/prices.py",
+      "passed": true
+    },
+    {
+      "path": "props/betting/rules.py",
+      "passed": true
+    },
+    {
+      "path": "props/betting/settle.py",
+      "passed": true
+    },
+    {
+      "path": "props/features/__init__.py",
+      "passed": true
+    },
+    {
+      "path": "props/features/build.py",
+      "passed": true
+    },
+    {
+      "path": "props/features/context.py",
+      "passed": true
+    },
+    {
+      "path": "props/features/decay.py",
+      "passed": true
+    },
+    {
+      "path": "props/features/dictionary.py",
+      "passed": true
+    },
+    {
+      "path": "props/features/guards.py",
+      "passed": true
+    },
+    {
+      "path": "props/features/history.py",
+      "passed": true
+    },
+    {
+      "path": "props/features/injury_at_t.py",
+      "passed": true
+    },
+    {
+      "path": "props/features/market_env.py",
+      "passed": true
+    },
+    {
+      "path": "props/features/rows.py",
+      "passed": true
+    },
+    {
+      "path": "props/live/__init__.py",
+      "passed": true
+    },
+    {
+      "path": "props/live/at_t.py",
+      "passed": true
+    },
+    {
+      "path": "props/live/base.py",
+      "passed": true
+    },
+    {
+      "path": "props/live/config.py",
+      "passed": true
+    },
+    {
+      "path": "props/live/context.py",
+      "passed": true
+    },
+    {
+      "path": "props/live/current.py",
+      "passed": true
+    },
+    {
+      "path": "props/live/events.py",
+      "passed": true
+    },
+    {
+      "path": "props/live/export.py",
+      "passed": true
+    },
+    {
+      "path": "props/live/frame.py",
+      "passed": true
+    },
+    {
+      "path": "props/live/freshness.py",
+      "passed": true
+    },
+    {
+      "path": "props/live/health.py",
+      "passed": true
+    },
+    {
+      "path": "props/live/parity.py",
+      "passed": true
+    },
+    {
+      "path": "props/live/predict.py",
+      "passed": true
+    },
+    {
+      "path": "props/live/publish.py",
+      "passed": true
+    },
+    {
+      "path": "props/live/quotes.py",
+      "passed": true
+    },
+    {
+      "path": "props/live/refresh.py",
+      "passed": true
+    },
+    {
+      "path": "props/live/reports.py",
+      "passed": true
+    },
+    {
+      "path": "props/live/roster.py",
+      "passed": true
+    },
+    {
+      "path": "props/live/scores.py",
+      "passed": true
+    },
+    {
+      "path": "props/live/settle.py",
+      "passed": true
+    },
+    {
+      "path": "props/live/signal.py",
+      "passed": true
+    },
+    {
+      "path": "props/live/store.py",
+      "passed": true
+    },
+    {
+      "path": "props/models/__init__.py",
+      "passed": true
+    },
+    {
+      "path": "props/models/availability.py",
+      "passed": true
+    },
+    {
+      "path": "props/models/calibrate.py",
+      "passed": true
+    },
+    {
+      "path": "props/models/common.py",
+      "passed": true
+    },
+    {
+      "path": "props/models/data.py",
+      "passed": true
+    },
+    {
+      "path": "props/models/dispersion.py",
+      "passed": true
+    },
+    {
+      "path": "props/models/evaluate.py",
+      "passed": true
+    },
+    {
+      "path": "props/models/folds.py",
+      "passed": true
+    },
+    {
+      "path": "props/models/market_bench.py",
+      "passed": true
+    },
+    {
+      "path": "props/models/minutes.py",
+      "passed": true
+    },
+    {
+      "path": "props/models/outcome.py",
+      "passed": true
+    },
+    {
+      "path": "props/models/pipeline.py",
+      "passed": true
+    },
+    {
+      "path": "props/models/rates.py",
+      "passed": true
+    },
+    {
+      "path": "props/models/recalibrate.py",
+      "passed": true
+    },
+    {
+      "path": "props/models/registry.py",
+      "passed": true
+    },
+    {
+      "path": "props/models/report.py",
+      "passed": true
+    },
+    {
+      "path": "team/__init__.py",
+      "passed": true
+    },
+    {
+      "path": "team/backtest.py",
+      "passed": true
+    },
+    {
+      "path": "team/betting.py",
+      "passed": true
+    },
+    {
+      "path": "team/betting_simulation.py",
+      "passed": true
+    },
+    {
+      "path": "team/data_checks.py",
+      "passed": true
+    },
+    {
+      "path": "team/data_paths.py",
+      "passed": true
+    },
+    {
+      "path": "team/explain.py",
+      "passed": true
+    },
+    {
+      "path": "team/feature_groups.py",
+      "passed": true
+    },
+    {
+      "path": "team/game_features_v2.py",
+      "passed": true
+    },
+    {
+      "path": "team/live_features.py",
+      "passed": true
+    },
+    {
+      "path": "team/live_odds.py",
+      "passed": true
+    },
+    {
+      "path": "team/live_rotation_v2.py",
+      "passed": true
+    },
+    {
+      "path": "team/log_audit.py",
+      "passed": true
+    },
+    {
+      "path": "team/market_models.py",
+      "passed": true
+    },
+    {
+      "path": "team/model_registry.py",
+      "passed": true
+    },
+    {
+      "path": "team/retrain.py",
+      "passed": true
+    },
+    {
+      "path": "team/team_features_v2.py",
+      "passed": true
+    },
+    {
+      "path": "team/train_baseline.py",
+      "passed": true
+    },
+    {
+      "path": "team/tuning.py",
+      "passed": true
+    },
+    {
+      "path": "nba_pregame_models-0.1.0.dist-info/METADATA",
+      "passed": true
+    },
+    {
+      "path": "nba_pregame_models-0.1.0.dist-info/WHEEL",
+      "passed": true
+    },
+    {
+      "path": "nba_pregame_models-0.1.0.dist-info/top_level.txt",
+      "passed": true
+    },
+    {
+      "path": "nba_pregame_models-0.1.0.dist-info/RECORD",
+      "passed": true
+    }
+  ],
+  "pinned_wheel_sha256": "817fc8165d49913fb99c1aba0b99c944c03e315f0dfc86ff6a4c0dfd119972f6",
+  "candidate_wheel_sha256": "121afd61c1ee22de8b03fa71e81ba4c0f74eaad519d0ccb09c4f396e84738e0c",
+  "promotion": false,
+  "policy": "All member bytes exact; ZIP metadata/raw container hash may differ. Existing hash pin unchanged."
+}

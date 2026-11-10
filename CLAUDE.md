@@ -27,3 +27,8 @@ If you meet `live_*` code or reports that are not described here, they belong to
 - The deployed model set is `model_registry.DEPLOYED_SUFFIX`. Do not retrain, regenerate predictions, or change the suffix without the owner's approval.
 - Experiments follow the same process: write the keep rule down before running, report the result whatever it is, and keep one folder per experiment under `reports/experiments/<name>/`.
 - After editing a Python file through a script, run `ast.parse` on it. The Write tool strips trailing whitespace, so use the Edit tool for changes that depend on exact whitespace.
+
+## Structural ownership on this branch
+- Pure props board logic is `core/props_board_logic.py`; `dashboard_props/logic.py` is its compatibility shim. Keep the pure module in the publisher allowlist.
+- Canonical props defaults are `config/props_live.json` and `config/props_frozen_rule.json`, with legacy report-path fallback. Historical report copies and frozen hashes remain intact.
+- Model-only verification helpers and expected fixture identities are owned by this repository under `scripts/verification/` and `reports/milestone1/`.

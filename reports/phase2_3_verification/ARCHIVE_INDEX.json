@@ -1,0 +1,51 @@
+{
+ "what": "Files of reports/phase2_3_verification moved out of Git (Batch 4C group 1). Each is preserved byte for byte in the external archive and was restored into a rehearsal folder and compared before removal.",
+ "archive_root": "external private archive; location and per-file records are in the private trading repository (reports/phase4c_group1)",
+ "files": [
+  {
+   "path": "reports/phase2_3_verification/build_candidate/package_contract.json",
+   "bytes": 5720,
+   "sha256": "d95adb94e259898c92372ba49d6a706cfea6d709b2b4cf53c676c2794519c979"
+  },
+  {
+   "path": "reports/phase2_3_verification/comparison_results.json",
+   "bytes": 15364,
+   "sha256": "5419e60e4689484bbb706703843fc7b5511f84d18be1cff433eafa839beb786d"
+  },
+  {
+   "path": "reports/phase2_3_verification/completion_gates.json",
+   "bytes": 584,
+   "sha256": "b81c7cd992f37e812169f447a91377d506ea2f7eb38c24b286b3d1f41b5aad51"
+  },
+  {
+   "path": "reports/phase2_3_verification/environment.json",
+   "bytes": 3941,
+   "sha256": "2daa8b5a09a6dbfc63d530f928d69af8109e1b5d613f741278c220c433ad8a0d"
+  },
+  {
+   "path": "reports/phase2_3_verification/models_smoke.json",
+   "bytes": 1212,
+   "sha256": "70cf9b18f285ba57d447a4350a1732d2cc7cfbd305056c780ccc23497efa43d3"
+  },
+  {
+   "path": "reports/phase2_3_verification/ownership_port.json",
+   "bytes": 495,
+   "sha256": "a8de1f24f526aefb36a9f75677a57925d97cb919024462109036e3773358b1cd"
+  },
+  {
+   "path": "reports/phase2_3_verification/release_equivalence.json",
+   "bytes": 870,
+   "sha256": "9a47a40b29f4b08edd9df58ad7f96e496d3ffa14fcbe6461ab769a7dde610263"
+  },
+  {
+   "path": "reports/phase2_3_verification/run_results.json",
+   "bytes": 223,
+   "sha256": "b29c63cef18d194d302bc5dfe3da20600042527cb05efb5119e098b54254458a"
+  },
+  {
+   "path": "reports/phase2_3_verification/tested_source_alignment.json",
+   "bytes": 72830,
+   "sha256": "8f910e98b4dd2e7fe2ce2fa28dc6a0321435ff644364587e7b64ef297b5b47bc"
+  }
+ ]
+}

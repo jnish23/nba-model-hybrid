@@ -108,3 +108,42 @@ Thumbs.db
 reports/experiments/*/predictions.csv
 reports/experiments/*/calibration_set_predictions.csv
 reports/experiments/*/features.json
+
+# Offline refactor verification payloads are archived separately.
+reports/phase2_verification/fixtures/
+reports/phase2_verification/*.log
+reports/phase2_verification/*.xml
+
+# Offline Phase 2.2 build and verification artifacts are archived separately.
+/build/
+/dist/
+/*.egg-info/
+reports/phase2_2_verification/fixtures/
+reports/phase2_2_verification/*.xml
+reports/phase2_2_verification/*.log
+reports/phase2_1_defect_fixes/*.xml
+reports/phase2_2_verification/initial_*.json
+reports/phase2_2_verification/missing_audit_cli_*.json
+reports/phase2_2_verification/canonical_replay_legacy.json
+reports/phase2_2_verification/canonical_replay_canonical.json
+
+reports/phase2_3_verification/**/*.xml
+reports/phase2_3_verification/**/*.log
+reports/phase2_3_verification/**/fixtures/
+reports/phase2_3_verification/initial_*.json
+
+/reports/phase3_2_verification/*.log
+/reports/phase3_2_verification/*.xml
+/reports/phase3_2_verification/fixtures/
+
+# Batch 3 raw fixtures/logs are retained in the private evidence archive.
+/reports/phase3_2_verification/batch3/**/*.log
+/reports/phase3_2_verification/batch3/**/*.xml
+/reports/phase3_2_verification/batch3/**/fixtures/
+
+# Initial inventory/attempt payloads remain in the sealed raw archive.
+/reports/phase3_2_verification/batch3/attempt1/
+/reports/phase3_2_verification/batch3/inventory.json
+/reports/phase3_2_verification/batch3/ownership_comparison.json
+/reports/phase3_2_verification/batch3/research_dependencies.json
+/reports/phase3_2_verification/batch3/experiment_catalog.json
