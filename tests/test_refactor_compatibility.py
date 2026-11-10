@@ -32,7 +32,9 @@ def test_configuration_prefers_canonical_and_preserves_legacy_fallback(tmp_path,
 def test_relocated_frozen_rule_is_exact_and_config_changes_only_its_path():
     old=(ROOT/'reports/props/phase5_revised_rule.frozen_rule.json').read_bytes()
     new=(ROOT/'config/props_frozen_rule.json').read_bytes()
-    assert old==new
+    # The legacy report copy is stored with LF in Git and checked out per platform (CRLF on Windows); the canonical copy is pinned byte for byte
+    # by its SHA-256 below. Content must match once line endings are normalized.
+    assert old.replace(b'\r\n',b'\n')==new.replace(b'\r\n',b'\n')
     original=json.loads((ROOT/'reports/props/live_config.json').read_text(encoding='utf-8'))
     relocated=json.loads((ROOT/'config/props_live.json').read_text(encoding='utf-8'))
     assert hashlib.sha256(new).hexdigest()==relocated['rule_sha256']
