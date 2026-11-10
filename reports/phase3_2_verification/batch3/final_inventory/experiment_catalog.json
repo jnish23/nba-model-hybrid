@@ -1,0 +1,938 @@
+[
+  {
+    "id": "E01",
+    "owner_candidate": "public_models",
+    "status": "unclassified_historical_research",
+    "source_files": [
+      "experiments/e01_residual.py"
+    ],
+    "inspection_revision": "736aa33c12a2d543ec4a5cbf3b0ff3153b53e797",
+    "historical_baseline_revision": null,
+    "historical_input_hashes": null,
+    "run_command_candidates": [
+      "python -m experiments.e01_residual"
+    ],
+    "historical_run_command_verified": false,
+    "result_paths": [
+      "reports/experiments/E01_residual_targets/RESULT.md",
+      "reports/experiments/E01_residual_targets/decision.json",
+      "reports/experiments/E01_residual_targets/fold_info.json",
+      "reports/experiments/E01_residual_targets/metrics.json",
+      "reports/experiments/E01_residual_targets/vs_baseline.json"
+    ],
+    "decision_references": [
+      "reports/experiments/E01_residual_targets/RESULT.md",
+      "reports/experiments/E01_residual_targets/decision.json"
+    ],
+    "note": "Catalog captures observed files. No active/accepted/archived status, historical baseline, or successful reproduction is inferred."
+  },
+  {
+    "id": "E02",
+    "owner_candidate": "public_models",
+    "status": "unclassified_historical_research",
+    "source_files": [
+      "experiments/e02_calibration.py"
+    ],
+    "inspection_revision": "736aa33c12a2d543ec4a5cbf3b0ff3153b53e797",
+    "historical_baseline_revision": null,
+    "historical_input_hashes": null,
+    "run_command_candidates": [
+      "python -m experiments.e02_calibration"
+    ],
+    "historical_run_command_verified": false,
+    "result_paths": [
+      "reports/experiments/E02_calibration/RESULT.md",
+      "reports/experiments/E02_calibration/decision.json"
+    ],
+    "decision_references": [
+      "reports/experiments/E02_calibration/RESULT.md",
+      "reports/experiments/E02_calibration/decision.json"
+    ],
+    "note": "Catalog captures observed files. No active/accepted/archived status, historical baseline, or successful reproduction is inferred."
+  },
+  {
+    "id": "E03",
+    "owner_candidate": "public_models",
+    "status": "unclassified_historical_research",
+    "source_files": [
+      "experiments/e03_coherence.py"
+    ],
+    "inspection_revision": "736aa33c12a2d543ec4a5cbf3b0ff3153b53e797",
+    "historical_baseline_revision": null,
+    "historical_input_hashes": null,
+    "run_command_candidates": [
+      "python -m experiments.e03_coherence"
+    ],
+    "historical_run_command_verified": false,
+    "result_paths": [
+      "reports/experiments/E03_coherence/RESULT.md",
+      "reports/experiments/E03_coherence/decision.json"
+    ],
+    "decision_references": [
+      "reports/experiments/E03_coherence/RESULT.md",
+      "reports/experiments/E03_coherence/decision.json"
+    ],
+    "note": "Catalog captures observed files. No active/accepted/archived status, historical baseline, or successful reproduction is inferred."
+  },
+  {
+    "id": "E04",
+    "owner_candidate": "public_models",
+    "status": "unclassified_historical_research",
+    "source_files": [
+      "experiments/e04_sigma.py"
+    ],
+    "inspection_revision": "736aa33c12a2d543ec4a5cbf3b0ff3153b53e797",
+    "historical_baseline_revision": null,
+    "historical_input_hashes": null,
+    "run_command_candidates": [
+      "python -m experiments.e04_sigma"
+    ],
+    "historical_run_command_verified": false,
+    "result_paths": [
+      "reports/experiments/E04_sigma/RESULT.md",
+      "reports/experiments/E04_sigma/decision.json"
+    ],
+    "decision_references": [
+      "reports/experiments/E04_sigma/RESULT.md",
+      "reports/experiments/E04_sigma/decision.json"
+    ],
+    "note": "Catalog captures observed files. No active/accepted/archived status, historical baseline, or successful reproduction is inferred."
+  },
+  {
+    "id": "E05",
+    "owner_candidate": "public_models",
+    "status": "unclassified_historical_research",
+    "source_files": [
+      "experiments/e05_run.py"
+    ],
+    "inspection_revision": "736aa33c12a2d543ec4a5cbf3b0ff3153b53e797",
+    "historical_baseline_revision": null,
+    "historical_input_hashes": null,
+    "run_command_candidates": [
+      "python -m experiments.e05_run"
+    ],
+    "historical_run_command_verified": false,
+    "result_paths": [
+      "reports/experiments/E05_pace_adjusted/RESULT.md",
+      "reports/experiments/E05_pace_adjusted/decision.json",
+      "reports/experiments/E05_pace_adjusted/fold_info.json",
+      "reports/experiments/E05_pace_adjusted/metrics.json",
+      "reports/experiments/E05_pace_adjusted/vs_baseline.json"
+    ],
+    "decision_references": [
+      "reports/experiments/E05_pace_adjusted/RESULT.md",
+      "reports/experiments/E05_pace_adjusted/decision.json"
+    ],
+    "note": "Catalog captures observed files. No active/accepted/archived status, historical baseline, or successful reproduction is inferred."
+  },
+  {
+    "id": "E06",
+    "owner_candidate": "public_models",
+    "status": "unclassified_historical_research",
+    "source_files": [
+      "experiments/e06_run.py"
+    ],
+    "inspection_revision": "736aa33c12a2d543ec4a5cbf3b0ff3153b53e797",
+    "historical_baseline_revision": null,
+    "historical_input_hashes": null,
+    "run_command_candidates": [
+      "python -m experiments.e06_run"
+    ],
+    "historical_run_command_verified": false,
+    "result_paths": [
+      "reports/experiments/E06_k050/fold_info.json",
+      "reports/experiments/E06_k075/fold_info.json",
+      "reports/experiments/E06_offseason_regression/RESULT.md",
+      "reports/experiments/E06_offseason_regression/decision.json",
+      "reports/experiments/E06_offseason_regression/metrics.json",
+      "reports/experiments/E06_offseason_regression/vs_baseline.json"
+    ],
+    "decision_references": [
+      "reports/experiments/E06_offseason_regression/RESULT.md",
+      "reports/experiments/E06_offseason_regression/decision.json"
+    ],
+    "note": "Catalog captures observed files. No active/accepted/archived status, historical baseline, or successful reproduction is inferred."
+  },
+  {
+    "id": "E07",
+    "owner_candidate": "public_models",
+    "status": "unclassified_historical_research",
+    "source_files": [
+      "experiments/e07_run.py"
+    ],
+    "inspection_revision": "736aa33c12a2d543ec4a5cbf3b0ff3153b53e797",
+    "historical_baseline_revision": null,
+    "historical_input_hashes": null,
+    "run_command_candidates": [
+      "python -m experiments.e07_run"
+    ],
+    "historical_run_command_verified": false,
+    "result_paths": [
+      "reports/experiments/E07_bench_replacement/RESULT.md",
+      "reports/experiments/E07_bench_replacement/decision.json",
+      "reports/experiments/E07_bench_replacement/fold_info.json",
+      "reports/experiments/E07_bench_replacement/metrics.json",
+      "reports/experiments/E07_bench_replacement/vs_baseline.json",
+      "reports/experiments/E07_bench_replacement/vs_baseline_out_games.json"
+    ],
+    "decision_references": [
+      "reports/experiments/E07_bench_replacement/RESULT.md",
+      "reports/experiments/E07_bench_replacement/decision.json"
+    ],
+    "note": "Catalog captures observed files. No active/accepted/archived status, historical baseline, or successful reproduction is inferred."
+  },
+  {
+    "id": "E08",
+    "owner_candidate": "public_models",
+    "status": "unclassified_historical_research",
+    "source_files": [
+      "experiments/e08_hypothesis.py",
+      "experiments/e08_run.py"
+    ],
+    "inspection_revision": "736aa33c12a2d543ec4a5cbf3b0ff3153b53e797",
+    "historical_baseline_revision": null,
+    "historical_input_hashes": null,
+    "run_command_candidates": [
+      "python -m experiments.e08_hypothesis",
+      "python -m experiments.e08_run"
+    ],
+    "historical_run_command_verified": false,
+    "result_paths": [
+      "reports/experiments/E08_fresh_chronic/HYPOTHESIS.md",
+      "reports/experiments/E08_fresh_chronic/hypothesis.json",
+      "reports/experiments/E08_fresh_chronic_step2/RESULT.md",
+      "reports/experiments/E08_fresh_chronic_step2/decision.json",
+      "reports/experiments/E08_fresh_chronic_step2/fold_info.json",
+      "reports/experiments/E08_fresh_chronic_step2/metrics.json",
+      "reports/experiments/E08_fresh_chronic_step2/vs_baseline.json"
+    ],
+    "decision_references": [
+      "reports/experiments/E08_fresh_chronic_step2/RESULT.md",
+      "reports/experiments/E08_fresh_chronic_step2/decision.json"
+    ],
+    "note": "Catalog captures observed files. No active/accepted/archived status, historical baseline, or successful reproduction is inferred."
+  },
+  {
+    "id": "E09",
+    "owner_candidate": "public_models",
+    "status": "unclassified_historical_research",
+    "source_files": [
+      "experiments/e09_run.py"
+    ],
+    "inspection_revision": "736aa33c12a2d543ec4a5cbf3b0ff3153b53e797",
+    "historical_baseline_revision": null,
+    "historical_input_hashes": null,
+    "run_command_candidates": [
+      "python -m experiments.e09_run"
+    ],
+    "historical_run_command_verified": false,
+    "result_paths": [
+      "reports/experiments/E09_pdf_injuries_live/RESULT.md",
+      "reports/experiments/E09_pdf_injuries_live/decision.json"
+    ],
+    "decision_references": [
+      "reports/experiments/E09_pdf_injuries_live/RESULT.md",
+      "reports/experiments/E09_pdf_injuries_live/decision.json"
+    ],
+    "note": "Catalog captures observed files. No active/accepted/archived status, historical baseline, or successful reproduction is inferred."
+  },
+  {
+    "id": "E10",
+    "owner_candidate": "public_models",
+    "status": "unclassified_historical_research",
+    "source_files": [
+      "experiments/e10_rules.py"
+    ],
+    "inspection_revision": "736aa33c12a2d543ec4a5cbf3b0ff3153b53e797",
+    "historical_baseline_revision": null,
+    "historical_input_hashes": null,
+    "run_command_candidates": [
+      "python -m experiments.e10_rules"
+    ],
+    "historical_run_command_verified": false,
+    "result_paths": [
+      "reports/experiments/E10_selection_rule/RESULT.md",
+      "reports/experiments/E10_selection_rule/decision.json"
+    ],
+    "decision_references": [
+      "reports/experiments/E10_selection_rule/RESULT.md",
+      "reports/experiments/E10_selection_rule/decision.json"
+    ],
+    "note": "Catalog captures observed files. No active/accepted/archived status, historical baseline, or successful reproduction is inferred."
+  },
+  {
+    "id": "E11",
+    "owner_candidate": "public_models",
+    "status": "unclassified_historical_research",
+    "source_files": [
+      "experiments/e11_exposure.py"
+    ],
+    "inspection_revision": "736aa33c12a2d543ec4a5cbf3b0ff3153b53e797",
+    "historical_baseline_revision": null,
+    "historical_input_hashes": null,
+    "run_command_candidates": [
+      "python -m experiments.e11_exposure"
+    ],
+    "historical_run_command_verified": false,
+    "result_paths": [
+      "reports/experiments/E11_exposure/RESULT.md",
+      "reports/experiments/E11_exposure/decision.json"
+    ],
+    "decision_references": [
+      "reports/experiments/E11_exposure/RESULT.md",
+      "reports/experiments/E11_exposure/decision.json"
+    ],
+    "note": "Catalog captures observed files. No active/accepted/archived status, historical baseline, or successful reproduction is inferred."
+  },
+  {
+    "id": "E12",
+    "owner_candidate": "public_models",
+    "status": "unclassified_historical_research",
+    "source_files": [
+      "experiments/e12_shopping.py"
+    ],
+    "inspection_revision": "736aa33c12a2d543ec4a5cbf3b0ff3153b53e797",
+    "historical_baseline_revision": null,
+    "historical_input_hashes": null,
+    "run_command_candidates": [
+      "python -m experiments.e12_shopping"
+    ],
+    "historical_run_command_verified": false,
+    "result_paths": [
+      "reports/experiments/E12_line_shopping/RESULT.md",
+      "reports/experiments/E12_line_shopping/decision.json"
+    ],
+    "decision_references": [
+      "reports/experiments/E12_line_shopping/RESULT.md",
+      "reports/experiments/E12_line_shopping/decision.json"
+    ],
+    "note": "Catalog captures observed files. No active/accepted/archived status, historical baseline, or successful reproduction is inferred."
+  },
+  {
+    "id": "E13",
+    "owner_candidate": "public_models",
+    "status": "unclassified_historical_research",
+    "source_files": [
+      "experiments/e13_combined.py"
+    ],
+    "inspection_revision": "736aa33c12a2d543ec4a5cbf3b0ff3153b53e797",
+    "historical_baseline_revision": null,
+    "historical_input_hashes": null,
+    "run_command_candidates": [
+      "python -m experiments.e13_combined"
+    ],
+    "historical_run_command_verified": false,
+    "result_paths": [
+      "reports/experiments/E13_combined_winners/RESULT.md",
+      "reports/experiments/E13_combined_winners/metrics.json"
+    ],
+    "decision_references": [
+      "reports/experiments/E13_combined_winners/RESULT.md"
+    ],
+    "note": "Catalog captures observed files. No active/accepted/archived status, historical baseline, or successful reproduction is inferred."
+  },
+  {
+    "id": "E14",
+    "owner_candidate": "public_models",
+    "status": "unclassified_historical_research",
+    "source_files": [
+      "experiments/e14_blowout_under.py",
+      "experiments/e14_report.py"
+    ],
+    "inspection_revision": "736aa33c12a2d543ec4a5cbf3b0ff3153b53e797",
+    "historical_baseline_revision": null,
+    "historical_input_hashes": null,
+    "run_command_candidates": [
+      "python -m experiments.e14_blowout_under",
+      "python -m experiments.e14_report"
+    ],
+    "historical_run_command_verified": false,
+    "result_paths": [
+      "reports/experiments/E14_blowout_under/PREREGISTRATION.md",
+      "reports/experiments/E14_blowout_under/e14_games.csv",
+      "reports/experiments/E14_blowout_under/report.html",
+      "reports/experiments/E14_blowout_under/results.json"
+    ],
+    "decision_references": [
+      "reports/experiments/E14_blowout_under/PREREGISTRATION.md"
+    ],
+    "note": "Catalog captures observed files. No active/accepted/archived status, historical baseline, or successful reproduction is inferred."
+  },
+  {
+    "id": "E16",
+    "owner_candidate": "public_models",
+    "status": "unclassified_historical_research",
+    "source_files": [
+      "experiments/e16_overtime.py",
+      "experiments/e16_report.py"
+    ],
+    "inspection_revision": "736aa33c12a2d543ec4a5cbf3b0ff3153b53e797",
+    "historical_baseline_revision": null,
+    "historical_input_hashes": null,
+    "run_command_candidates": [
+      "python -m experiments.e16_overtime",
+      "python -m experiments.e16_report"
+    ],
+    "historical_run_command_verified": false,
+    "result_paths": [
+      "reports/experiments/E16_overtime/report.html",
+      "reports/experiments/E16_overtime/results.json"
+    ],
+    "decision_references": [],
+    "note": "Catalog captures observed files. No active/accepted/archived status, historical baseline, or successful reproduction is inferred."
+  },
+  {
+    "id": "E17",
+    "owner_candidate": "public_models",
+    "status": "unclassified_historical_research",
+    "source_files": [
+      "experiments/e17_interaction.py",
+      "experiments/e17_report.py"
+    ],
+    "inspection_revision": "736aa33c12a2d543ec4a5cbf3b0ff3153b53e797",
+    "historical_baseline_revision": null,
+    "historical_input_hashes": null,
+    "run_command_candidates": [
+      "python -m experiments.e17_interaction",
+      "python -m experiments.e17_report"
+    ],
+    "historical_run_command_verified": false,
+    "result_paths": [
+      "reports/experiments/E17_interaction/report.html",
+      "reports/experiments/E17_interaction/results.json"
+    ],
+    "decision_references": [],
+    "note": "Catalog captures observed files. No active/accepted/archived status, historical baseline, or successful reproduction is inferred."
+  },
+  {
+    "id": "E18",
+    "owner_candidate": "public_models",
+    "status": "unclassified_historical_research",
+    "source_files": [
+      "experiments/e18_calibration.py",
+      "experiments/e18_report.py"
+    ],
+    "inspection_revision": "736aa33c12a2d543ec4a5cbf3b0ff3153b53e797",
+    "historical_baseline_revision": null,
+    "historical_input_hashes": null,
+    "run_command_candidates": [
+      "python -m experiments.e18_calibration",
+      "python -m experiments.e18_report"
+    ],
+    "historical_run_command_verified": false,
+    "result_paths": [
+      "reports/experiments/E18_calibration/report.html",
+      "reports/experiments/E18_calibration/results.json"
+    ],
+    "decision_references": [],
+    "note": "Catalog captures observed files. No active/accepted/archived status, historical baseline, or successful reproduction is inferred."
+  },
+  {
+    "id": "E19",
+    "owner_candidate": "public_models",
+    "status": "unclassified_historical_research",
+    "source_files": [
+      "experiments/e19_report.py",
+      "experiments/e19_tanking.py"
+    ],
+    "inspection_revision": "736aa33c12a2d543ec4a5cbf3b0ff3153b53e797",
+    "historical_baseline_revision": null,
+    "historical_input_hashes": null,
+    "run_command_candidates": [
+      "python -m experiments.e19_report",
+      "python -m experiments.e19_tanking"
+    ],
+    "historical_run_command_verified": false,
+    "result_paths": [
+      "reports/experiments/E19_tanking/report.html",
+      "reports/experiments/E19_tanking/results.json"
+    ],
+    "decision_references": [],
+    "note": "Catalog captures observed files. No active/accepted/archived status, historical baseline, or successful reproduction is inferred."
+  },
+  {
+    "id": "E21",
+    "owner_candidate": "public_models",
+    "status": "unclassified_historical_research",
+    "source_files": [
+      "experiments/e21_pace.py",
+      "experiments/e21_report.py"
+    ],
+    "inspection_revision": "736aa33c12a2d543ec4a5cbf3b0ff3153b53e797",
+    "historical_baseline_revision": null,
+    "historical_input_hashes": null,
+    "run_command_candidates": [
+      "python -m experiments.e21_pace",
+      "python -m experiments.e21_report"
+    ],
+    "historical_run_command_verified": false,
+    "result_paths": [
+      "reports/experiments/E21_pace/report.html",
+      "reports/experiments/E21_pace/results.json"
+    ],
+    "decision_references": [],
+    "note": "Catalog captures observed files. No active/accepted/archived status, historical baseline, or successful reproduction is inferred."
+  },
+  {
+    "id": "E23",
+    "owner_candidate": "public_models",
+    "status": "unclassified_historical_research",
+    "source_files": [
+      "experiments/e23_b2b.py",
+      "experiments/e23_report.py"
+    ],
+    "inspection_revision": "736aa33c12a2d543ec4a5cbf3b0ff3153b53e797",
+    "historical_baseline_revision": null,
+    "historical_input_hashes": null,
+    "run_command_candidates": [
+      "python -m experiments.e23_b2b",
+      "python -m experiments.e23_report"
+    ],
+    "historical_run_command_verified": false,
+    "result_paths": [
+      "reports/experiments/E23_b2b/report.html",
+      "reports/experiments/E23_b2b/results.json"
+    ],
+    "decision_references": [],
+    "note": "Catalog captures observed files. No active/accepted/archived status, historical baseline, or successful reproduction is inferred."
+  },
+  {
+    "id": "E24",
+    "owner_candidate": "public_models",
+    "status": "unclassified_historical_research",
+    "source_files": [
+      "experiments/e24_movement.py",
+      "experiments/e24_report.py"
+    ],
+    "inspection_revision": "736aa33c12a2d543ec4a5cbf3b0ff3153b53e797",
+    "historical_baseline_revision": null,
+    "historical_input_hashes": null,
+    "run_command_candidates": [
+      "python -m experiments.e24_movement",
+      "python -m experiments.e24_report"
+    ],
+    "historical_run_command_verified": false,
+    "result_paths": [
+      "reports/experiments/E24_movement/report.html",
+      "reports/experiments/E24_movement/results.json"
+    ],
+    "decision_references": [],
+    "note": "Catalog captures observed files. No active/accepted/archived status, historical baseline, or successful reproduction is inferred."
+  },
+  {
+    "id": "E25",
+    "owner_candidate": "public_models",
+    "status": "unclassified_historical_research",
+    "source_files": [
+      "experiments/e25_decorrelation.py",
+      "experiments/e25_regen.py"
+    ],
+    "inspection_revision": "736aa33c12a2d543ec4a5cbf3b0ff3153b53e797",
+    "historical_baseline_revision": null,
+    "historical_input_hashes": null,
+    "run_command_candidates": [
+      "python -m experiments.e25_decorrelation",
+      "python -m experiments.e25_regen"
+    ],
+    "historical_run_command_verified": false,
+    "result_paths": [
+      "reports/experiments/E25_decorrelation/README.md",
+      "reports/experiments/E25_decorrelation/results.json",
+      "reports/experiments/E25_no_odds/fold_info.json",
+      "reports/experiments/E25_residual/fold_info.json",
+      "reports/experiments/E25_with_odds/fold_info.json"
+    ],
+    "decision_references": [],
+    "note": "Catalog captures observed files. No active/accepted/archived status, historical baseline, or successful reproduction is inferred."
+  },
+  {
+    "id": "E26",
+    "owner_candidate": "public_models",
+    "status": "unclassified_historical_research",
+    "source_files": [
+      "experiments/e26_freeze.py",
+      "experiments/e26_score.py"
+    ],
+    "inspection_revision": "736aa33c12a2d543ec4a5cbf3b0ff3153b53e797",
+    "historical_baseline_revision": null,
+    "historical_input_hashes": null,
+    "run_command_candidates": [
+      "python -m experiments.e26_freeze",
+      "python -m experiments.e26_score"
+    ],
+    "historical_run_command_verified": false,
+    "result_paths": [
+      "reports/experiments/E26_forward_shrink/README.md",
+      "reports/experiments/E26_forward_shrink/dry_run.json",
+      "reports/experiments/E26_forward_shrink/frozen/no_odds_total.joblib",
+      "reports/experiments/E26_forward_shrink/frozen/params.json"
+    ],
+    "decision_references": [],
+    "note": "Catalog captures observed files. No active/accepted/archived status, historical baseline, or successful reproduction is inferred."
+  },
+  {
+    "id": "E28",
+    "owner_candidate": "public_models",
+    "status": "unclassified_historical_research",
+    "source_files": [
+      "experiments/e28_audit.py",
+      "experiments/e28_explore.py",
+      "experiments/e28_reference.py",
+      "experiments/e28_screen.py"
+    ],
+    "inspection_revision": "736aa33c12a2d543ec4a5cbf3b0ff3153b53e797",
+    "historical_baseline_revision": null,
+    "historical_input_hashes": null,
+    "run_command_candidates": [
+      "python -m experiments.e28_audit",
+      "python -m experiments.e28_explore",
+      "python -m experiments.e28_reference",
+      "python -m experiments.e28_screen"
+    ],
+    "historical_run_command_verified": false,
+    "result_paths": [
+      "reports/experiments/E28_tracking/SUMMARY.md",
+      "reports/experiments/E28_tracking/audit.json",
+      "reports/experiments/E28_tracking/audit.md",
+      "reports/experiments/E28_tracking/explore.md",
+      "reports/experiments/E28_tracking/registration.sha256",
+      "reports/experiments/E28_tracking/screen.json",
+      "reports/experiments/E28_tracking/screen.md"
+    ],
+    "decision_references": [],
+    "note": "Catalog captures observed files. No active/accepted/archived status, historical baseline, or successful reproduction is inferred."
+  },
+  {
+    "id": "E29",
+    "owner_candidate": "public_models",
+    "status": "unclassified_historical_research",
+    "source_files": [
+      "experiments/e29_run.py"
+    ],
+    "inspection_revision": "736aa33c12a2d543ec4a5cbf3b0ff3153b53e797",
+    "historical_baseline_revision": null,
+    "historical_input_hashes": null,
+    "run_command_candidates": [
+      "python -m experiments.e29_run"
+    ],
+    "historical_run_command_verified": false,
+    "result_paths": [
+      "reports/experiments/E29_F1_total/RESULT.md",
+      "reports/experiments/E29_F1_total/decision.json",
+      "reports/experiments/E29_F1_total/fold_info.json"
+    ],
+    "decision_references": [
+      "reports/experiments/E29_F1_total/RESULT.md",
+      "reports/experiments/E29_F1_total/decision.json"
+    ],
+    "note": "Catalog captures observed files. No active/accepted/archived status, historical baseline, or successful reproduction is inferred."
+  },
+  {
+    "id": "E30",
+    "owner_candidate": "public_models",
+    "status": "unclassified_historical_research",
+    "source_files": [
+      "experiments/e30_freeze.py",
+      "experiments/e30_score.py",
+      "experiments/e30_signals.py"
+    ],
+    "inspection_revision": "736aa33c12a2d543ec4a5cbf3b0ff3153b53e797",
+    "historical_baseline_revision": null,
+    "historical_input_hashes": null,
+    "run_command_candidates": [
+      "python -m experiments.e30_freeze",
+      "python -m experiments.e30_score",
+      "python -m experiments.e30_signals"
+    ],
+    "historical_run_command_verified": false,
+    "result_paths": [
+      "reports/experiments/E30_forward_tracking/README.md",
+      "reports/experiments/E30_forward_tracking/dry_run.json",
+      "reports/experiments/E30_forward_tracking/dry_run_after_amendment.json",
+      "reports/experiments/E30_forward_tracking/frozen/params.json"
+    ],
+    "decision_references": [],
+    "note": "Catalog captures observed files. No active/accepted/archived status, historical baseline, or successful reproduction is inferred."
+  },
+  {
+    "id": "E31",
+    "owner_candidate": "public_models",
+    "status": "unclassified_historical_research",
+    "source_files": [
+      "experiments/e31_nosel.py",
+      "experiments/e31b_nosel.py"
+    ],
+    "inspection_revision": "736aa33c12a2d543ec4a5cbf3b0ff3153b53e797",
+    "historical_baseline_revision": null,
+    "historical_input_hashes": null,
+    "run_command_candidates": [
+      "python -m experiments.e31_nosel",
+      "python -m experiments.e31b_nosel"
+    ],
+    "historical_run_command_verified": false,
+    "result_paths": [
+      "reports/experiments/E31_all/RESULT.md",
+      "reports/experiments/E31_all/fold_info.json",
+      "reports/experiments/E31_stage1/RESULT.md",
+      "reports/experiments/E31_stage1/fold_info.json"
+    ],
+    "decision_references": [
+      "reports/experiments/E31_all/RESULT.md",
+      "reports/experiments/E31_stage1/RESULT.md"
+    ],
+    "note": "Catalog captures observed files. No active/accepted/archived status, historical baseline, or successful reproduction is inferred."
+  },
+  {
+    "id": "decide",
+    "owner_candidate": "public_models",
+    "status": "unclassified_historical_research",
+    "source_files": [
+      "experiments/decide.py"
+    ],
+    "inspection_revision": "736aa33c12a2d543ec4a5cbf3b0ff3153b53e797",
+    "historical_baseline_revision": null,
+    "historical_input_hashes": null,
+    "run_command_candidates": [
+      "python -m experiments.decide"
+    ],
+    "historical_run_command_verified": false,
+    "result_paths": [],
+    "decision_references": [],
+    "note": "Catalog captures observed files. No active/accepted/archived status, historical baseline, or successful reproduction is inferred."
+  },
+  {
+    "id": "feature_exp",
+    "owner_candidate": "public_models",
+    "status": "unclassified_historical_research",
+    "source_files": [
+      "experiments/feature_exp.py"
+    ],
+    "inspection_revision": "736aa33c12a2d543ec4a5cbf3b0ff3153b53e797",
+    "historical_baseline_revision": null,
+    "historical_input_hashes": null,
+    "run_command_candidates": [
+      "python -m experiments.feature_exp"
+    ],
+    "historical_run_command_verified": false,
+    "result_paths": [],
+    "decision_references": [],
+    "note": "Catalog captures observed files. No active/accepted/archived status, historical baseline, or successful reproduction is inferred."
+  },
+  {
+    "id": "features_e05",
+    "owner_candidate": "public_models",
+    "status": "unclassified_historical_research",
+    "source_files": [
+      "experiments/features_e05.py"
+    ],
+    "inspection_revision": "736aa33c12a2d543ec4a5cbf3b0ff3153b53e797",
+    "historical_baseline_revision": null,
+    "historical_input_hashes": null,
+    "run_command_candidates": [
+      "python -m experiments.features_e05"
+    ],
+    "historical_run_command_verified": false,
+    "result_paths": [],
+    "decision_references": [],
+    "note": "Catalog captures observed files. No active/accepted/archived status, historical baseline, or successful reproduction is inferred."
+  },
+  {
+    "id": "features_tracking",
+    "owner_candidate": "models_research_review",
+    "status": "unclassified_historical_research",
+    "source_files": [
+      "experiments/features_tracking.py"
+    ],
+    "inspection_revision": "736aa33c12a2d543ec4a5cbf3b0ff3153b53e797",
+    "historical_baseline_revision": null,
+    "historical_input_hashes": null,
+    "run_command_candidates": [
+      "python -m experiments.features_tracking"
+    ],
+    "historical_run_command_verified": false,
+    "result_paths": [],
+    "decision_references": [],
+    "note": "Catalog captures observed files. No active/accepted/archived status, historical baseline, or successful reproduction is inferred."
+  },
+  {
+    "id": "inj_variants",
+    "owner_candidate": "public_models",
+    "status": "unclassified_historical_research",
+    "source_files": [
+      "experiments/inj_variants.py"
+    ],
+    "inspection_revision": "736aa33c12a2d543ec4a5cbf3b0ff3153b53e797",
+    "historical_baseline_revision": null,
+    "historical_input_hashes": null,
+    "run_command_candidates": [
+      "python -m experiments.inj_variants"
+    ],
+    "historical_run_command_verified": false,
+    "result_paths": [],
+    "decision_references": [],
+    "note": "Catalog captures observed files. No active/accepted/archived status, historical baseline, or successful reproduction is inferred."
+  },
+  {
+    "id": "lib",
+    "owner_candidate": "public_models",
+    "status": "unclassified_historical_research",
+    "source_files": [
+      "experiments/lib.py"
+    ],
+    "inspection_revision": "736aa33c12a2d543ec4a5cbf3b0ff3153b53e797",
+    "historical_baseline_revision": null,
+    "historical_input_hashes": null,
+    "run_command_candidates": [
+      "python -m experiments.lib"
+    ],
+    "historical_run_command_verified": false,
+    "result_paths": [
+      "reports/experiments/E26_forward_shrink/frozen/no_odds_total.joblib",
+      "reports/experiments/baseline/calibration_set_predictions.csv",
+      "reports/market_eval_calibrated.txt"
+    ],
+    "decision_references": [],
+    "note": "Catalog captures observed files. No active/accepted/archived status, historical baseline, or successful reproduction is inferred."
+  },
+  {
+    "id": "metrics",
+    "owner_candidate": "public_models",
+    "status": "unclassified_historical_research",
+    "source_files": [
+      "experiments/metrics.py"
+    ],
+    "inspection_revision": "736aa33c12a2d543ec4a5cbf3b0ff3153b53e797",
+    "historical_baseline_revision": null,
+    "historical_input_hashes": null,
+    "run_command_candidates": [
+      "python -m experiments.metrics"
+    ],
+    "historical_run_command_verified": false,
+    "result_paths": [
+      "reports/experiments/E01_residual_targets/metrics.json",
+      "reports/experiments/E05_pace_adjusted/metrics.json",
+      "reports/experiments/E06_offseason_regression/metrics.json",
+      "reports/experiments/E07_bench_replacement/metrics.json",
+      "reports/experiments/E08_fresh_chronic_step2/metrics.json",
+      "reports/experiments/E13_combined_winners/metrics.json",
+      "reports/experiments/baseline/metrics.json"
+    ],
+    "decision_references": [],
+    "note": "Catalog captures observed files. No active/accepted/archived status, historical baseline, or successful reproduction is inferred."
+  },
+  {
+    "id": "noise_floor",
+    "owner_candidate": "public_models",
+    "status": "unclassified_historical_research",
+    "source_files": [
+      "experiments/noise_floor.py"
+    ],
+    "inspection_revision": "736aa33c12a2d543ec4a5cbf3b0ff3153b53e797",
+    "historical_baseline_revision": null,
+    "historical_input_hashes": null,
+    "run_command_candidates": [
+      "python -m experiments.noise_floor"
+    ],
+    "historical_run_command_verified": false,
+    "result_paths": [
+      "reports/experiments/noise_floor.md"
+    ],
+    "decision_references": [],
+    "note": "Catalog captures observed files. No active/accepted/archived status, historical baseline, or successful reproduction is inferred."
+  },
+  {
+    "id": "power_check",
+    "owner_candidate": "public_models",
+    "status": "unclassified_historical_research",
+    "source_files": [
+      "experiments/power_check.py"
+    ],
+    "inspection_revision": "736aa33c12a2d543ec4a5cbf3b0ff3153b53e797",
+    "historical_baseline_revision": null,
+    "historical_input_hashes": null,
+    "run_command_candidates": [
+      "python -m experiments.power_check"
+    ],
+    "historical_run_command_verified": false,
+    "result_paths": [],
+    "decision_references": [],
+    "note": "Catalog captures observed files. No active/accepted/archived status, historical baseline, or successful reproduction is inferred."
+  },
+  {
+    "id": "report",
+    "owner_candidate": "public_models",
+    "status": "unclassified_historical_research",
+    "source_files": [
+      "experiments/report.py"
+    ],
+    "inspection_revision": "736aa33c12a2d543ec4a5cbf3b0ff3153b53e797",
+    "historical_baseline_revision": null,
+    "historical_input_hashes": null,
+    "run_command_candidates": [
+      "python -m experiments.report"
+    ],
+    "historical_run_command_verified": false,
+    "result_paths": [
+      "reports/audit_fixes/REPORT.md",
+      "reports/experiments/E14_blowout_under/report.html",
+      "reports/experiments/E16_overtime/report.html",
+      "reports/experiments/E17_interaction/report.html",
+      "reports/experiments/E18_calibration/report.html",
+      "reports/experiments/E19_tanking/report.html",
+      "reports/experiments/E21_pace/report.html",
+      "reports/experiments/E23_b2b/report.html",
+      "reports/experiments/E24_movement/report.html",
+      "reports/experiments/FINAL_REPORT.md",
+      "reports/injury_report_eval_v3.txt",
+      "reports/props/d1_parity_report.md",
+      "reports/props/phase1_gate_report.md",
+      "reports/props/phase2_dataset_report.md",
+      "reports/props/phase2_gate_report.md",
+      "reports/props/phase3_gate_report.md",
+      "reports/props/phase3_training_report_v1_base.md",
+      "reports/props/phase3_training_report_v2_base.md",
+      "reports/props/phase4_gate_report.md",
+      "reports/props/phase4_interim_report.md",
+      "reports/props/phase5_final_report.md",
+      "reports/props/restore_2026-11/REPORT.md"
+    ],
+    "decision_references": [],
+    "note": "Catalog captures observed files. No active/accepted/archived status, historical baseline, or successful reproduction is inferred."
+  },
+  {
+    "id": "run_baseline",
+    "owner_candidate": "public_models",
+    "status": "unclassified_historical_research",
+    "source_files": [
+      "experiments/run_baseline.py"
+    ],
+    "inspection_revision": "736aa33c12a2d543ec4a5cbf3b0ff3153b53e797",
+    "historical_baseline_revision": null,
+    "historical_input_hashes": null,
+    "run_command_candidates": [
+      "python -m experiments.run_baseline"
+    ],
+    "historical_run_command_verified": false,
+    "result_paths": [],
+    "decision_references": [],
+    "note": "Catalog captures observed files. No active/accepted/archived status, historical baseline, or successful reproduction is inferred."
+  },
+  {
+    "id": "totals_bets",
+    "owner_candidate": "public_models",
+    "status": "unclassified_historical_research",
+    "source_files": [
+      "experiments/totals_bets.py"
+    ],
+    "inspection_revision": "736aa33c12a2d543ec4a5cbf3b0ff3153b53e797",
+    "historical_baseline_revision": null,
+    "historical_input_hashes": null,
+    "run_command_candidates": [
+      "python -m experiments.totals_bets"
+    ],
+    "historical_run_command_verified": false,
+    "result_paths": [],
+    "decision_references": [],
+    "note": "Catalog captures observed files. No active/accepted/archived status, historical baseline, or successful reproduction is inferred."
+  }
+]

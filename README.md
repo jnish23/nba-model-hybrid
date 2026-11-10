@@ -167,3 +167,15 @@ GitHub Actions runs the smoke checks and the pytest suite; the parity tests that
 ## Tech stack
 
 Python, pandas, LightGBM, FLAML, scikit-learn, SQLite, pdfplumber, nba_api, Streamlit, Plotly.
+
+
+## Isolated restructuring verification
+
+See [Phase 2 verification](reports/phase2_verification/README.md) for mechanical changes, comparison evidence and remaining cutover limits. This branch does not change production deployment.
+
+
+## Phase 2.2 package contract
+
+The isolated branch provides `nba-pregame-models==0.1.0`; see [PACKAGING.md](PACKAGING.md) and [verification](reports/phase2_2_verification/README.md). No package or dashboard has been deployed.
+
+Research ownership and run records: [experiment guide](docs/EXPERIMENTS.md) and [catalog](docs/EXPERIMENT_CATALOG.json).

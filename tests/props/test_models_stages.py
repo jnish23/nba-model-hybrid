@@ -10,6 +10,12 @@ SPEC = data.FeatureSpec('base')
 FAST = {'num_threads': 4}
 
 
+@pytest.fixture(autouse=True)
+def isolate_training_configuration_log(tmp_path, monkeypatch):
+    # Synthetic fits must not append into a restored deployment's configuration log.
+    monkeypatch.setattr(common, 'CONFIG_LOG', tmp_path / 'config_log.jsonl')
+
+
 @pytest.fixture(scope='module')
 def frame():
     return synthetic_frame()

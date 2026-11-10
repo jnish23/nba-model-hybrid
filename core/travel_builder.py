@@ -1,4 +1,5 @@
 
+from pathlib import Path
 import pandas as pd
 import numpy as np
 import sqlite3
@@ -307,7 +308,7 @@ class TravelFeatureBuilder:
         return self._haversine_np(lat1, lon1, lat2, lon2)
 
 if __name__ == "__main__":
-    builder = TravelFeatureBuilder(r'c:\Users\jorda\nba-model-hybrid\data\nba_stats.db')
+    builder = TravelFeatureBuilder((Path(__file__).resolve().parents[1] / 'data/nba_stats.db'))
     builder.load_data()
     df = builder.build_features()
     

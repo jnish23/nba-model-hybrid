@@ -1,0 +1,31 @@
+{
+ "what": "Files of reports/phase3_2_verification moved out of Git (Batch 4C group 1). Each is preserved byte for byte in the external archive and was restored into a rehearsal folder and compared before removal.",
+ "archive_root": "external private archive; location and per-file records are in the private trading repository (reports/phase4c_group1)",
+ "files": [
+  {
+   "path": "reports/phase3_2_verification/batch1_gates.json",
+   "bytes": 289,
+   "sha256": "25e3d0c537a258d4aba1234d6a4deed017662347608c3d1a0a164759d78de58f"
+  },
+  {
+   "path": "reports/phase3_2_verification/batch2/experiment_catalog.json",
+   "bytes": 36944,
+   "sha256": "8ee30c9641a1bf341f833b2d8b23b1b653df330f892b342a36260063087d8ea4"
+  },
+  {
+   "path": "reports/phase3_2_verification/batch2/inventory.json",
+   "bytes": 683544,
+   "sha256": "66c7e75643e1b859d4f83d80e8cfb2a78a1619273f6e065c7540b4caca29ce98"
+  },
+  {
+   "path": "reports/phase3_2_verification/experiment_catalog.json",
+   "bytes": 36944,
+   "sha256": "d3527039b03b2ff7ba2b9f348e8fdc69540a6df079a6112d741acb020a673880"
+  },
+  {
+   "path": "reports/phase3_2_verification/inventory.json",
+   "bytes": 683544,
+   "sha256": "027bdaf928b0c664e719fde9f68a3e539d6d1c480bbcdd1007b153a33bc44094"
+  }
+ ]
+}

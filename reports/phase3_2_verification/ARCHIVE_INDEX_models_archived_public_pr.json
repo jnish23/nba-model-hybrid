@@ -1,0 +1,21 @@
+{
+ "what": "Three evidence files of reports/phase3_2_verification/batch3 moved out of Git before the public merge because they recorded local filesystem paths. Each is preserved byte for byte in a private external archive and was restored into a rehearsal folder and compared before removal.",
+ "archive_root": "external private archive; location and per-file records are in the private trading repository",
+ "files": [
+  {
+   "path": "reports/phase3_2_verification/batch3/final_inventory/inventory.json",
+   "bytes": 683544,
+   "sha256": "651690eadd7901c951dae823e9bbb573a2d7ca265bede073c265c6a3cb808cd9"
+  },
+  {
+   "path": "reports/phase3_2_verification/batch3/case_ledger.json",
+   "bytes": 55800,
+   "sha256": "6bc4e8c65750e120c0d77552b413241e7e06169ebd389e68129d03b25fbafb41"
+  },
+  {
+   "path": "reports/phase3_2_verification/batch3/package_contract.json",
+   "bytes": 5687,
+   "sha256": "fcbe2488ae1e9e089128031ae5b73b0d60c1e043978c382448ddd1b5fc6378d4"
+  }
+ ]
+}

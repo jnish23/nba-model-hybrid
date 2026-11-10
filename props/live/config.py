@@ -8,15 +8,32 @@ from pathlib import Path
 
 from props.models import registry
 
-CONFIG_PATH = 'reports/props/live_config.json'
+CONFIG_PATH = 'config/props_live.json'
+LEGACY_CONFIG_PATH = 'reports/props/live_config.json'
+RULE_PATH = 'config/props_frozen_rule.json'
+LEGACY_RULE_PATH = 'reports/props/phase5_revised_rule.frozen_rule.json'
+
+
+def resolve_config_path(path=None):
+    if path is not None and str(path) != CONFIG_PATH:
+        return Path(path)
+    canonical = Path(CONFIG_PATH)
+    return canonical if canonical.exists() or not Path(LEGACY_CONFIG_PATH).exists() else Path(LEGACY_CONFIG_PATH)
+
+
+def resolve_rule_path(path=None):
+    if path is not None:
+        return Path(path)
+    canonical = Path(RULE_PATH)
+    return canonical if canonical.exists() or not Path(LEGACY_RULE_PATH).exists() else Path(LEGACY_RULE_PATH)
 
 
 class ConfigRefused(RuntimeError):
     pass
 
 
-def load(path=CONFIG_PATH):
-    return json.loads(Path(path).read_text(encoding='utf-8'))
+def load(path=None):
+    return json.loads(resolve_config_path(path).read_text(encoding='utf-8'))
 
 
 def bundle_path(cfg):
@@ -46,9 +63,16 @@ def code_commit():
     return subprocess.run(['git', 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
 
 
-def pin(model_version, model_season, effective_from, path=CONFIG_PATH):
+def write(cfg, path=None):
+    """Write a reviewed configuration to its resolved canonical or legacy target."""
+    target = resolve_config_path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(cfg, indent=1), encoding='utf-8')
+
+
+def pin(model_version, model_season, effective_from, path=None):
     """Write the pinned configuration for a model version (a reviewed, committed act)."""
-    rule_file = 'reports/props/phase5_revised_rule.frozen_rule.json'
+    rule_file = resolve_rule_path().as_posix()
     f = Path('data/props_features_v3.db')
     man = json.loads((registry.version_dir(model_version) / 'manifest.json').read_text(encoding='utf-8'))
     cfg = {'rule_file': rule_file, 'rule_sha256': registry.sha256_file(rule_file), 'model_version': model_version, 'model_season': model_season,
@@ -57,5 +81,5 @@ def pin(model_version, model_season, effective_from, path=CONFIG_PATH):
            'effective_from': effective_from,
            'waivers': ['A1 (October coverage ~60%)', 'A4 (teammate-availability inputs cannot be reproduced before the game)', 'A5', 'A6'],
            'note': 'Paper record only. The parity gap is disclosed in reports/props/d1_parity_report.md and in every live report.'}
-    Path(path).write_text(json.dumps(cfg, indent=1), encoding='utf-8')
+    write(cfg, path=path)
     return cfg

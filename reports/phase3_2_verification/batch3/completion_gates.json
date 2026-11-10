@@ -1,0 +1,22 @@
+{
+  "passed": true,
+  "gates": {
+    "all_589_cases_accounted_passed": true,
+    "full_actions_passed": true,
+    "five_smokes": true,
+    "54_exact_comparisons": true,
+    "all_116_wheel_payload_members_match_pinned_release": true,
+    "wheel_build_and_install": true,
+    "source_matches_tested_copy": true,
+    "earlier_evidence_preserved": true
+  },
+  "counts": {
+    "cases": 589,
+    "non_db": 572,
+    "db": 17,
+    "smokes": 5,
+    "exact_comparisons": 54
+  },
+  "release_promoted": false,
+  "production_writes": "denied"
+}

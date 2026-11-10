@@ -7,7 +7,8 @@ import ast
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-FORBIDDEN = {'core': {'team', 'props'}, 'team': {'props'}}
+BANNED_LAYERS = {'dashboard', 'dashboard_props', 'experiments', 'scripts', 'reports', 'live_bot', 'polymarket_venue', 'polymarket_props'}
+FORBIDDEN = {'core': {'team', 'props'} | BANNED_LAYERS, 'team': {'props'} | BANNED_LAYERS, 'props': BANNED_LAYERS}
 PROPS_MAY_IMPORT_FROM_TEAM = {'team.team_features_v2'}
 
 
@@ -43,4 +44,38 @@ def test_nothing_imports_the_old_models_package():
     for pkg in ('core', 'team', 'props', 'scripts', 'dashboard', 'tests'):
         for path in (ROOT / pkg).rglob('*.py'):
             bad += [str(path.relative_to(ROOT)) for m in set(_imported_roots(path)) if m == 'models']
+    assert not bad, bad
+
+
+def test_legacy_model_class_paths_resolve_to_current_classes():
+    import importlib
+    from team import model_registry
+    model_registry.alias_legacy_pickle_modules()
+    current=importlib.import_module('team.market_models')
+    legacy=importlib.import_module('models.market_models')
+    for name in ('MarginStackCalibrator','ResidualSpreadModel','HeteroSigma'):
+        assert getattr(legacy,name) is getattr(current,name)
+
+
+def test_wheel_package_contract_is_public_and_explicit():
+    import tomllib
+    metadata = tomllib.loads((ROOT / 'pyproject.toml').read_text())
+    assert metadata['project']['name'] == 'nba-pregame-models'
+    assert metadata['project']['version'] == '0.1.0'
+    find = metadata['tool']['setuptools']['packages']['find']
+    assert find['include'] == ['core', 'core.*', 'team', 'team.*', 'props', 'props.*']
+    assert 'props.polymarket' in find['exclude']
+    assert metadata['tool']['setuptools']['package-data']['core'] == ['live_feed_overrides.csv']
+    assert metadata['tool']['setuptools']['include-package-data'] is False
+
+
+def test_public_checkout_contains_no_private_packages_or_imports():
+    private = {'live_bot', 'polymarket_venue', 'polymarket_props'}
+    assert not any((ROOT / name).exists() for name in private)
+    assert not (ROOT / 'props/polymarket').exists()
+    bad = []
+    for package in ('core', 'team', 'props', 'dashboard', 'dashboard_props'):
+        for path in (ROOT / package).rglob('*.py'):
+            bad += [f'{path.relative_to(ROOT)} imports {name}'
+                    for name in set(_imported_roots(path)) & private]
     assert not bad, bad

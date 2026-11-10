@@ -9,7 +9,7 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from dashboard_props import logic
+from core import props_board_logic as logic
 from props.betting import evaluate as be, export, rules
 from props.live import at_t as A, roster
 from props.live.base import build_live_base

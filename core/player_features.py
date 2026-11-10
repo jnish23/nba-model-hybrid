@@ -1,4 +1,5 @@
 
+from pathlib import Path
 import pandas as pd
 import numpy as np
 import logging
@@ -94,7 +95,7 @@ class PlayerFeatureBuilder:
         return out
 
 if __name__ == "__main__":
-    pfb = PlayerFeatureBuilder(r'c:\Users\jorda\nba-model-hybrid\data\nba_stats.db')
+    pfb = PlayerFeatureBuilder((Path(__file__).resolve().parents[1] / 'data/nba_stats.db'))
     df = pfb.build_roster_features(seasons=['2025-26'])
     print(df.head())
     print(df['roster_bpm'].describe())

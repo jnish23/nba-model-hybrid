@@ -5,7 +5,7 @@ Pure functions of the bet rows, the labels and the signals; the job writes the r
 import numpy as np
 import pandas as pd
 
-from dashboard_props import logic
+from core import props_board_logic as logic
 from props.betting import evaluate as be, export, settle as settle_mod
 
 LABEL_COLS = ['game_id', 'player_id', 'lbl_played', 'lbl_minutes'] + be.LABEL_COLS

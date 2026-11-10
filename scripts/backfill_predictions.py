@@ -17,7 +17,7 @@ def backfill_logs():
     data_dir = Path('data/processed')
     if not data_dir.exists():
         # Fallback
-        data_dir = Path(r'c:\Users\jorda\nba-model-hybrid\data\processed')
+        data_dir = Path((Path(__file__).resolve().parents[1] / 'data/processed'))
     # Latest dated training set written by scripts/generate_training_set.py (ISO dates sort lexically)
     from team.data_paths import latest_training_set
     data_path = latest_training_set(data_dir)

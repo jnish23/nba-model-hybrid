@@ -1,4 +1,5 @@
 
+from pathlib import Path
 import pandas as pd
 import numpy as np
 import sqlite3
@@ -353,7 +354,7 @@ class BPMBuilder:
 
 
 if __name__ == "__main__":
-    db_path = r'c:\Users\jorda\nba-model-hybrid\data\nba_stats.db'
+    db_path = (Path(__file__).resolve().parents[1] / 'data/nba_stats.db')
     b = BPMBuilder(db_path)
     b.load_data(['2023-24', '2024-25', '2025-26'])
     df = b.calculate_rolling_bpm()
