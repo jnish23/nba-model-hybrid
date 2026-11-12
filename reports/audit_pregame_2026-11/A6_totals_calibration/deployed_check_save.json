@@ -1,0 +1,45 @@
+{
+ "suffix": "_with_odds_cand_20261019",
+ "manifest_model_set_hash": "0165d3361e4228ad2551a787c66e1cd82ce11bd5b9a4a258b7e79467e7cd02e0",
+ "recomputed_model_set_hash": "0165d3361e4228ad2551a787c66e1cd82ce11bd5b9a4a258b7e79467e7cd02e0",
+ "bundle_model_set_hash": "0165d3361e4228ad2551a787c66e1cd82ce11bd5b9a4a258b7e79467e7cd02e0",
+ "hash_version": 1,
+ "files_hashed_in_manifest": [
+  "calibration_meta_with_odds_cand_20261019.json",
+  "calibrator_ml_with_odds_cand_20261019.pkl",
+  "feature_config_with_odds_cand_20261019.json",
+  "model_ml_with_odds_cand_20261019.pkl",
+  "model_spread_with_odds_cand_20261019.pkl",
+  "model_total_with_odds_cand_20261019.pkl",
+  "sigma_total_with_odds_cand_20261019.pkl"
+ ],
+ "files_present_with_suffix": [
+  "best_config_ml_with_odds_cand_20261019.json",
+  "best_config_spread_with_odds_cand_20261019.json",
+  "best_config_total_with_odds_cand_20261019.json",
+  "calibration_meta_with_odds_cand_20261019.json",
+  "calibrator_ml_with_odds_cand_20261019.pkl",
+  "feature_config_with_odds_cand_20261019.json",
+  "model_manifest_with_odds_cand_20261019.json",
+  "model_ml_with_odds_cand_20261019.pkl",
+  "model_spread_with_odds_cand_20261019.pkl",
+  "model_total_with_odds_cand_20261019.pkl",
+  "sigma_total_with_odds_cand_20261019.pkl"
+ ],
+ "has_calibrator_total_attr": false,
+ "hash_equals_manifest": true,
+ "saved_rows": 1500,
+ "pickle_sha256": {
+  "best_config_ml_with_odds_cand_20261019.json": "bae228c74fc69530",
+  "best_config_spread_with_odds_cand_20261019.json": "bae228c74fc69530",
+  "best_config_total_with_odds_cand_20261019.json": "a5dd64520e656140",
+  "calibration_meta_with_odds_cand_20261019.json": "7f2ace903ec50a91",
+  "calibrator_ml_with_odds_cand_20261019.pkl": "6536b213bbd5dad7",
+  "feature_config_with_odds_cand_20261019.json": "d71f1d5d4037fe7c",
+  "model_manifest_with_odds_cand_20261019.json": "ebd15c2d5c43ec26",
+  "model_ml_with_odds_cand_20261019.pkl": "1d72c5b55d04e937",
+  "model_spread_with_odds_cand_20261019.pkl": "9070c3e729ec89cb",
+  "model_total_with_odds_cand_20261019.pkl": "b1f44a070e9f56bb",
+  "sigma_total_with_odds_cand_20261019.pkl": "18c56663552eeec6"
+ }
+}

@@ -1,0 +1,241 @@
+{
+ "scenario": "fallback",
+ "source": "local database",
+ "log_source": "none logged yet",
+ "markets": {
+  "Moneyline": {
+   "bets": 18,
+   "record": "7-11-0",
+   "units": -3.87,
+   "roi": -21.5,
+   "mean_clv": null,
+   "n_clv": 0,
+   "by_src": {
+    "run": 0,
+    "printed": 0,
+    "recomputed": 0,
+    "page": 18
+   },
+   "a1_bets": 18,
+   "a1_record": "7-11-0",
+   "a1_units": -3.87,
+   "a1_clv": 1.363,
+   "common": 18,
+   "dashboard_only": [],
+   "a1_only": []
+  },
+  "Spread": {
+   "bets": 17,
+   "record": "10-7-0",
+   "units": 2.09,
+   "roi": 12.3,
+   "mean_clv": null,
+   "n_clv": 0,
+   "by_src": {
+    "run": 0,
+    "printed": 0,
+    "recomputed": 0,
+    "page": 17
+   },
+   "a1_bets": 19,
+   "a1_record": "11-8-0",
+   "a1_units": 2.02,
+   "a1_clv": 0.0,
+   "common": 14,
+   "dashboard_only": [
+    [
+     "0022600015",
+     "home"
+    ],
+    [
+     "0022600089",
+     "away"
+    ],
+    [
+     "0022600188",
+     "away"
+    ]
+   ],
+   "a1_only": [
+    [
+     "0022600004",
+     "home"
+    ],
+    [
+     "0022600031",
+     "away"
+    ],
+    [
+     "0022600162",
+     "away"
+    ],
+    [
+     "0022600179",
+     "away"
+    ],
+    [
+     "0022600195",
+     "home"
+    ]
+   ]
+  },
+  "Totals": {
+   "bets": 32,
+   "record": "13-19-0",
+   "units": -7.18,
+   "roi": -22.4,
+   "mean_clv": null,
+   "n_clv": 0,
+   "by_src": {
+    "run": 0,
+    "printed": 0,
+    "recomputed": 0,
+    "page": 32
+   },
+   "a1_bets": 29,
+   "a1_record": "11-18-0",
+   "a1_units": -8.04,
+   "a1_clv": 0.604,
+   "common": 28,
+   "dashboard_only": [
+    [
+     "0022600085",
+     "under"
+    ],
+    [
+     "0022600118",
+     "over"
+    ],
+    [
+     "0022600119",
+     "over"
+    ],
+    [
+     "0022600129",
+     "under"
+    ]
+   ],
+   "a1_only": [
+    [
+     "0022600132",
+     "under"
+    ]
+   ]
+  }
+ },
+ "common_bets_with_different_result": 0,
+ "common_bets_with_profit_diff": [
+  {
+   "market": "Spread",
+   "game_id": "0022600087",
+   "side": "away",
+   "a1_price": -115.0,
+   "price": -110.0,
+   "profit_diff": 0.039
+  },
+  {
+   "market": "Spread",
+   "game_id": "0022600135",
+   "side": "home",
+   "a1_price": -112.0,
+   "price": -110.0,
+   "profit_diff": 0.016
+  },
+  {
+   "market": "Spread",
+   "game_id": "0022600018",
+   "side": "home",
+   "a1_price": -105.0,
+   "price": -110.0,
+   "profit_diff": -0.043
+  },
+  {
+   "market": "Spread",
+   "game_id": "0022600023",
+   "side": "home",
+   "a1_price": -115.0,
+   "price": -110.0,
+   "profit_diff": 0.039
+  },
+  {
+   "market": "Spread",
+   "game_id": "0022600202",
+   "side": "home",
+   "a1_price": -112.0,
+   "price": -110.0,
+   "profit_diff": 0.016
+  },
+  {
+   "market": "Spread",
+   "game_id": "0022600203",
+   "side": "away",
+   "a1_price": -108.0,
+   "price": -110.0,
+   "profit_diff": -0.017
+  },
+  {
+   "market": "Total",
+   "game_id": "0022600005",
+   "side": "under",
+   "a1_price": -115.0,
+   "price": -110.0,
+   "profit_diff": 0.039
+  },
+  {
+   "market": "Total",
+   "game_id": "0022600086",
+   "side": "over",
+   "a1_price": -112.0,
+   "price": -110.0,
+   "profit_diff": 0.016
+  },
+  {
+   "market": "Total",
+   "game_id": "0022600090",
+   "side": "over",
+   "a1_price": -112.0,
+   "price": -110.0,
+   "profit_diff": 0.016
+  },
+  {
+   "market": "Total",
+   "game_id": "0022600007",
+   "side": "under",
+   "a1_price": -105.0,
+   "price": -110.0,
+   "profit_diff": -0.043
+  },
+  {
+   "market": "Total",
+   "game_id": "0022600116",
+   "side": "under",
+   "a1_price": -112.0,
+   "price": -110.0,
+   "profit_diff": 0.016
+  },
+  {
+   "market": "Total",
+   "game_id": "0022600137",
+   "side": "over",
+   "a1_price": -112.0,
+   "price": -110.0,
+   "profit_diff": 0.016
+  },
+  {
+   "market": "Total",
+   "game_id": "0022600174",
+   "side": "under",
+   "a1_price": -109.0,
+   "price": -110.0,
+   "profit_diff": -0.008
+  },
+  {
+   "market": "Total",
+   "game_id": "0022600213",
+   "side": "over",
+   "a1_price": -108.0,
+   "price": -110.0,
+   "profit_diff": -0.017
+  }
+ ]
+}

@@ -1,0 +1,45 @@
+## T3b. Model versus the lines, all completed games
+
+### Moneyline log loss (lines de-vigged per book, cross-book median)
+
+Games with open, 11 am, run-time and a close within 90 minutes of tip: 138 (19 days).
+
+| benchmark | model log loss | line log loss | diff model - line [95% CI] | mean(home win - p) model | line |
+|---|---|---|---|---|---|
+| open | 0.5480 | 0.5546 | -0.0066 [-0.0142, +0.0008] | -0.023 | -0.017 |
+| 11 am | 0.5480 | 0.5505 | -0.0025 [-0.0129, +0.0086] | -0.023 | -0.014 |
+| run-time (logged DK price, de-vigged) | 0.5480 | 0.5496 | -0.0016 [-0.0131, +0.0090] | -0.023 | -0.014 |
+| close | 0.5480 | 0.5493 | -0.0013 [-0.0167, +0.0128] | -0.023 | -0.013 |
+
+### Spread (home margin; line-implied margin = -home spread): MAE
+
+Games with all lines and a close within 90 minutes of tip: 138 (19 days).
+
+| benchmark | model MAE | line MAE | diff model - line [95% CI] | model bias (outcome - pred) | line bias |
+|---|---|---|---|---|---|
+| open | 11.454 | 11.524 | -0.069 [-0.200, +0.049] | +0.78 | +0.82 |
+| 11 am | 11.454 | 11.475 | -0.020 [-0.234, +0.187] | +0.78 | +0.90 |
+| run-time (logged) | 11.454 | 11.449 | +0.005 [-0.217, +0.235] | +0.78 | +0.93 |
+| close | 11.454 | 11.612 | -0.158 [-0.397, +0.119] | +0.78 | +1.00 |
+
+### Total: MAE
+
+Games with all lines and a close within 90 minutes of tip: 137 (19 days).
+
+| benchmark | model MAE | line MAE | diff model - line [95% CI] | model bias (outcome - pred) | line bias |
+|---|---|---|---|---|---|
+| open | 14.210 | 14.212 | -0.002 [-0.309, +0.333] | -3.49 | -3.74 |
+| 11 am | 14.210 | 14.011 | +0.199 [-0.271, +0.750] | -3.49 | -3.26 |
+| run-time (logged) | 14.210 | 13.909 | +0.301 [-0.136, +0.806] | -3.49 | -3.23 |
+| close | 14.210 | 13.755 | +0.455 [-0.004, +0.885] | -3.49 | -2.95 |
+
+## P1 check: is the edge versus the 11 am line mostly the open-to-11 am line move?
+
+5%-rule thresholds at -110: spread 2.66 pts (std 14.29), total 3.46 pts (std 18.59). 'larger edge' = |model - 11 am line| >= that threshold.
+
+| basis | market | games | corr(edge vs 11 am, open - 11 am) | sd(own = model - open) | sd(move) | corr(own, move) | larger-edge games | of which fade the move | follow | no move |
+|---|---|---|---|---|---|---|---|---|---|---|
+| snapshots: open, 11 am (all games with the three lines) | spread | 138 | 0.78 | 1.13 | 1.55 | -0.14 | 17 | 17 (100%) | 0 | 0 |
+| snapshots: open, 11 am (all games with the three lines) | total | 137 | 0.54 | 2.53 | 1.91 | -0.12 | 21 | 15 (71%) | 5 | 1 |
+| model's own opening input (explanations) and the logged run-time line | spread | 145 | 0.78 | 0.99 | 1.37 | -0.14 | 14 | 14 (100%) | 0 | 0 |
+| model's own opening input (explanations) and the logged run-time line | total | 145 | 0.45 | 2.55 | 1.89 | -0.25 | 25 | 15 (60%) | 3 | 7 |

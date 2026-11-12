@@ -1,0 +1,15 @@
+| market | game | line | model number | A1 decision (price, sigma) | A1 edge | page decision (-110, model-set sigma) | page edge | which ingredient flips it |
+|---|---|---|---|---|---|---|---|---|
+| Spread | 0022600004 Minnesota Timberwolves @ Miami Heat 2026-10-21 | -1.5 | 3.9 | home (-105, 14.29) | +0.0551 | no bet | +0.0435 | price |
+| Spread | 0022600089 Utah Jazz @ Memphis Grizzlies 2026-10-21 | -1.5 | -1.5 | no bet (-115, 14.29) | +0.0487 | away | +0.0598 | price |
+| Spread | 0022600015 Charlotte Hornets @ Washington Wizards 2026-10-30 | 1.5 | 1.6 | no bet (-118, 14.29) | +0.0438 | home | +0.0612 | price |
+| Spread | 0022600162 Washington Wizards @ Orlando Magic 2026-11-02 | -2.5 | -0.1 | away (-107, 14.29) | +0.0539 | no bet | +0.0470 | price |
+| Spread | 0022600179 Utah Jazz @ New Orleans Pelicans 2026-11-04 | -5.5 | 3.4 | away (-103, 14.29) | +0.0501 | no bet | +0.0337 | price |
+| Spread | 0022600188 Miami Heat @ Golden State Warriors 2026-11-05 | -7.5 | 4.6 | no bet (-114, 14.29) | +0.0468 | away | +0.0557 | price |
+| Spread | 0022600031 Minnesota Timberwolves @ New Orleans Pelicans 2026-11-06 | 4.5 | -7.1 | away (-105, 14.29) | +0.0612 | no bet | +0.0496 | price |
+| Spread | 0022600195 San Antonio Spurs @ Portland Trail Blazers 2026-11-07 | 5.5 | -2.9 | home (-108, 14.29) | +0.0529 | no bet | +0.0483 | price |
+| Total | 0022600085 Atlanta Hawks @ Orlando Magic 2026-10-21 | 236.5 | 232.9 | no bet (-115, 18.94) | +0.0407 | under | +0.0532 | price |
+| Total | 0022600118 Memphis Grizzlies @ Sacramento Kings 2026-10-25 | 234.5 | 238.0 | no bet (-110, 18.94) | +0.0492 | over | +0.0505 | sigma (18.59 vs A1's stand-in 18.94) |
+| Total | 0022600119 Washington Wizards @ Charlotte Hornets 2026-10-26 | 226.5 | 230.4 | no bet (-115, 18.94) | +0.0475 | over | +0.0601 | price |
+| Total | 0022600129 Detroit Pistons @ New York Knicks 2026-10-27 | 219.5 | 216.0 | no bet (-112, 18.94) | +0.0456 | under | +0.0514 | price |
+| Total | 0022600132 Miami Heat @ Atlanta Hawks 2026-10-28 | 241.5 | 238.1 | under (-108, 18.94) | +0.0513 | no bet | +0.0480 | price |

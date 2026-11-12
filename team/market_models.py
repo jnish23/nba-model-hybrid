@@ -9,6 +9,9 @@ Market-aware model components adopted from the E1 / E3 / E4 experiments (reports
     E4  HeteroSigma           the total's cover probability uses a per-game sigma from a second model on
                               out-of-fold absolute residuals instead of one global std
 
+    E18/E27  TotalLevelCalibrator (OPT-IN) level-dependent shrinkage of the total forecast toward the opening total (fix (c));
+                              not part of any deployed set unless it was trained with total_calibration=True
+
 All three need the OPENING lines as inputs, so they belong to the deployed with-odds model set only. Everything here
 is picklable (joblib) and a model set trained before this module existed (plain regressors + isotonic calibrator)
 keeps working through predict_markets().
@@ -164,6 +167,54 @@ def crossfit_brier(fit_predict, y, n_parts=4):
     return float(np.mean((np.clip(prob, 1e-15, 1 - 1e-15) - y[idx]) ** 2)), idx
 
 
+# ------------------------------------------------------------------------------------------------ E18 fix (c) / E27
+
+class TotalLevelCalibrator:
+    """Level-dependent shrinkage of the total forecast toward the opening total (E18 fix (c), scored on the deployed form in E27).
+
+    Fitted on the calibration block: OLS without intercept of `actual - line` on `gap = pred - line` and `gap * (line - mu)` (mu = mean opening
+    total of the block). The weight on the model's departure from the line is `w = clip(b0 + b1 (line - mu), 0, 1)` and
+    `calibrated = line + w * (pred - line)`. A game without an opening total keeps the raw prediction.
+
+    OPT-IN (train_and_save_all(total_calibration=True)); a model set without calibrator_total<suffix>.pkl is unaffected.
+    """
+
+    def __init__(self):
+        self.w0 = None
+        self.w1 = None
+        self.mean_level = None
+        self.n_fit = 0
+
+    def fit(self, pred, opening_total, y):
+        pred, line, y = (np.asarray(a, float) for a in (pred, opening_total, y))
+        ok = np.isfinite(pred) & np.isfinite(line) & np.isfinite(y)
+        if not ok.any():
+            raise ValueError("TotalLevelCalibrator.fit needs at least one game with a prediction, an opening total and an outcome")
+        self.mean_level = float(line[ok].mean())
+        gap = (pred - line)[ok]
+        A = np.column_stack([gap, gap * (line[ok] - self.mean_level)])
+        b = np.linalg.lstsq(A, (y - line)[ok], rcond=None)[0]
+        self.w0, self.w1, self.n_fit = float(b[0]), float(b[1]), int(ok.sum())
+        return self
+
+    def weight(self, opening_total):
+        """Weight on the model's departure from the line (clipped to [0, 1]); NaN where there is no opening total."""
+        if self.w0 is None:
+            raise ValueError("TotalLevelCalibrator is not fitted")
+        line = np.asarray(opening_total, float)
+        return np.where(np.isfinite(line), np.clip(self.w0 + self.w1 * (line - self.mean_level), 0.0, 1.0), np.nan)
+
+    def predict(self, pred, opening_total):
+        pred = np.asarray(pred, float)
+        line = np.asarray(opening_total, float)
+        out = line + self.weight(line) * (pred - line)
+        return np.where(np.isfinite(line), out, pred)
+
+    @property
+    def params(self):
+        return {'w0': self.w0, 'w1': self.w1, 'mean_level': self.mean_level, 'n_fit': self.n_fit}
+
+
 # ------------------------------------------------------------------------------------------------ E4
 
 class HeteroSigma:
@@ -179,27 +230,34 @@ class HeteroSigma:
         return np.where(np.isfinite(sigma), sigma, self.fallback_std)
 
 
-def oof_abs_errors(df, features, target_col, params, n_parts=SIGMA_FOLDS):
+def oof_abs_errors(df, features, target_col, params, n_parts=SIGMA_FOLDS, calibrator=None, line_col=TOTAL_LINE_COL):
     """Forward-chaining out-of-fold |error| inside the (date-ordered) model-train block: part k+1 is predicted by a model
-    fitted on parts 1..k, so no row is scored by a model that saw it or its future."""
+    fitted on parts 1..k, so no row is scored by a model that saw it or its future.
+
+    calibrator (optional, a TotalLevelCalibrator): the out-of-fold forecast is passed through it (with the row's opening total in `line_col`)
+    before the error is taken, so the sigma model learns the error of the calibrated forecast. None: the raw error, as before."""
     parts = np.array_split(np.arange(len(df)), n_parts)
     idx, err = [], []
     for k in range(1, n_parts):
         tr, te = np.concatenate(parts[:k]), parts[k]
         est = lgb.LGBMRegressor(**params, verbosity=-1, random_state=SEED)
         est.fit(df.iloc[tr][features], df.iloc[tr][target_col])
-        err.append(np.abs(df.iloc[te][target_col].to_numpy(float) - est.predict(df.iloc[te][features])))
+        pred = est.predict(df.iloc[te][features])
+        if calibrator is not None:
+            pred = calibrator.predict(pred, df.iloc[te][line_col].to_numpy(float))
+        err.append(np.abs(df.iloc[te][target_col].to_numpy(float) - pred))
         idx.append(te)
     return np.concatenate(idx), np.concatenate(err)
 
 
-def fit_hetero_sigma(model_train_df, features, target_col, params, fallback_std, sigma_features=SIGMA_FEATURES):
-    """Fit the sigma model on out-of-fold errors of a model with `params`/`features`. `model_train_df` must be sorted by date."""
+def fit_hetero_sigma(model_train_df, features, target_col, params, fallback_std, sigma_features=SIGMA_FEATURES, calibrator=None):
+    """Fit the sigma model on out-of-fold errors of a model with `params`/`features`. `model_train_df` must be sorted by date.
+    With `calibrator` (a TotalLevelCalibrator, level-target totals only) the errors are those of the calibrated forecast."""
     sf = [c for c in sigma_features if c in model_train_df.columns]
     if len(sf) < len(sigma_features):
         logging.warning(f"HeteroSigma: {len(sigma_features) - len(sf)} sigma features are not in the training set: "
                         f"{[c for c in sigma_features if c not in sf]}")
-    idx, err = oof_abs_errors(model_train_df, features, target_col, params)
+    idx, err = oof_abs_errors(model_train_df, features, target_col, params, calibrator=calibrator)
     g = lgb.LGBMRegressor(**SIGMA_PARAMS, verbosity=-1, random_state=SEED, deterministic=True, force_row_wise=True)
     g.fit(model_train_df.iloc[idx][sf].astype(float), err)
     return HeteroSigma(g, sf, fallback_std)
@@ -231,6 +289,10 @@ def predict_markets(bundle, frame, align=None):
         total = bundle.total.predict(X_total, line=tline)
     else:
         total = bundle.total.predict(X_total)
+    total_calibrator = getattr(bundle, 'calibrator_total', None)
+    if total_calibrator is not None:                       # E18 fix (c): only sets trained with total_calibration=True carry one
+        tline = frame[TOTAL_LINE_COL].to_numpy(float) if TOTAL_LINE_COL in frame.columns else np.full(len(frame), np.nan)
+        total = total_calibrator.predict(total, tline)
     meta = bundle.calib_meta
     spread_std = np.full(len(frame), float(meta.get('spread_std', np.nan)))
     total_std = np.full(len(frame), float(meta.get('total_std', np.nan)))

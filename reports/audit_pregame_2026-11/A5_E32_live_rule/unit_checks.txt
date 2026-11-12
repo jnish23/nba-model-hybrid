@@ -1,0 +1,20 @@
+PASS  spread whole line push (home margin 3, line -3)
+PASS  spread half line, home margin 3, line -3.5: home loses / away wins
+PASS  spread home margin 4 at -3: home wins / away loses
+PASS  spread away (+3.5) dog, home wins by 3: away covers
+PASS  total push 220 vs 220
+PASS  total 221 vs 220.5: over wins, under loses
+PASS  total 219 vs 220: under wins
+PASS  profit at -110: win 0.9091, loss -1, push 0
+PASS  profit at zero vig: win +1, loss -1, push 0
+PASS  ML fair price 0.4 home bet: win +1.5 / loss -1; away bet at 0.4: home won -> loss, home lost -> +1.5
+PASS  cover_probabilities push-aware on a whole line (hand formula)
+PASS  cover_probabilities half line = Phi(e/sd)
+PASS  cover_probabilities agrees with team.betting.cover_probability
+PASS  hand game crossed: R0 no bet (edge 0.021), R1 no bet (crossed)
+PASS  hand game crossed: R2 bets home at -6.5, edge ~0.093, margin 10 + -6.5 > 0 wins
+PASS  hand game not crossed: R1 bets home, open edge push-aware
+PASS  total hand game: R1 over at 228.5, 240 > 228.5 wins; the market moved up, so the bet follows the move (fade = -1)
+PASS  ML hand game: R0, R1, R2 all bet home
+PASS  ML hand game zero-vig profit at fair 0.60: +0.6667
+PASS  ML crossed (close 0.80 > model 0.70 > open 0.55): R0 bets away, R1 no bet

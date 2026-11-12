@@ -1,0 +1,34 @@
+## T6. Dashboard replication (dashboard/app.py functions run unchanged on predictions_log_v2)
+
+Default sliders: ML 0.050; Spread 2.5 pts -> prob threshold 0.0502 (std 13.4); Totals 3.4 pts -> 0.0503 (std 18.2). The live run uses spread std 14.29, a per-game total sigma (about 18-20) and the side's own price.
+
+| bet type | dashboard bets | W-L | profit (u) | ROI | my reconstruction: bets | W-L | units | ROI | identical bet sets? |
+|---|---|---|---|---|---|---|---|---|---|
+| Moneyline | 18 | 7-11 | -3.87 | -21.5% | 18 | 7-11 | -3.87 | -21.5% | common 18, dashboard-only 0, mine-only 0 |
+| Spread | 20 | 12-8 | +2.91 | +14.5% | 19 | 11-8 | +2.02 | +10.6% | common 17, dashboard-only 3, mine-only 2 |
+| Totals | 33 | 13-20 | -8.18 | -24.8% | 29 | 11-18 | -8.04 | -27.7% | common 28, dashboard-only 5, mine-only 1 |
+
+'Recent Performance' logic (compute_model_accuracy_and_roi) over the whole season (the tab itself uses the last 14 days): a spread and a total PICK on every game, no edge rule, -110, pushes counted as losses:
+
+| market | picks | wins | win rate | ROI |
+|---|---|---|---|---|
+| Moneyline | 18 | 7 | 38.9% | -21.5% |
+| Spread | 159 | 78 | 49.1% | -6.3% |
+| Totals | 159 | 81 | 50.9% | -2.7% |
+
+Last 14 days as the tab would show them on 2026-11-11 (2026-10-28 to 2026-11-10): Moneyline 4-8 ROI -32.7%; Spread 55-49 ROI +1.0%; Totals 52-52 ROI -4.5%
+
+Whole-number lines this season (a push is possible): spread 0, total 0 of 170 games. In the dashboard a push is a 'loss' (tab 3: `won` stays False; tab 2: `spread_correct`/`total_correct` are False) and costs -100; betting.py cover_probability refunds it. Pushes among my reconstructed bets: 0.
+
+## P5. CSV mirror versus predictions_log_v2
+
+rows: csv 170, db 170, joined 170. Status differences: 25 ({('2026-10-26', 'PENDING', 'COMPLETED'): 9, ('2026-10-27', 'PENDING', 'COMPLETED'): 4, ('2026-10-28', 'PENDING', 'COMPLETED'): 12}).
+- ml_prob: max abs diff 1.11e-16
+- spread_pred: max abs diff 3.55e-15
+- total_pred: max abs diff 5.68e-14
+- odds_home_ml: max abs diff 0.00e+00
+- odds_away_ml: max abs diff 0.00e+00
+- odds_home_spread: max abs diff 0.00e+00
+- odds_total: max abs diff 0.00e+00
+- home_score differs on 25 rows (the PENDING csv rows have no score)
+- published dashboard-data branch (git show dashboard-data:predictions_log.csv): 170 rows from 2026-10-20, COMPLETED 160, PENDING 10

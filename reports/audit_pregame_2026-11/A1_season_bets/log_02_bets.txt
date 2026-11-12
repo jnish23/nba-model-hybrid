@@ -1,0 +1,66 @@
+implied total sigma (|pe|>=1, price confirmed): n=59 median 18.94 p10 17.88 p90 20.26 ; meta total_std 18.59
+{
+ "meta_spread_std": 14.286969463981409,
+ "meta_total_std": 18.58954304144289,
+ "implied_total_sigma_median": 18.935521358277732,
+ "implied_total_sigma_p10_p90": [
+  17.879453455337753,
+  20.26306920893144
+ ],
+ "n_ident_sigma": 59,
+ "spread_snap_price_exact_share_logged_days": 0.7926829268292683,
+ "spread_snap_price_exact_share_when_match_ge3": 0.9285714285714286,
+ "ml_A_logged_bets": 7,
+ "ml_A_recomputed_bets": 7,
+ "ml_A_identical_decision": 82,
+ "ml_A_n": 82,
+ "ml_A_edge_maxabs_diff": 4.987427394759908e-05,
+ "ml_A_edge_meanabs_diff": 2.3573775481944596e-05,
+ "ml_A_edge_corr": 0.9999993028268305,
+ "ml_B_logged_bets": 7,
+ "ml_B_recomputed_bets": 7,
+ "ml_B_identical_decision": 82,
+ "ml_B_n": 82,
+ "ml_B_edge_maxabs_diff": 4.987427394759908e-05,
+ "ml_B_edge_meanabs_diff": 2.3573775481944596e-05,
+ "ml_B_edge_corr": 0.9999993028268305,
+ "spread_A_logged_bets": 9,
+ "spread_A_recomputed_bets": 9,
+ "spread_A_identical_decision": 82,
+ "spread_A_n": 82,
+ "spread_A_edge_maxabs_diff": 0.02696887154087346,
+ "spread_A_edge_meanabs_diff": 0.002811284461551629,
+ "spread_A_edge_corr": 0.9715205963482831,
+ "spread_B_logged_bets": 9,
+ "spread_B_recomputed_bets": 6,
+ "spread_B_identical_decision": 77,
+ "spread_B_n": 82,
+ "spread_B_edge_maxabs_diff": 0.02365603117814548,
+ "spread_B_edge_meanabs_diff": 0.009069841072844422,
+ "spread_B_edge_corr": 0.9240701620505009,
+ "total_A_logged_bets": 11,
+ "total_A_recomputed_bets": 12,
+ "total_A_identical_decision": 81,
+ "total_A_n": 82,
+ "total_A_edge_maxabs_diff": 0.017716048697782233,
+ "total_A_edge_meanabs_diff": 0.0030374940071914596,
+ "total_A_edge_corr": 0.9854154888643694,
+ "total_B_logged_bets": 11,
+ "total_B_recomputed_bets": 12,
+ "total_B_identical_decision": 81,
+ "total_B_n": 82,
+ "total_B_edge_maxabs_diff": 0.021294113727164145,
+ "total_B_edge_meanabs_diff": 0.005665795758337542,
+ "total_B_edge_corr": 0.9703820212517202
+}
+market  source      status 
+ML      log         pending     1
+                    settled     6
+        recomputed  settled    12
+Spread  log         pending     1
+                    settled     8
+        recomputed  settled    11
+Total   log         pending     1
+                    settled    10
+        recomputed  settled    19
+dtype: int64

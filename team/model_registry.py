@@ -4,6 +4,7 @@ The one place that says which trained models production uses, and how a model se
 A "model set" is the files that share a suffix in models/saved/:
     model_ml<suffix>.pkl  calibrator_ml<suffix>.pkl  model_spread<suffix>.pkl  model_total<suffix>.pkl
     sigma_total<suffix>.pkl (optional: per-game total sigma, see team/market_models.py)
+    calibrator_total<suffix>.pkl (optional: E18 fix (c) total-level calibrator, trained with total_calibration=True; part of the set hash when present)
     feature_config<suffix>.json  calibration_meta<suffix>.json  best_config_<target><suffix>.json
 `train_baseline.py --deploy` writes the set named DEPLOYED_SUFFIX; `scripts/run_inference_v2.py`
 (and therefore run_daily_inference.bat) and scripts/maintenance/backfill_inference.py load it.
@@ -62,8 +63,9 @@ class ModelSetHashMismatch(RuntimeError):
 # Files whose bytes define a model set. best_config_* are the tuner's output (already reflected in the models) and the manifest is
 # the record of the hash itself, so neither is hashed.
 HASHED_STEMS = [('model_ml', 'pkl'), ('calibrator_ml', 'pkl'), ('model_spread', 'pkl'), ('model_total', 'pkl'),
-                ('sigma_total', 'pkl'), ('feature_config', 'json'), ('calibration_meta', 'json')]
-REQUIRED_STEMS = HASHED_STEMS[:4] + HASHED_STEMS[5:]      # sigma_total is optional
+                ('sigma_total', 'pkl'), ('calibrator_total', 'pkl'), ('feature_config', 'json'), ('calibration_meta', 'json')]
+OPTIONAL_STEMS = ('sigma_total', 'calibrator_total')      # hashed when present; a set without them hashes exactly as before
+REQUIRED_STEMS = [s for s in HASHED_STEMS if s[0] not in OPTIONAL_STEMS]
 
 
 def model_set_paths(suffix, model_dir=MODEL_DIR):
@@ -183,6 +185,7 @@ class ModelBundle:
     sigma_total: object = None          # models/market_models.HeteroSigma; None for sets trained before E4 (global std)
     model_set_hash: str = None          # sha256 of the set's files (computed on load)
     training_set_hash: str = None       # sha256 of the training CSV, from the manifest (None for sets trained before manifests existed)
+    calibrator_total: object = None     # team/market_models.TotalLevelCalibrator; None for every set trained without total_calibration=True
 
 
 def load_bundle(suffix=DEPLOYED_SUFFIX, model_dir=MODEL_DIR):
@@ -214,6 +217,11 @@ def load_bundle(suffix=DEPLOYED_SUFFIX, model_dir=MODEL_DIR):
         bundle.sigma_total = joblib.load(sigma_path)
     elif bundle.calib_meta.get('total_sigma_model'):
         raise FileNotFoundError(f"Model set '{suffix}' says it uses a per-game total sigma but {sigma_path.name} is missing")
+    cal_total_path = path('calibrator_total', 'pkl')
+    if cal_total_path.exists():
+        bundle.calibrator_total = joblib.load(cal_total_path)
+    elif bundle.calib_meta.get('total_calibrator'):
+        raise FileNotFoundError(f"Model set '{suffix}' says it calibrates the total but {cal_total_path.name} is missing")
     for target in TARGETS:
         assert_config_matches_model(target, getattr(bundle, target), features[target])
     manifest = read_manifest(suffix, model_dir)

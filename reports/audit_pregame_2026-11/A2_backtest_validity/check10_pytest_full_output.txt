@@ -1,0 +1,14 @@
+........................................................................ [ 16%]
+........................................................................ [ 33%]
+........................................................................ [ 50%]
+........................................................................ [ 67%]
+........................................................................ [ 84%]
+.................................................................        [100%]
+============================== warnings summary ===============================
+tests/core/test_prediction_logger.py: 10 warnings
+  C:\Users\jorda\nba-pregame-audit\core\prediction_logger.py:212: FutureWarning:
+  
+  Downcasting behavior in `replace` is deprecated and will be removed in a future version. To retain the old behavior, explicitly call `result.infer_objects(copy=False)`. To opt-in to the future behavior, set `pd.set_option('future.no_silent_downcasting', True)`
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+425 passed, 10 warnings in 363.81s (0:06:03)

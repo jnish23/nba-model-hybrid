@@ -1,0 +1,46 @@
+                  name     old_id     new_id  same
+         Atlanta Hawks 1610612737 1610612737  True
+        Boston Celtics 1610612738 1610612738  True
+         Brooklyn Nets 1610612751 1610612751  True
+     Charlotte Bobcats 1610612766 1610612766  True
+     Charlotte Hornets 1610612766 1610612766  True
+         Chicago Bulls 1610612741 1610612741  True
+   Cleveland Cavaliers 1610612739 1610612739  True
+      Dallas Mavericks 1610612742 1610612742  True
+        Denver Nuggets 1610612743 1610612743  True
+       Detroit Pistons 1610612765 1610612765  True
+ Golden State Warriors 1610612744 1610612744  True
+       Houston Rockets 1610612745 1610612745  True
+        Indiana Pacers 1610612754 1610612754  True
+           LA Clippers 1610612746 1610612746  True
+  Los Angeles Clippers 1610612746 1610612746  True
+    Los Angeles Lakers 1610612747 1610612747  True
+     Memphis Grizzlies 1610612763 1610612763  True
+            Miami Heat 1610612748 1610612748  True
+       Milwaukee Bucks 1610612749 1610612749  True
+Minnesota Timberwolves 1610612750 1610612750  True
+  New Orleans Pelicans 1610612740 1610612740  True
+       New York Knicks 1610612752 1610612752  True
+ Oklahoma City Thunder 1610612760 1610612760  True
+         Orlando Magic 1610612753 1610612753  True
+    Philadelphia 76ers 1610612755 1610612755  True
+          Phoenix Suns 1610612756 1610612756  True
+Portland Trail Blazers 1610612757 1610612757  True
+      Sacramento Kings 1610612758 1610612758  True
+     San Antonio Spurs 1610612759 1610612759  True
+       Toronto Raptors 1610612761 1610612761  True
+             Utah Jazz 1610612762 1610612762  True
+    Washington Wizards 1610612764 1610612764  True
+distinct names: 32 same: 32 different: 0
+abbreviations seen: 37 after SBR_ABBREVIATIONS all tricodes: True unmapped: []
+as team names through the new lookup: {}
+'Portland'               old=1610612757 new=None
+'Trailblazers'           old=None new=1610612757
+'Los Angeles'            old=1610612747 new=None
+'Philadelphia Sixers'    old=None new=None
+'NY Knicks'              old=1610612752 new=None
+'Hawks of Atlanta'       old=1610612737 new=None
+'Utah'                   old=1610612762 new=None
+'San Antonio'            old=1610612759 new=None
+'LA'                     old=1610612747 new=None
+'Charlotte'              old=1610612766 new=None

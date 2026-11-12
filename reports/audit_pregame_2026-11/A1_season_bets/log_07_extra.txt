@@ -1,0 +1,31 @@
+## T1b. Fragility of the recomputed bets (Oct 20-31, 87 completed games; recomputation = betting.py on the logged predictions)
+
+- spread: 11 recomputed bets under the base assumptions; 10 are recommended under EVERY scenario tried (snapshot price vs -110); 1 drop out under at least one scenario; 2 games that are not bets in the base case would be bets under another scenario.
+  - firm bets: 10, W-L 7-3, units +3.31; borderline bets: 1, W-L 0-1, units -1.00
+  - games that would enter under another scenario: 0022600089, 0022600015
+- total: 19 recomputed bets under the base assumptions; 15 are recommended under EVERY scenario tried (sigma p10 17.9 / median 18.9 / p90 20.3 / meta 18.6 x snapshot price vs -110); 4 drop out under at least one scenario; 8 games that are not bets in the base case would be bets under another scenario.
+  - firm bets: 15, W-L 7-8, units -1.68; borderline bets: 4, W-L 1-3, units -2.11
+  - games that would enter under another scenario: 0022600085, 0022600100, 0022600118, 0022600119, 0022600127, 0022600129, 0022600019, 0022600147
+
+Validation on the 72 completed games whose picks were printed in the log (Nov 1-10): decisions of the base recomputation (snapshot price, sigma = implied median 18.9) versus the printed picks: spread 72/72 identical, total 72/72, ML 72/72. With a flat -110 price and the meta sigma (18.59) instead: spread 67/72, total 72/72. (sigma 18.9 was fitted on these same days, so the total agreement is not an out-of-sample test.)
+
+## Scoring drift against the lines (context for over/under results)
+
+| quantity | mean | 95% CI (day bootstrap) | games |
+|---|---|---|---|
+| total points minus model total | -2.67 | [-4.96, -0.28] | 160 |
+| total points minus run-time total line | -2.71 | [-5.15, -0.31] | 159 |
+| total points minus closing total (median) | -2.96 | [-5.17, -0.82] | 142 |
+| home margin minus model spread | -0.25 | [-2.82, +2.34] | 159 |
+| home margin minus (-run-time home spread) | -0.08 | [-2.61, +2.44] | 159 |
+
+All 159 completed games with a total line: over 72, under 87, push 0. Blanket over at -110: ROI -13.6%; blanket under: +4.5%.
+
+## Claimed win probability versus results (exact Poisson-binomial, one-sided lower tail P(wins <= observed))
+
+| market | bets | expected wins if the claimed probabilities are right | observed wins | P(wins <= observed) |
+|---|---|---|---|---|
+| ML | 18 | 9.3 | 7 | 0.185 |
+| Spread | 19 | 11.4 | 11 | 0.520 |
+| Total | 29 | 17.7 | 11 | 0.009 |
+| ALL | 66 | 38.4 | 29 | 0.012 |

@@ -1,0 +1,13 @@
+rows 16876 matchup cols in file: ['matchup_3pa_vs_opp_3pa_5g']
+matchup_off_vs_def_rating_5g: home col in file=True, away col in file=True
+matchup_off_vs_def_rating_20g: home col in file=True, away col in file=True
+matchup_3pa_vs_opp_3pa_5g: home col in file=True, away col in file=True
+
+correlations with the home margin / the total (all rows with the inputs)
+  matchup_off_vs_def_rating_5g       n= 16859 mean= -0.080 sd= 7.896 corr(margin)=+0.041 corr(total)=+0.007
+  matchup_off_vs_def_rating_20g      n= 16859 mean= -0.021 sd= 5.307 corr(margin)=+0.056 corr(total)=+0.006
+  matchup_3pa_vs_opp_3pa_5g          n= 16859 mean= -0.013 sd= 5.768 corr(margin)=+0.039 corr(total)=+0.029
+
+5g: corr(home offence vs away defence, as built: off - def) with home points: +0.028; with the sum form off + def: +0.388
+
+20g: corr(home offence vs away defence, as built: off - def) with home points: +0.036; with the sum form off + def: +0.444

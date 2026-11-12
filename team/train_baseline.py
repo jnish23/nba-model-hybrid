@@ -25,7 +25,7 @@ from datetime import date
 from team.data_checks import missingness_era_report
 from team.model_registry import DEPLOYED_SUFFIX, assert_suffix_free, manifest_path, write_manifest
 from team.market_models import (MarginStackCalibrator, ResidualSpreadModel, ResidualTotalModel, SPREAD_LINE_COL, TOTAL_LINE_COL,
-                                fit_hetero_sigma, crossfit_brier)
+                                TotalLevelCalibrator, fit_hetero_sigma, crossfit_brier)
 
 # Fixed LightGBM settings used when no hyperparameter search is run. They were NOT chosen by looking
 # at any test season, which is what makes them safe for a walk-forward backtest.
@@ -1381,7 +1381,8 @@ class BaselineModel:
         return rows, self.features_total, 'target_total_pts'
 
     def train_and_save_all(self, use_odds=False, save_suffix='', calib_holdout_frac=0.2, time_budget=600,
-                           market_aware=None, calib_holdout_days=CALIB_HOLDOUT_DAYS, refit_on_all=True, total_target='level', overwrite=False, train_from_season=None, tuner='flaml'):
+                           market_aware=None, calib_holdout_days=CALIB_HOLDOUT_DAYS, refit_on_all=True, total_target='level', overwrite=False, train_from_season=None, tuner='flaml',
+                           total_calibration=False):
         """
         Train final models on ALL available data and save them, including calibrators.
 
@@ -1403,6 +1404,11 @@ class BaselineModel:
         - total_target: 'level' (default) fits the total itself; 'residual' fits the gap from the opening total
           (ResidualTotalModel). 'residual' is OPT-IN: experiment E1 and the audit follow-up measured it 0.27-0.3 points WORSE
           in total MAE than 'level' (reports/audit_fixes/REPORT.md), so it is not the default.
+        - total_calibration: False (default; the output is exactly what it was before this option existed). True fits a
+          TotalLevelCalibrator (E18 fix (c): level-dependent shrinkage of the total forecast toward the opening total, weight in [0, 1])
+          on the calibration block's total predictions, saves calibrator_total<suffix>.pkl (part of the set hash), computes `total_std`
+          and the per-game sigma on the CALIBRATED residuals, and records the raw figures and the fitted weights in calibration_meta.
+          Needs market_aware and total_target='level'. Evidence: experiments/e27_candidate_form.py (reports/experiments/E27_candidate_form).
 
         market_aware (default: use_odds) adopts experiments E1/E3/E4 (team/market_models.py), which need the
         opening lines as inputs: the spread model learns the residual against the opening spread, the ML probability
@@ -1417,6 +1423,8 @@ class BaselineModel:
         if total_target not in ('level', 'residual'):
             raise ValueError(f"total_target must be 'level' or 'residual', got {total_target!r}")
         total_residual = market_aware and total_target == 'residual'
+        if total_calibration and (not market_aware or total_residual):
+            raise ValueError("total_calibration needs the market-aware level total model (use_odds=True, total_target='level')")
         if overwrite:
             manifest_path(save_suffix, self.model_dir).unlink(missing_ok=True)      # the old record would describe files about to be replaced
         else:
@@ -1586,14 +1594,28 @@ class BaselineModel:
             calib_total_pred = final_total.predict(X_calib_total, line=calib_df[TOTAL_LINE_COL].to_numpy(float))
         else:
             calib_total_pred = final_total.predict(X_calib_total)
+        total_calibrator = None
+        if total_calibration:
+            # E18 fix (c): fitted on the calibration block's raw total forecasts, like the E3 stack; every figure below is then on the calibrated forecast
+            calib_total_line = calib_df[TOTAL_LINE_COL].to_numpy(float)
+            raw_errors = (y_calib_total.values - calib_total_pred)[np.isfinite(calib_total_pred)]
+            total_calibrator = TotalLevelCalibrator().fit(calib_total_pred, calib_total_line, y_calib_total.to_numpy(float))
+            calib_total_pred = total_calibrator.predict(calib_total_pred, calib_total_line)
+            calibration_meta['total_calibrator'] = 'level_shrink_to_line'
+            calibration_meta['total_calibrator_params'] = total_calibrator.params
+            calibration_meta['total_std_raw'] = float(raw_errors.std())
+            calibration_meta['total_bias_raw'] = float(raw_errors.mean())
+            calibration_meta['total_mae_raw'] = float(np.abs(raw_errors).mean())
+            logging.info(f"Total level calibrator (E18 fix c): w = {total_calibrator.w0:.3f} + {total_calibrator.w1:+.4f} x (line - {total_calibrator.mean_level:.1f}), "
+                         f"fitted on {total_calibrator.n_fit} games; raw MAE {calibration_meta['total_mae_raw']:.2f}")
         has_total_line = np.isfinite(calib_total_pred)
         total_errors = (y_calib_total.values - calib_total_pred)[has_total_line]
         total_std = float(total_errors.std())
         total_bias = float(total_errors.mean())
         total_mae = float(np.abs(total_errors).mean())
-        
+
         logging.info(f"Total Calibration - MAE: {total_mae:.2f}, Std: {total_std:.2f}, Bias: {total_bias:.2f}")
-        
+
         calibration_meta['total_std'] = total_std
         calibration_meta['total_bias'] = total_bias
         calibration_meta['total_mae'] = total_mae
@@ -1603,7 +1625,8 @@ class BaselineModel:
         if market_aware:
             # E4: per-game sigma for the total's cover probability, from out-of-fold errors inside model_train
             # the sigma model learns the error of the total model above (an error is the same quantity for a level or a gap target)
-            sigma_total = fit_hetero_sigma(*self._sigma_fit_args(total_train_rows, total_residual), best_total_params, fallback_std=total_std)
+            sigma_total = fit_hetero_sigma(*self._sigma_fit_args(total_train_rows, total_residual), best_total_params, fallback_std=total_std,
+                                           calibrator=total_calibrator)
             sig_calib = sigma_total.predict(calib_df)
             logging.info(f"Total per-game sigma on the calibration block: mean {sig_calib.mean():.2f} "
                          f"(global std {total_std:.2f}), range [{sig_calib.min():.2f}, {sig_calib.max():.2f}]")
@@ -1631,12 +1654,15 @@ class BaselineModel:
             if total_residual:
                 final_total = ResidualTotalModel(final_total)
             if market_aware:
-                sigma_total = fit_hetero_sigma(*self._sigma_fit_args(tt_rows, total_residual), best_total_params, fallback_std=total_std)
+                sigma_total = fit_hetero_sigma(*self._sigma_fit_args(tt_rows, total_residual), best_total_params, fallback_std=total_std,
+                                               calibrator=total_calibrator)
         self.save_model(final_ml, f'model_ml{save_suffix}.pkl')
         self.save_model(final_spread, f'model_spread{save_suffix}.pkl')
         self.save_model(final_total, f'model_total{save_suffix}.pkl')
         if market_aware:
             self.save_model(sigma_total, f'sigma_total{save_suffix}.pkl')
+        if total_calibrator is not None:
+            self.save_model(total_calibrator, f'calibrator_total{save_suffix}.pkl')
         calibration_meta['refit_on_all'] = bool(refit_on_all)
         calibration_meta['model_train_end'] = str(model_train_df['gameDate'].max())
         calibration_meta['trained_through'] = str(all_df['gameDate'].max() if refit_on_all else model_train_df['gameDate'].max())
@@ -1666,6 +1692,8 @@ class BaselineModel:
         print(f"ML Calibrator: calibrator_ml{save_suffix}.pkl")
         print(f"Spread Model:  model_spread{save_suffix}.pkl")
         print(f"Total Model:   model_total{save_suffix}.pkl")
+        if total_calibrator is not None:
+            print(f"Total Calibrator: calibrator_total{save_suffix}.pkl")
         print(f"Feature Config: feature_config{save_suffix}.json")
         print(f"Calibration Meta: calibration_meta{save_suffix}.json")
 

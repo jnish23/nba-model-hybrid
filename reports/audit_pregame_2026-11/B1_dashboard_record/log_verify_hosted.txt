@@ -1,0 +1,8 @@
+scenario hosted: predictions from published data (updated daily); log published data (170 rows); sigmas 14.287 / 18.590 from published data
+Moneyline dashboard 18 bets 7-11-0   -3.87u ROI  -21.5% CLV 1.363 (n=17) src {'run': 0, 'printed': 6, 'recomputed': 12, 'page': 0}
+          A1        18 bets 7-11-0   -3.87u CLV 1.363 | common 18, dashboard-only [], A1-only []
+Spread    dashboard 19 bets 11-8-0   +2.02u ROI  +10.6% CLV 0.0 (n=19) src {'run': 0, 'printed': 8, 'recomputed': 11, 'page': 0}
+          A1        19 bets 11-8-0   +2.02u CLV 0.0 | common 19, dashboard-only [], A1-only []
+Totals    dashboard 29 bets 11-18-0  -8.04u ROI  -27.7% CLV 0.604 (n=24) src {'run': 0, 'printed': 10, 'recomputed': 19, 'page': 0}
+          A1        29 bets 11-18-0  -8.04u CLV 0.604 | common 29, dashboard-only [], A1-only []
+common bets with a different result: 0 | with a profit difference > 0.0015u: 0

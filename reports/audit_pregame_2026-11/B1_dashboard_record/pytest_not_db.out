@@ -1,0 +1,27 @@
+........................................................................ [ 15%]
+........................................................................ [ 30%]
+........................................................................ [ 45%]
+........................................................................ [ 60%]
+F....................................................................... [ 75%]
+........................................................................ [ 90%]
+............................................                             [100%]
+================================== FAILURES ===================================
+____________________ test_constants_are_what_the_notes_say ____________________
+
+>   ???
+E   AssertionError: assert (Timedelta('0 days 00:05:00') == Timedelta('0 days 00:05:00') and 90 == 120)
+E    +  where Timedelta('0 days 00:05:00') = <class 'pandas._libs.tslibs.timedeltas.Timedelta'>(minutes=5)
+E    +    where <class 'pandas._libs.tslibs.timedeltas.Timedelta'> = pd.Timedelta
+E    +  and   90 = rm.DEFAULT_MAX_WAIT_MINUTES
+
+tests\team\test_run_time_guard.py:36: AssertionError
+============================== warnings summary ===============================
+tests/core/test_prediction_logger.py: 10 warnings
+  C:\Users\jorda\nba-pregame-audit\core\prediction_logger.py:270: FutureWarning:
+  
+  Downcasting behavior in `replace` is deprecated and will be removed in a future version. To retain the old behavior, explicitly call `result.infer_objects(copy=False)`. To opt-in to the future behavior, set `pd.set_option('future.no_silent_downcasting', True)`
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/team/test_run_time_guard.py::test_constants_are_what_the_notes_say
+1 failed, 475 passed, 8 deselected, 10 warnings in 186.66s (0:03:06)

@@ -1,0 +1,16 @@
+database: C:/Users/jorda/AppData/Local/Temp/claude/fc2e35238e873ec7/fc5bb23b-cadc-4afa-aeaf-5ecb82331bb5/scratchpad/b1/run2/copy_nba_stats.db
+games 2026-10-20..2026-11-11 in predictions_log_v2: 170; bets in bets.csv: 69
+already backfilled (skipped): 0; written by a real inference run (never overwritten): 0; to insert: 170
+  ml: bets 19 {'home': 12, 'away': 7}
+  spread: bets 20 {'home': 13, 'away': 7}
+  total: bets 30 {'over': 17, 'under': 13}
+  provenance: {'recomputed': 88, 'printed': 82}; opening line source: {'explanations': 155, 'snapshot proxy': 14, 'none': 1}
+  spread sigma 14.287, total sigma stand-in 18.936
+first rows:
+   game_id  game_date                  run_ts_utc ml_bet   ml_edge spread_bet  spread_edge total_bet  total_edge
+0022600001 2026-10-20 2026-10-20T16:17:59.000000Z   home  0.081168       home     0.077953      None    0.032273
+0022600002 2026-10-20 2026-10-20T16:17:59.000000Z   None  0.016558       None    -0.009145      None   -0.003998
+0022600003 2026-10-20 2026-10-20T16:17:59.000000Z   None  0.023481       None    -0.007496      None   -0.010553
+0022600004 2026-10-21 2026-10-21T16:18:58.000000Z   home  0.101731       home     0.055110      None    0.040215
+0022600005 2026-10-21 2026-10-21T16:18:58.000000Z   None -0.003456       None     0.006680     under    0.071704
+inserted 170 rows into bet_recommendations_log and bet_recommendations_provenance

@@ -1,0 +1,206 @@
+## T2. Settled results (1 unit flat; pushes refunded)
+
+
+### All reconstructed bets (primary)
+
+| set | bets | W-L-P | units | ROI (day-boot 95% CI) | hit rate (CI) | mean break-even |
+|---|---|---|---|---|---|---|
+| ALL markets | 66 | 29-37-0 | -9.89 | -15.0% [-37.8, +5.7] | 43.9% [32.7, 54.8] | 50.1% |
+| ML | 18 | 7-11-0 | -3.87 | -21.5% [-69.4, +19.3] | 38.9% [15.4, 61.5] | 44.0% |
+| Spread | 19 | 11-8-0 | +2.02 | +10.6% [-28.1, +52.4] | 57.9% [37.5, 80.0] | 52.2% |
+| Total | 29 | 11-18-0 | -8.04 | -27.7% [-58.6, +1.4] | 37.9% [21.7, 53.1] | 52.4% |
+| ML home | 11 | 4-7-0 | -2.92 | -26.5% [-82.6, +31.2] | 36.4% [9.1, 64.3] | 45.6% |
+| ML away | 7 | 3-4-0 | -0.95 | -13.5% [-100.0, +50.6] | 42.9% [0.0, 77.8] | 41.4% |
+| Spread home | 12 | 7-5-0 | +1.33 | +11.1% [-57.8, +52.5] | 58.3% [22.2, 80.0] | 52.6% |
+| Spread away | 7 | 4-3-0 | +0.68 | +9.7% [-51.9, +64.6] | 57.1% [25.0, 85.7] | 51.6% |
+| Total over | 16 | 5-11-0 | -6.49 | -40.5% [-84.2, -9.9] | 31.2% [8.3, 47.4] | 52.5% |
+| Total under | 13 | 6-7-0 | -1.55 | -11.9% [-59.3, +43.4] | 46.2% [21.4, 75.0] | 52.3% |
+| ML fav | 5 | 2-3-0 | -1.76 | -35.1% [-100.0, +62.2] | 40.0% [0.0, 100.0] | 58.3% |
+| ML dog | 13 | 5-8-0 | -2.11 | -16.2% [-77.0, +32.5] | 38.5% [10.0, 60.0] | 38.4% |
+| Spread fav | 4 | 2-2-0 | -0.14 | -3.5% [-100.0, +93.1] | 50.0% [0.0, 100.0] | 51.9% |
+| Spread dog | 15 | 9-6-0 | +2.16 | +14.4% [-26.1, +53.0] | 60.0% [38.5, 80.0] | 52.3% |
+
+### Observed in the log only (Nov 1-10)
+
+| set | bets | W-L-P | units | ROI (day-boot 95% CI) | hit rate (CI) | mean break-even |
+|---|---|---|---|---|---|---|
+| ALL markets | 24 | 9-15-0 | -6.79 | -28.3% [-63.4, +8.0] | 37.5% [19.0, 56.5] | 48.5% |
+| ML | 6 | 2-4-0 | -2.25 | -37.5% [-100.0, +40.7] | 33.3% [0.0, 75.0] | 37.7% |
+| Spread | 8 | 4-4-0 | -0.29 | -3.7% [-65.0, +65.4] | 50.0% [18.2, 85.7] | 51.8% |
+| Total | 10 | 3-7-0 | -4.25 | -42.5% [-100.0, +6.5] | 30.0% [0.0, 55.6] | 52.3% |
+| ML home | 2 | 0-2-0 | -2.00 | -100.0% [-100.0, -100.0] | 0.0% [0.0, 0.0] | 29.1% |
+| ML away | 4 | 2-2-0 | -0.25 | -6.2% [-100.0, +87.6] | 50.0% [0.0, 100.0] | 42.0% |
+| Spread home | 3 | 1-2-0 | -1.11 | -36.9% [-100.0, +89.3] | 33.3% [0.0, 100.0] | 52.5% |
+| Spread away | 5 | 3-2-0 | +0.81 | +16.3% [-51.2, +94.3] | 60.0% [25.0, 100.0] | 51.3% |
+| Total over | 5 | 2-3-0 | -1.16 | -23.3% [-100.0, +43.2] | 40.0% [0.0, 75.0] | 52.5% |
+| Total under | 5 | 1-4-0 | -3.08 | -61.7% [-100.0, +43.8] | 20.0% [0.0, 75.0] | 52.2% |
+| ML fav | 1 | 1-0-0 | +0.50 | +50.3% [+50.3, +50.3] | 100.0% [100.0, 100.0] | 66.6% |
+| ML dog | 5 | 1-4-0 | -2.75 | -55.0% [-100.0, +35.0] | 20.0% [0.0, 60.0] | 31.9% |
+| Spread fav | 2 | 1-1-0 | -0.05 | -2.4% [-100.0, +95.2] | 50.0% [0.0, 100.0] | 52.0% |
+| Spread dog | 6 | 3-3-0 | -0.25 | -4.1% [-67.9, +59.0] | 50.0% [16.7, 83.3] | 51.7% |
+
+### Recomputed only (Oct 20-31)
+
+| set | bets | W-L-P | units | ROI (day-boot 95% CI) | hit rate (CI) | mean break-even |
+|---|---|---|---|---|---|---|
+| ALL markets | 42 | 20-22-0 | -3.10 | -7.4% [-32.6, +19.3] | 47.6% [35.1, 61.8] | 51.0% |
+| ML | 12 | 5-7-0 | -1.62 | -13.5% [-66.3, +31.1] | 41.7% [16.6, 66.7] | 47.1% |
+| Spread | 11 | 7-4-0 | +2.31 | +21.0% [-13.8, +62.8] | 63.6% [45.4, 85.7] | 52.6% |
+| Total | 19 | 8-11-0 | -3.79 | -19.9% [-57.5, +16.5] | 42.1% [22.2, 61.1] | 52.5% |
+| ML home | 9 | 4-5-0 | -0.92 | -10.2% [-82.6, +48.0] | 44.4% [10.0, 75.0] | 49.3% |
+| ML away | 3 | 1-2-0 | -0.70 | -23.3% [-100.0, +15.0] | 33.3% [0.0, 50.0] | 40.6% |
+| Spread home | 9 | 6-3-0 | +2.44 | +27.1% [-36.9, +69.6] | 66.7% [33.3, 88.9] | 52.6% |
+| Spread away | 2 | 1-1-0 | -0.13 | -6.5% [-100.0, +87.0] | 50.0% [0.0, 100.0] | 52.4% |
+| Total over | 11 | 3-8-0 | -5.32 | -48.4% [-100.0, -5.4] | 27.3% [0.0, 50.0] | 52.6% |
+| Total under | 8 | 5-3-0 | +1.53 | +19.2% [-52.2, +69.7] | 62.5% [25.0, 87.8] | 52.4% |
+| ML fav | 4 | 1-3-0 | -2.26 | -56.5% [-100.0, +74.1] | 25.0% [0.0, 100.0] | 56.3% |
+| ML dog | 8 | 4-4-0 | +0.64 | +8.0% [-59.6, +72.8] | 50.0% [20.0, 80.0] | 42.5% |
+| Spread fav | 2 | 1-1-0 | -0.09 | -4.5% [-100.0, +90.9] | 50.0% [0.0, 100.0] | 51.8% |
+| Spread dog | 9 | 6-3-0 | +2.40 | +26.7% [-24.4, +89.5] | 66.7% [40.0, 100.0] | 52.7% |
+
+### Excluding the two special runs (Oct 23 18:59 ET run, Oct 24 Odds-API-open games)
+
+| set | bets | W-L-P | units | ROI (day-boot 95% CI) | hit rate (CI) | mean break-even |
+|---|---|---|---|---|---|---|
+| ALL markets | 60 | 28-32-0 | -5.79 | -9.7% [-30.1, +11.3] | 46.7% [36.4, 57.7] | 49.9% |
+| ML | 17 | 7-10-0 | -2.87 | -16.9% [-59.4, +25.0] | 41.2% [20.0, 64.3] | 43.7% |
+| Spread | 19 | 11-8-0 | +2.02 | +10.6% [-28.1, +52.4] | 57.9% [37.5, 80.0] | 52.2% |
+| Total | 24 | 10-14-0 | -4.95 | -20.6% [-57.5, +8.6] | 41.7% [22.2, 57.1] | 52.5% |
+| ML home | 10 | 4-6-0 | -1.92 | -19.2% [-82.6, +35.9] | 40.0% [10.0, 69.2] | 45.3% |
+| ML away | 7 | 3-4-0 | -0.95 | -13.5% [-100.0, +50.6] | 42.9% [0.0, 77.8] | 41.4% |
+| Spread home | 12 | 7-5-0 | +1.33 | +11.1% [-57.8, +52.5] | 58.3% [22.2, 80.0] | 52.6% |
+| Spread away | 7 | 4-3-0 | +0.68 | +9.7% [-51.9, +64.6] | 57.1% [25.0, 85.7] | 51.6% |
+| Total over | 13 | 5-8-0 | -3.49 | -26.8% [-76.1, +11.7] | 38.5% [12.5, 58.3] | 52.6% |
+| Total under | 11 | 5-6-0 | -1.46 | -13.3% [-68.1, +53.0] | 45.5% [16.7, 80.0] | 52.3% |
+| ML fav | 5 | 2-3-0 | -1.76 | -35.1% [-100.0, +62.2] | 40.0% [0.0, 100.0] | 58.3% |
+| ML dog | 12 | 5-7-0 | -1.11 | -9.2% [-74.5, +47.4] | 41.7% [11.1, 66.7] | 37.6% |
+| Spread fav | 4 | 2-2-0 | -0.14 | -3.5% [-100.0, +93.1] | 50.0% [0.0, 100.0] | 51.9% |
+| Spread dog | 15 | 9-6-0 | +2.16 | +14.4% [-26.1, +53.0] | 60.0% [38.5, 80.0] | 52.3% |
+
+### Claimed edge versus realised (all reconstructed bets)
+
+| market | bets | mean claimed win prob | realised hit rate (graded) | claimed edge (mean) | realised hit minus mean break-even |
+|---|---|---|---|---|---|
+| ML | 18 | 51.9% | 38.9% | +7.9 pts | -5.1 pts |
+| Spread | 19 | 59.8% | 57.9% | +7.6 pts | +5.7 pts |
+| Total | 29 | 61.1% | 37.9% | +8.7 pts | -14.5 pts |
+
+## T3a. Closing-line value of the bets
+
+CLV in points (spread, total) and in de-vigged probability points (ML, fair-to-fair). 'toward' = the line moved in the bet's favour between the bet and the close (CLV>0), 'against' = CLV<0. Close = last pre-game snapshot (cross-book median); bets whose close is more than 90 minutes before tip are dropped.
+
+| market | basis | bets with close | mean CLV (CI) | toward / against / none | share toward [CI] | exact sign test p (ties dropped) | sd |
+|---|---|---|---|---|---|---|---|
+| ML | cross-book median close | 17 | +1.36 pp [-0.89, +4.78] | 8 / 6 / 3 | 47% [27, 73] | 0.791 | 5.35 |
+| ML | same-book close | 17 | +1.14 pp [-1.17, +4.66] | 5 / 6 / 6 | 29% [10, 55] | 1.000 | 5.50 |
+| Spread | cross-book median close | 19 | +0.00 pts [-0.54, +0.47] | 4 / 6 / 9 | 21% [0, 43] | 0.754 | 1.25 |
+| Spread | same-book close | 18 | +0.11 pts [-0.44, +0.65] | 3 / 5 / 10 | 17% [0, 31] | 0.727 | 1.41 |
+| Total | cross-book median close | 24 | +0.60 pts [+0.22, +1.25] | 9 / 1 / 14 | 38% [21, 65] | 0.021 | 1.12 |
+| Total | same-book close | 24 | +0.62 pts [+0.23, +1.30] | 7 / 0 / 17 | 29% [12, 59] | 0.016 | 1.13 |
+| ML | close fair prob minus the VIGGED break-even actually taken | 17 | -0.42 pp [-2.68, +3.02] | | | | |
+| Spread+Total pooled | cross-book median close | 43 | +0.34 pts [-0.03, +0.82] | | | | |
+
+CLV and results of the sample that has a valid close vs without (selection check):
+
+| market | bets | with close | ROI with close | ROI without close |
+|---|---|---|---|---|
+| ML | 18 | 17 | -16.9% | -100.0% |
+| Spread | 19 | 19 | +10.6% | +0.0% |
+| Total | 29 | 24 | -20.6% | -61.8% |
+
+## T4. Own view versus line move (all reconstructed bets with an opening line)
+
+own view = side-signed (model - opening line the model read); move = side-signed (opening - run-time line), in points (ML: probability points). edge_points = own + move. Opening = the model's own input from prediction_explanations ('explanations') or the snapshot proxy for the 14 Oct 20-21 games. 'fade' = move > 0 (the line moved away from the bet side between the open and the run).
+
+| market | bets | mean edge | mean own | mean move | share fading the move | share following | share no move | own-dominated (own >= move) |
+|---|---|---|---|---|---|---|---|---|
+| ML | 18 | 7.94 | -0.23 | 8.17 | 94% | 0% | 6% | 11% |
+| Spread | 19 | 3.56 | 0.67 | 2.89 | 95% | 0% | 5% | 26% |
+| Total | 29 | 5.44 | 3.99 | 1.45 | 59% | 17% | 24% | 66% |
+| ALL | 66 | - | - | - | 79% | 8% | 14% | 39% |
+
+Share of bets that fade the open-to-run move, day-bootstrap 95% CI: ML 94% [79, 100] (n=18); Spread 95% [81, 100] (n=19); Total 59% [38, 80] (n=29); ALL 79% [60, 92] (n=66)
+
+Results split by which part dominates:
+
+| set | bets | W-L-P | units | ROI (day-boot 95% CI) | hit rate (CI) | mean break-even |
+|---|---|---|---|---|---|---|
+| own-view-dominated | 26 | 9-17-0 | -8.80 | -33.8% [-63.4, +0.4] | 34.6% [19.2, 52.2] | 52.1% |
+| move-dominated | 40 | 20-20-0 | -1.09 | -2.7% [-28.9, +24.2] | 50.0% [36.6, 64.5] | 48.7% |
+| fades the move (move>0) | 52 | 25-27-0 | -3.47 | -6.7% [-29.9, +22.7] | 48.1% [36.2, 63.4] | 49.5% |
+| follows or no move (move<=0) | 14 | 4-10-0 | -6.41 | -45.8% [-88.1, +8.0] | 28.6% [6.2, 57.1] | 52.0% |
+| ML own-dominated | 2 | 0-2-0 | -2.00 | -100.0% [-100.0, -100.0] | 0.0% [0.0, 0.0] | 51.5% |
+| ML move-dominated | 16 | 7-9-0 | -1.87 | -11.7% [-56.7, +29.0] | 43.8% [21.4, 66.7] | 43.0% |
+| Spread own-dominated | 5 | 2-3-0 | -1.11 | -22.3% [-100.0, +55.8] | 40.0% [0.0, 80.0] | 51.4% |
+| Spread move-dominated | 14 | 9-5-0 | +3.13 | +22.4% [-15.8, +68.5] | 64.3% [44.4, 88.9] | 52.5% |
+| Total own-dominated | 19 | 7-12-0 | -5.68 | -29.9% [-72.5, +8.6] | 36.8% [14.3, 57.1] | 52.4% |
+| Total move-dominated | 10 | 4-6-0 | -2.35 | -23.5% [-78.8, +34.2] | 40.0% [11.1, 70.0] | 52.5% |
+
+Quality of the snapshot-opening proxy against the model's own opening input (games with both):
+
+| market | n | mean (proxy - true) | MAE | share exact | corr(own proxy, own true) | same own/move-dominated class |
+|---|---|---|---|---|---|---|
+| spread (pts) | 136 | +0.11 | 0.38 | 68% | | |
+| total (pts) | 136 | -0.01 | 0.69 | 49% | | |
+| Spread bets (decomposition) | 16 | +0.38 | 0.56 | | 0.699 | 81% |
+| Total bets (decomposition) | 21 | -0.40 | 0.64 | | 0.943 | 86% |
+
+## T5. Pre-declared splits (all reconstructed settled bets, 3 markets pooled in units)
+
+CLV in the table is pooled over spread and total bets only (points). 'diff' = first level minus second level, day-bootstrap.
+
+| split | level | bets | W-L-P | hit rate | ROI [95% CI] | CLV pts spread+total (n) |
+|---|---|---|---|---|---|---|
+| 1 market | ML | 18 | 7-11-0 | 38.9% | -21.5% [-69.4, +19.3] | - |
+| 1 market | Spread | 19 | 11-8-0 | 57.9% | +10.6% [-28.1, +52.4] | +0.00 (19) |
+| 1 market | Total | 29 | 11-18-0 | 37.9% | -27.7% [-58.6, +1.4] | +0.60 (24) |
+| 2 side | home/over | 39 | 16-23-0 | 41.0% | -20.7% [-53.1, +8.9] | +0.06 (25) |
+| 2 side | away/under | 27 | 13-14-0 | 48.1% | -6.7% [-47.1, +32.8] | +0.72 (18) |
+| 2b favourite vs underdog (ML+spread) | fav | 9 | 4-5-0 | 44.4% | -21.1% [-78.3, +60.1] | +0.00 (4) |
+| 2b favourite vs underdog (ML+spread) | dog | 28 | 14-14-0 | 50.0% | +0.2% [-43.9, +35.1] | +0.00 (15) |
+| 3 edge size | edge>=7% | 30 | 16-14-0 | 53.3% | +4.4% [-24.2, +37.5] | +0.56 (18) |
+| 3 edge size | edge 5-7% | 36 | 13-23-0 | 36.1% | -31.2% [-58.9, -2.0] | +0.18 (25) |
+| 4 own vs move | own-dominated | 26 | 9-17-0 | 34.6% | -33.8% [-63.4, +0.4] | +0.53 (19) |
+| 4 own vs move | move-dominated | 40 | 20-20-0 | 50.0% | -2.7% [-28.9, +24.2] | +0.19 (24) |
+| 5 new injury absence | new injury absence | 19 | 9-10-0 | 47.4% | -8.7% [-69.9, +51.2] | +0.38 (12) |
+| 5 new injury absence | no new absence | 34 | 13-21-0 | 38.2% | -26.4% [-53.8, +4.3] | +0.43 (22) |
+| 6 back-to-back | either team on a back-to-back | 17 | 6-11-0 | 35.3% | -32.8% [-80.7, +26.9] | +0.40 (10) |
+| 6 back-to-back | no back-to-back | 49 | 23-26-0 | 46.9% | -8.8% [-31.6, +13.4] | +0.32 (33) |
+| 7 first two weeks vs later | first two weeks (<= Nov 2) | 46 | 23-23-0 | 50.0% | -3.1% [-26.3, +23.4] | +0.02 (27) |
+| 7 first two weeks vs later | later (Nov 4+) | 20 | 6-14-0 | 30.0% | -42.4% [-73.6, -9.0] | +0.88 (16) |
+
+### Family of 20 tests, Holm-adjusted
+
+| split | outcome | n a | n b | diff or level (ROI as fraction of stake; CLV pts / ML prob) | 95% CI | raw p | Holm p |
+|---|---|---|---|---|---|---|---|
+| 1 market | ROI ML vs 0 | 18 |  | -0.215 | [-0.694, +0.193] | 0.284 | 1.000 |
+| 1 market | CLV ML vs 0 | 17 |  | +0.014 | [-0.009, +0.048] | 0.286 | 1.000 |
+| 1 market | ROI Spread vs 0 | 19 |  | +0.106 | [-0.281, +0.524] | 0.516 | 1.000 |
+| 1 market | CLV Spread vs 0 | 19 |  | +0.000 | [-0.539, +0.471] | 1.000 | 1.000 |
+| 1 market | ROI Total vs 0 | 29 |  | -0.277 | [-0.586, +0.014] | 0.056 | 1.000 |
+| 1 market | CLV Total vs 0 | 24 |  | +0.604 | [+0.221, +1.250] | 0.002 | 0.040 |
+| 2 side | ROI | 39 | 27 | -0.140 | [-0.748, +0.468] | 0.612 | 1.000 |
+| 2 side | CLV pts | 25 | 18 | -0.662 | [-1.196, +0.085] | 0.090 | 1.000 |
+| 2b favourite vs underdog (ML+spread) | ROI | 9 | 28 | -0.212 | [-0.899, +0.899] | 0.682 | 1.000 |
+| 2b favourite vs underdog (ML+spread) | CLV pts | 4 | 15 | +0.000 | [-0.825, +0.910] | 0.981 | 1.000 |
+| 3 edge size | ROI | 30 | 36 | +0.356 | [-0.033, +0.886] | 0.090 | 1.000 |
+| 3 edge size | CLV pts | 18 | 25 | +0.376 | [-0.135, +1.282] | 0.160 | 1.000 |
+| 4 own vs move | ROI | 26 | 40 | -0.311 | [-0.717, +0.129] | 0.172 | 1.000 |
+| 4 own vs move | CLV pts | 19 | 24 | +0.339 | [-0.161, +0.881] | 0.152 | 1.000 |
+| 5 new injury absence | ROI | 19 | 34 | +0.177 | [-0.641, +0.937] | 0.644 | 1.000 |
+| 5 new injury absence | CLV pts | 12 | 22 | -0.057 | [-0.940, +0.679] | 0.820 | 1.000 |
+| 6 back-to-back | ROI | 17 | 49 | -0.239 | [-0.873, +0.445] | 0.518 | 1.000 |
+| 6 back-to-back | CLV pts | 10 | 33 | +0.082 | [-0.707, +0.845] | 0.932 | 1.000 |
+| 7 first two weeks vs later | ROI | 46 | 20 | +0.393 | [-0.085, +0.819] | 0.106 | 1.000 |
+| 7 first two weeks vs later | CLV pts | 27 | 16 | -0.856 | [-1.538, +0.030] | 0.060 | 1.000 |
+
+Survivors at Holm 0.05: 1 of 20.
+
+## T5b. Power
+
+Required number of independent bets for a two-sided 5% test at 80% power: n = ((1.96+0.84) * sd / delta)^2. ROI sd per unit staked is taken from the settled bets (about 1.0 at near-even prices); CLV sd from the observed per-bet CLV.
+
+- ROI: per-bet sd 0.973 units; a 2-point ROI edge (delta 0.02) needs about 18,559 bets. We have 66 graded bets; the 95% CI half-width on ROI is about 23 points.
+- CLV spread: sd 1.25 pts over 19 bets; a 0.3-point CLV edge needs about 136 bets (we have 19).
+- CLV total: sd 1.12 pts over 24 bets; a 0.3-point CLV edge needs about 110 bets (we have 24).
+- CLV spread+total pooled: sd 1.20; 0.3 points needs about 126 bets (we have 43).

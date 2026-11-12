@@ -90,3 +90,56 @@ def test_deployed_model_set_loads_in_a_fresh_process():
             "print('ok', type(b.calibrator).__module__)")
     r = subprocess.run([sys.executable, '-c', code], cwd=root, capture_output=True, text=True)
     assert r.returncode == 0 and r.stdout.startswith('ok'), r.stderr[-800:]
+
+
+# ------------------------------------------------------------------ optional calibrator_total (E18 fix c): part of the hash only when present
+
+PRE_CALIBRATOR_STEMS = [('model_ml', 'pkl'), ('calibrator_ml', 'pkl'), ('model_spread', 'pkl'), ('model_total', 'pkl'),
+                        ('sigma_total', 'pkl'), ('feature_config', 'json'), ('calibration_meta', 'json')]
+
+
+def _reference_hash_before_the_calibrator_existed(suffix, model_dir, version=mr.HASH_VERSION):
+    """The model_set_hash algorithm as it was before calibrator_total was added (seven stems, in this order)."""
+    import hashlib
+    h = hashlib.sha256()
+    for stem, ext in PRE_CALIBRATOR_STEMS:
+        p = model_dir / f'{stem}{suffix}.{ext}'
+        if p.exists():
+            h.update(p.name.encode())
+            h.update(mr.file_sha256(p, version).encode())
+    return h.hexdigest()
+
+
+def test_a_set_without_the_optional_files_hashes_exactly_as_before(tmp_path):
+    _save_set(tmp_path, '_x', FEATS)
+    for version in (1, 2):
+        assert mr.model_set_hash('_x', tmp_path, version) == _reference_hash_before_the_calibrator_existed('_x', tmp_path, version)
+    joblib.dump({'sigma': 1}, tmp_path / 'sigma_total_x.pkl')                           # with the E4 sigma file too
+    assert mr.model_set_hash('_x', tmp_path) == _reference_hash_before_the_calibrator_existed('_x', tmp_path)
+    assert mr.REQUIRED_STEMS == [s for s in PRE_CALIBRATOR_STEMS if s[0] != 'sigma_total']          # nothing new became mandatory
+
+
+def test_calibrator_total_joins_the_hash_when_present_and_a_set_lacking_it_still_loads(tmp_path):
+    _save_set(tmp_path, '_x', FEATS)
+    h0 = mr.model_set_hash('_x', tmp_path)
+    assert mr.load_bundle('_x', tmp_path).calibrator_total is None
+    joblib.dump({'w0': 0.3}, tmp_path / 'calibrator_total_x.pkl')
+    h1 = mr.model_set_hash('_x', tmp_path)
+    assert h1 != h0
+    assert 'calibrator_total_x.pkl' in [p.name for p in mr.model_set_paths('_x', tmp_path) if p.exists()]
+    joblib.dump({'w0': 0.4}, tmp_path / 'calibrator_total_x.pkl')
+    assert mr.model_set_hash('_x', tmp_path) not in (h0, h1)                            # changing the file changes the hash
+    assert mr.load_bundle('_x', tmp_path).calibrator_total == {'w0': 0.4}
+
+
+def test_the_deployed_set_still_loads_and_its_hash_equals_its_manifest():
+    """The deployed set predates calibrator_total: loading and hashing it must give the value recorded when it was trained."""
+    from pathlib import Path
+    manifest = mr.read_manifest(mr.DEPLOYED_SUFFIX)
+    if manifest is None or not (mr.MODEL_DIR / f'model_total{mr.DEPLOYED_SUFFIX}.pkl').exists():
+        pytest.skip('deployed model set files are not in this checkout')
+    assert not (mr.MODEL_DIR / f'calibrator_total{mr.DEPLOYED_SUFFIX}.pkl').exists()
+    b = mr.load_bundle()                                                                # raises ModelSetHashMismatch if the hash moved
+    assert b.calibrator_total is None
+    assert b.model_set_hash == manifest['model_set_hash'] == mr.model_set_hash(mr.DEPLOYED_SUFFIX, mr.MODEL_DIR, manifest.get('hash_version', 1))
+    assert sorted(manifest['files']) == sorted(p.name for p in mr.model_set_paths(mr.DEPLOYED_SUFFIX) if p.exists())
