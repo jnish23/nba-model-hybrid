@@ -222,3 +222,61 @@ def test_free_calls_are_not_blocked_by_exhausted_caps(tmp_path):
     b.check(0.0)                                                   # a free call passes
     with pytest.raises(BudgetExceeded):
         b.check(1.0)
+
+
+def _resolver_probe(seen):
+    """A stand-in for id resolution: records what a concurrent reader would see, then fills player ids."""
+    def resolve(conn):
+        seen.append(conn.execute('select count(*) from snapshot_log').fetchone()[0])
+        conn.execute('update prop_snapshots set player_id = 1 where player_id is null')
+        conn.commit()
+    return resolve
+
+
+def test_run_live_logs_the_snapshot_only_after_ids_are_resolved(tmp_path):
+    """Race of 2026-11-11: a snapshot_log row visible before player ids were resolved made the signal job write no_quotes."""
+    conn = odds_store.connect(tmp_path / 'p.db')
+    seen = []
+    collect.run_live(FakeVendor(), conn, '2026-10-21T21:00:10Z', resolver=_resolver_probe(seen))
+    assert seen == [0]                                         # nothing was visible while ids were still NULL
+    assert conn.execute('select count(*) from snapshot_log').fetchone()[0] == 1
+    assert conn.execute('select count(*) from prop_snapshots where player_id is null').fetchone()[0] == 0
+    assert odds_store.last_snapshot_ts(conn, 'ev1') == '2026-10-21T21:00:05Z'      # the fetch time, unchanged
+
+
+def test_run_live_logs_stored_events_when_a_later_event_fails(tmp_path):
+    class Boom(FakeVendor):
+        def events(self, commence_from=None, commence_to=None):
+            r = super().events()
+            r.payload.append({'id': 'ev2', 'commence_time': '2026-10-21T22:30:00Z'})
+            return r
+
+        def event_odds(self, event_id, markets, regions='us', bookmakers=None):
+            if event_id == 'ev2':
+                raise OddsApiError(500, 'boom')
+            return super().event_odds(event_id, markets, regions, bookmakers)
+    conn = odds_store.connect(tmp_path / 'p.db')
+    seen = []
+    with pytest.raises(OddsApiError):
+        collect.run_live(Boom(), conn, '2026-10-21T21:00:10Z', resolver=_resolver_probe(seen))
+    assert seen == [0]
+    assert [r[0] for r in conn.execute('select event_id_vendor from snapshot_log')] == ['ev1']
+
+
+def test_run_live_still_logs_paid_snapshots_when_id_resolution_fails(tmp_path):
+    """A failing resolver must not hide a stored snapshot: without its log row the next tick would fetch (and pay for) it again."""
+    def broken(conn):
+        raise RuntimeError('matcher unavailable')
+    conn = odds_store.connect(tmp_path / 'p.db')
+    collect.run_live(FakeVendor(), conn, '2026-10-21T21:00:10Z', resolver=broken)
+    assert odds_store.last_snapshot_ts(conn, 'ev1') == '2026-10-21T21:00:05Z'
+
+
+def test_run_live_runs_the_resolver_on_a_tick_with_nothing_due(tmp_path):
+    """Rows left unresolved by an earlier tick are retried every tick, as before the reordering."""
+    conn = odds_store.connect(tmp_path / 'p.db')
+    collect.run_live(FakeVendor(), conn, '2026-10-21T21:00:10Z')                   # stores ev1 with NULL ids, no resolver
+    seen = []
+    collect.run_live(FakeVendor(), conn, '2026-10-21T21:01:10Z', resolver=_resolver_probe(seen))
+    assert seen == [1]                                                             # the resolver ran although nothing was due
+    assert conn.execute('select count(*) from prop_snapshots where player_id is null').fetchone()[0] == 0

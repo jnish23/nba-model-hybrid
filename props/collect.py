@@ -68,26 +68,42 @@ def plan_historical(commence_time_utc, offsets_min):
     return [(off, to_utc_iso(tip - timedelta(minutes=off))) for off in offsets_min]
 
 
-def store_event_odds(conn, resp, mode, markets_requested=None):
-    """Parse one event-odds VendorResponse into the store (props, team lines, event row, snapshot log)."""
+def store_event_odds(conn, resp, mode, markets_requested=None, pending_logs=None):
+    """
+    Parse one event-odds VendorResponse into the store (props, team lines, event row, snapshot log).
+    A snapshot_log row is what the signal job reads to find a snapshot, so it must only appear once the quotes are usable (player ids resolved).
+    With pending_logs (a list) the log row is NOT written here: its arguments are appended and write_pending_logs() writes them after id resolution.
+    """
     ev = resp.payload
     props, teams, stats = parse_event_odds(ev, resp.snapshot_ts_utc)
     odds_store.upsert_event(conn, ev['id'], to_utc_iso(ev['commence_time']), ev['home_team'], ev['away_team'],
                             et_game_date(ev['commence_time']))
     n_new = odds_store.insert_props(conn, props)
     odds_store.insert_team_lines(conn, teams)
-    odds_store.log_snapshot(conn, resp.snapshot_ts_utc, ev['id'], mode,
-                            minutes_to_tip(resp.snapshot_ts_utc, ev['commence_time']), props, resp.cost, resp.raw_path)
+    log_args = (resp.snapshot_ts_utc, ev['id'], mode, minutes_to_tip(resp.snapshot_ts_utc, ev['commence_time']), props, resp.cost, resp.raw_path)
+    if pending_logs is None:
+        odds_store.log_snapshot(conn, *log_args)
+    else:
+        pending_logs.append(log_args)
     conn.commit()
     if stats['unknown_markets']:
         logging.info(f"unknown markets ignored: {stats['unknown_markets']}")
     return {'prop_rows': len(props), 'new_prop_rows': n_new, 'team_rows': len(teams), 'stats': stats}
 
 
+def write_pending_logs(conn, pending_logs):
+    """Write the deferred snapshot_log rows last, in one transaction (snapshot_ts_utc is unchanged: the time the quotes were fetched)."""
+    for args in pending_logs:
+        odds_store.log_snapshot(conn, *args)
+    conn.commit()
+    pending_logs.clear()
+
+
 def run_live(vendor, conn, now_utc, markets=None, regions='us', bookmakers=None, window_hours=WINDOW_HOURS,
              dry_run=False, fast_window_min=FAST_WINDOW_MIN, slow_cadence_min=SLOW_CADENCE_MIN,
-             fast_cadence_min=FAST_CADENCE_MIN, close_snapshot_min=0.0):
-    """One scheduler tick. Returns a list of per-event result dicts."""
+             fast_cadence_min=FAST_CADENCE_MIN, close_snapshot_min=0.0, resolver=None):
+    """One scheduler tick. Returns a list of per-event result dicts.
+    resolver(conn), if given, resolves player ids for the stored rows; snapshot_log rows are written only after it has run and committed."""
     markets = markets or ALL_MARKET_KEYS
     horizon = to_utc_iso(parse_utc(now_utc) + timedelta(hours=window_hours + 1))
     events = vendor.events(commence_from=to_utc_iso(now_utc), commence_to=horizon).payload
@@ -97,12 +113,24 @@ def run_live(vendor, conn, now_utc, markets=None, regions='us', bookmakers=None,
                         close_snapshot_min=close_snapshot_min)
     logging.info(f"{len(events)} upcoming events, {len(targets)} due for a snapshot")
     results = []
-    for t in targets:
-        if dry_run:
-            results.append({'event_id': t.event_id, 'mode': t.mode, 'minutes_to_tip': round(t.minutes_to_tip),
-                            'dry_run': True})
-            continue
-        resp = vendor.event_odds(t.event_id, markets, regions=regions, bookmakers=bookmakers)
-        out = store_event_odds(conn, resp, t.mode)
-        results.append({'event_id': t.event_id, 'mode': t.mode, 'cost': resp.cost, **{k: out[k] for k in ('prop_rows', 'team_rows')}})
+    pending = []
+    try:
+        for t in targets:
+            if dry_run:
+                results.append({'event_id': t.event_id, 'mode': t.mode, 'minutes_to_tip': round(t.minutes_to_tip),
+                                'dry_run': True})
+                continue
+            resp = vendor.event_odds(t.event_id, markets, regions=regions, bookmakers=bookmakers)
+            out = store_event_odds(conn, resp, t.mode, pending_logs=pending)
+            results.append({'event_id': t.event_id, 'mode': t.mode, 'cost': resp.cost, **{k: out[k] for k in ('prop_rows', 'team_rows')}})
+    finally:
+        # also after a mid-run error (credit cap, API error): events already stored become visible once their ids are resolved
+        if resolver is not None and not dry_run:       # every tick, as before: rows left unresolved earlier are retried even when nothing is due
+            try:
+                resolver(conn)
+            except Exception:
+                # the snapshots were paid for: log them anyway so the next tick does not fetch them again (they stay unusable until ids resolve)
+                logging.exception('id resolution failed; snapshot_log rows are written with unresolved ids')
+        if pending:
+            write_pending_logs(conn, pending)
     return results
