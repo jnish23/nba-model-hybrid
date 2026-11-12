@@ -103,7 +103,7 @@ def main():
         else:
             res = collect.run_live(vendor, conn, now_utc_iso(), markets, args.regions, args.bookmakers,
                                    args.window_hours, args.dry_run, args.fast_window_min, args.slow_cadence_min,
-                                   args.fast_cadence_min, args.close_snapshot_min)
+                                   args.fast_cadence_min, args.close_snapshot_min, resolver=resolve_ids)
             for r in res:
                 logging.info(r)
     except BudgetExceeded as e:
@@ -113,7 +113,7 @@ def main():
         logging.error(f'API error: {e}')
         return 1
     finally:
-        if not args.dry_run:
+        if not args.dry_run and args.historical:       # live runs resolve inside run_live, before the snapshot_log rows are written
             resolve_ids(conn)
         conn.close()
     return 0
