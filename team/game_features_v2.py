@@ -173,8 +173,10 @@ class GameFeatureBuilder:
     ROSTER_COLS = ('roster_bpm', 'roster_bpm_ewma')
     MATCHUP_PAIRS = (
         # (home_offense_stat, away_defense_stat, name)
-        ('off_offensiveRating_5g_home', 'def_defensiveRating_5g_away', 'matchup_off_vs_def_rating_5g'),
-        ('off_offensiveRating_20g_home', 'def_defensiveRating_20g_away', 'matchup_off_vs_def_rating_20g'),
+        # defensiveRating is built under the 'off_' prefix (team_features_v2 'team_offense' category), so
+        # 'def_defensiveRating_*' never existed and these two pairs were silently skipped until 2026-11.
+        ('off_offensiveRating_5g_home', 'off_defensiveRating_5g_away', 'matchup_off_vs_def_rating_5g'),
+        ('off_offensiveRating_20g_home', 'off_defensiveRating_20g_away', 'matchup_off_vs_def_rating_20g'),
         ('off_threePointersAttempted_5g_home', 'def_OPP_FG3A_5g_away', 'matchup_3pa_vs_opp_3pa_5g'),
     )
     NON_FEATURE_PREFIXES = ('teamId', 'matchup', 'wl', 'points', 'gameId', 'is_home', 'seasonYear', 'gameDate')
@@ -214,7 +216,7 @@ class GameFeatureBuilder:
                 new_cols[name] = game_df[home_col] - game_df[away_col]
             else:
                 missing = [c for c in (home_col, away_col) if c not in game_df.columns]
-                logging.debug(f"Matchup feature skipped (missing cols {missing}): {name}")
+                logging.warning(f"Matchup feature NOT built (missing cols {missing}): {name}")
         return pd.concat([game_df, pd.DataFrame(new_cols, index=game_df.index)], axis=1) if new_cols else game_df
 
     def build_training_set(self, seasons=None, archive_path=None):

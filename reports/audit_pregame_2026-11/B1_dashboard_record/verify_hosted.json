@@ -1,0 +1,72 @@
+{
+ "scenario": "hosted",
+ "source": "published data (updated daily)",
+ "log_source": "published data",
+ "markets": {
+  "Moneyline": {
+   "bets": 18,
+   "record": "7-11-0",
+   "units": -3.87,
+   "roi": -21.5,
+   "mean_clv": 1.363,
+   "n_clv": 17,
+   "by_src": {
+    "run": 0,
+    "printed": 6,
+    "recomputed": 12,
+    "page": 0
+   },
+   "a1_bets": 18,
+   "a1_record": "7-11-0",
+   "a1_units": -3.87,
+   "a1_clv": 1.363,
+   "common": 18,
+   "dashboard_only": [],
+   "a1_only": []
+  },
+  "Spread": {
+   "bets": 19,
+   "record": "11-8-0",
+   "units": 2.02,
+   "roi": 10.6,
+   "mean_clv": 0.0,
+   "n_clv": 19,
+   "by_src": {
+    "run": 0,
+    "printed": 8,
+    "recomputed": 11,
+    "page": 0
+   },
+   "a1_bets": 19,
+   "a1_record": "11-8-0",
+   "a1_units": 2.02,
+   "a1_clv": 0.0,
+   "common": 19,
+   "dashboard_only": [],
+   "a1_only": []
+  },
+  "Totals": {
+   "bets": 29,
+   "record": "11-18-0",
+   "units": -8.04,
+   "roi": -27.7,
+   "mean_clv": 0.604,
+   "n_clv": 24,
+   "by_src": {
+    "run": 0,
+    "printed": 10,
+    "recomputed": 19,
+    "page": 0
+   },
+   "a1_bets": 29,
+   "a1_record": "11-18-0",
+   "a1_units": -8.04,
+   "a1_clv": 0.604,
+   "common": 29,
+   "dashboard_only": [],
+   "a1_only": []
+  }
+ },
+ "common_bets_with_different_result": 0,
+ "common_bets_with_profit_diff": []
+}

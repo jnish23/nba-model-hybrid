@@ -191,3 +191,157 @@ def test_predict_markets_uses_the_opening_total_for_a_residual_total_model():
     out = mm.predict_markets(bundle, df)
     assert np.allclose(out['total_pred'], df['odds_total'] + tt.predict_residual(df[['x']]))
     assert mm.predict_markets(bundle, df.assign(odds_total=np.nan))['total_pred'].isna().all()
+
+
+# ------------------------------------------------------------------ E18 fix (c) / E27: TotalLevelCalibrator
+
+def _cal_block(n=3000, seed=5):
+    """A calibration block whose model is a noisy, level-dependent signal: the model departs from the line mostly by noise, more so at high lines."""
+    rng = np.random.default_rng(seed)
+    line = np.round(rng.normal(224, 8, n))
+    truth_gap = rng.normal(0, 3, n)
+    actual = line + 0.3 * truth_gap + rng.normal(0, 18, n)
+    pred = line + truth_gap + rng.normal(0, 3, n) - 0.4 * (line - 224)         # departs from the line, and leans down when the line is high
+    return pd.DataFrame({'odds_total': line, 'total_pred': pred, 'target_total_pts': actual})
+
+
+def _e18_fix_c(cal):
+    """The reference: experiments/e18_calibration.py::make_fix('c') as registered."""
+    from experiments.e18_calibration import make_fix
+    return make_fix('c', cal)
+
+
+def test_total_level_calibrator_matches_e18_fix_c():
+    cal, test = _cal_block(3000, 5), _cal_block(800, 6)
+    ref = _e18_fix_c(cal)
+    c = mm.TotalLevelCalibrator().fit(cal['total_pred'], cal['odds_total'], cal['target_total_pts'])
+    assert np.isclose(c.w0, ref.params['w0']) and np.isclose(c.w1, ref.params['w1']) and np.isclose(c.mean_level, ref.params['mean_level'])
+    assert np.allclose(c.predict(test['total_pred'], test['odds_total']), ref(test), rtol=0, atol=1e-9)
+    assert np.allclose(c.predict(cal['total_pred'], cal['odds_total']), ref(cal), rtol=0, atol=1e-9)
+
+
+def test_total_level_calibrator_weight_is_clipped_and_keeps_games_without_a_line():
+    c = mm.TotalLevelCalibrator()
+    c.w0, c.w1, c.mean_level = 0.5, 0.2, 224.0                                    # slope so steep that the raw weight leaves [0, 1] at both ends
+    line = np.array([200.0, 224.0, 230.0, np.nan])
+    w = c.weight(line)
+    assert np.allclose(w[:3], [0.0, 0.5, 1.0]) and np.isnan(w[3])
+    pred = np.array([210.0, 230.0, 240.0, 233.0])
+    out = c.predict(pred, line)
+    assert np.allclose(out[:3], [200.0, 227.0, 240.0])                           # w=0 -> the line, w=1 -> the model
+    assert out[3] == 233.0                                                       # no opening total: raw prediction kept
+    assert np.isnan(c.predict(np.array([np.nan]), np.array([220.0]))).all()
+    with pytest.raises(ValueError):
+        mm.TotalLevelCalibrator().predict(pred, line)                            # not fitted
+
+
+def test_total_level_calibrator_shrinks_a_noise_forecast_toward_the_line_and_leaves_a_good_one_alone():
+    rng = np.random.default_rng(2)
+    n = 6000
+    line = np.round(rng.normal(224, 8, n))
+    noise = line + rng.normal(0, 4, n)
+    actual = line + rng.normal(0, 18, n)                                         # the forecast carries no information about the outcome
+    c = mm.TotalLevelCalibrator().fit(noise, line, actual)
+    assert c.weight(line).mean() < 0.15
+    good = line + rng.normal(0, 4, n)
+    actual2 = good + rng.normal(0, 4, n)                                         # the forecast IS the signal
+    c2 = mm.TotalLevelCalibrator().fit(good, line, actual2)
+    assert c2.weight(line).mean() > 0.85
+
+
+def test_total_level_calibrator_ignores_rows_it_cannot_use_and_refuses_an_empty_fit():
+    cal = _cal_block(500)
+    c_full = mm.TotalLevelCalibrator().fit(cal['total_pred'], cal['odds_total'], cal['target_total_pts'])
+    dirty = pd.concat([cal, pd.DataFrame({'odds_total': [np.nan, 220.0, 220.0], 'total_pred': [220.0, np.nan, 220.0], 'target_total_pts': [200.0, 200.0, np.nan]})])
+    c_dirty = mm.TotalLevelCalibrator().fit(dirty['total_pred'], dirty['odds_total'], dirty['target_total_pts'])
+    assert c_dirty.params == c_full.params and c_full.n_fit == 500
+    with pytest.raises(ValueError):
+        mm.TotalLevelCalibrator().fit([np.nan], [np.nan], [np.nan])
+
+
+def _save_set_with_total_calibrator(d, suffix='_c'):
+    df = _save_set(d, suffix, True)
+    total = joblib.load(d / f'model_total{suffix}.pkl')
+    raw = total.predict(df[['x', 'odds_total']])
+    cal = mm.TotalLevelCalibrator().fit(raw, df['odds_total'], df['target_total_pts'])
+    joblib.dump(cal, d / f'calibrator_total{suffix}.pkl')
+    return df, cal, raw
+
+
+def test_calibrator_total_round_trips_and_predict_markets_applies_it_only_when_present(tmp_path):
+    df, cal, raw = _save_set_with_total_calibrator(tmp_path)
+    b = mr.load_bundle('_c', tmp_path)
+    assert isinstance(b.calibrator_total, mm.TotalLevelCalibrator) and b.calibrator_total.params == cal.params          # pickle round trip
+    out = mm.predict_markets(b, df.iloc[:60])
+    assert np.allclose(out['total_pred'], cal.predict(raw[:60], df['odds_total'].to_numpy()[:60]))
+    assert not np.allclose(out['total_pred'], raw[:60])
+    # ML and spread are untouched by the total calibrator
+    b_plain = mr.load_bundle('_c', tmp_path)
+    b_plain.calibrator_total = None
+    plain = mm.predict_markets(b_plain, df.iloc[:60])
+    for col in ('ml_prob_raw', 'ml_prob', 'spread_pred', 'spread_std', 'total_std'):
+        assert np.array_equal(out[col].to_numpy(), plain[col].to_numpy())
+    assert np.allclose(plain['total_pred'], raw[:60])
+    # a game without an opening total keeps the raw prediction
+    frame_nl = df.iloc[:10].assign(odds_total=np.nan)                              # (the total model itself reads odds_total, so its raw forecast moves too)
+    no_line = mm.predict_markets(b, frame_nl)
+    assert np.array_equal(no_line['total_pred'].to_numpy(), mm.predict_markets(b_plain, frame_nl)['total_pred'].to_numpy())
+
+
+def test_a_set_that_declares_a_total_calibrator_but_lacks_the_file_is_refused(tmp_path):
+    _save_set_with_total_calibrator(tmp_path)
+    meta = json.loads((tmp_path / 'calibration_meta_c.json').read_text())
+    (tmp_path / 'calibration_meta_c.json').write_text(json.dumps({**meta, 'total_calibrator': 'level_shrink_to_line'}))
+    mr.load_bundle('_c', tmp_path)                                                # file present: fine
+    (tmp_path / 'calibrator_total_c.pkl').unlink()
+    with pytest.raises(FileNotFoundError, match='calibrator_total'):
+        mr.load_bundle('_c', tmp_path)
+
+
+def test_old_set_without_a_total_calibrator_predicts_exactly_as_before(tmp_path):
+    for suffix, aware in (('_m', True), ('_old', False)):
+        df = _save_set(tmp_path, suffix, aware)
+        b = mr.load_bundle(suffix, tmp_path)
+        assert b.calibrator_total is None
+        out = mm.predict_markets(b, df.iloc[:40])
+        assert np.array_equal(out['total_pred'].to_numpy(), b.total.predict(df.iloc[:40][['x', 'odds_total']]))       # the model's own numbers, bit for bit
+
+
+def test_oof_errors_with_a_calibrator_are_the_errors_of_the_calibrated_forecast():
+    df = _games(1000)
+    feats, params = ['x', 'odds_total'], dict(n_estimators=20, num_leaves=4)
+    idx0, err0 = mm.oof_abs_errors(df, feats, 'target_total_pts', params)
+    idx1, err1 = mm.oof_abs_errors(df, feats, 'target_total_pts', params, calibrator=None)
+    assert (idx0 == idx1).all() and np.array_equal(err0, err1)                                     # default path unchanged
+    w0 = mm.TotalLevelCalibrator()
+    w0.w0, w0.w1, w0.mean_level = 0.0, 0.0, 225.0                                                   # weight 0: the calibrated forecast is the line
+    idx2, err2 = mm.oof_abs_errors(df, feats, 'target_total_pts', params, calibrator=w0)
+    assert np.allclose(err2, np.abs(df['target_total_pts'].to_numpy()[idx2] - df['odds_total'].to_numpy()[idx2]))
+
+
+def test_total_level_calibrator_reproduces_the_e18_fold_numbers_on_the_saved_walk_forward_run():
+    """One fold of the real saved baseline walk-forward run: the fitted weights and the fold's total MAE equal what E18 recorded
+    (reports/experiments/E18_calibration/results.json). Skipped where the saved predictions (gitignored) are not available."""
+    import os
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[2]
+    src = Path(os.environ.get('E27_SRC', 'C:/Users/jorda/nba-model-hybrid/reports/experiments')) / 'baseline'
+    e18_path = root / 'reports' / 'experiments' / 'E18_calibration' / 'results.json'
+    if not (src / 'predictions.csv').exists() or not (src / 'calibration_set_predictions.csv').exists() or not e18_path.exists():
+        pytest.skip('saved baseline walk-forward predictions not available')
+    e18 = json.loads(e18_path.read_text())
+    test = pd.read_csv(src / 'predictions.csv', parse_dates=['gameDate'])
+    calib = pd.read_csv(src / 'calibration_set_predictions.csv', parse_dates=['gameDate'])
+    starts = [0] + [i for i in range(1, len(calib)) if calib['gameDate'].iloc[i] < calib['gameDate'].iloc[i - 1]] + [len(calib)]    # the file is 7 date-sorted blocks in fold order
+    seasons = ['2019-20', '2020-21', '2021-22', '2022-23', '2023-24', '2024-25', '2025-26']
+    if len(starts) != 8:
+        pytest.skip('calibration file is not laid out as 7 date-sorted fold blocks')
+    for k in (0, 4):                                                                        # the first and a middle fold
+        s = seasons[k]
+        blk = calib.iloc[starts[k]:starts[k + 1]]
+        c = mm.TotalLevelCalibrator().fit(blk['total_pred'], blk['odds_total'], blk['target_total_pts'])
+        ref = e18['exploratory']['fit_parameters']['c'][s]
+        assert np.isclose(c.w0, ref['w0']) and np.isclose(c.w1, ref['w1']) and np.isclose(c.mean_level, ref['mean_level'])
+        t = test[test['seasonYear'] == s]
+        mae = np.nanmean(np.abs(t['target_total_pts'] - c.predict(t['total_pred'], t['odds_total'])))
+        assert np.isclose(mae, e18['variants']['c']['mae_by_season'][s], atol=1e-9)

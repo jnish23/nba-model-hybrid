@@ -1,4 +1,6 @@
 """train_and_save_all on a small synthetic history whose scoring level drifts upward (like the real 200 -> 230)."""
+import json
+
 import matplotlib
 import numpy as np
 import pandas as pd
@@ -13,7 +15,7 @@ from team.train_baseline import BaselineModel, SPREAD_GAP_COL, TOTAL_GAP_COL
 from synthetic_history import SEASONS, training_csv
 
 
-def _train(tmp_path_factory, total_target):
+def _train(tmp_path_factory, total_target, **extra):
     d = tmp_path_factory.mktemp('final')
     csv = d / 'train.csv'
     training_csv(csv)
@@ -27,7 +29,7 @@ def _train(tmp_path_factory, total_target):
 
     m._select_features_from_subset = spy
     m.train_and_save_all(use_odds=True, save_suffix='_t', time_budget=2, calib_holdout_days=90, total_target=total_target,
-                       tuner='grid')   # deterministic: a wall-clock FLAML search picked different configs on slower machines
+                       tuner='grid', **extra)   # deterministic: a wall-clock FLAML search picked different configs on slower machines
     return d, csv, m, seen
 
 
@@ -40,6 +42,72 @@ def trained(tmp_path_factory):
 @pytest.fixture(scope='module')
 def trained_default(tmp_path_factory):
     return _train(tmp_path_factory, 'level')
+
+
+@pytest.fixture(scope='module')
+def trained_calibrated(tmp_path_factory):
+    """Same data and settings as trained_default, with the opt-in total calibrator (E18 fix c)."""
+    return _train(tmp_path_factory, 'level', total_calibration=True)
+
+
+# ------------------------------------------------------------------ total_calibration (E18 fix c / E27): opt-in, default output unchanged
+
+def test_total_calibration_is_off_by_default_and_leaves_no_trace(trained_default):
+    d, *_ = trained_default
+    saved = d / 'saved'
+    assert not (saved / 'calibrator_total_t.pkl').exists()
+    meta = json.loads((saved / 'calibration_meta_t.json').read_text())
+    assert not any(k.startswith('total_calibrator') or k in ('total_std_raw', 'total_bias_raw', 'total_mae_raw') for k in meta)
+    b = mr.load_bundle('_t', saved)
+    assert b.calibrator_total is None
+    assert 'calibrator_total_t.pkl' not in mr.read_manifest('_t', saved)['files']
+
+
+def test_total_calibration_changes_only_the_total_calibrator_sigma_and_meta(trained_default, trained_calibrated):
+    a, b = trained_default[0] / 'saved', trained_calibrated[0] / 'saved'
+    same = ['model_ml_t.pkl', 'calibrator_ml_t.pkl', 'model_spread_t.pkl', 'model_total_t.pkl', 'feature_config_t.json']
+    for name in same:                                                                # ML, spread, the raw total model: byte for byte the same
+        assert a.joinpath(name).read_bytes() == b.joinpath(name).read_bytes(), name
+    assert (b / 'calibrator_total_t.pkl').exists()
+    assert a.joinpath('sigma_total_t.pkl').read_bytes() != b.joinpath('sigma_total_t.pkl').read_bytes()      # sigma now learns the calibrated errors
+    assert mr.read_manifest('_t', a)['model_set_hash'] != mr.read_manifest('_t', b)['model_set_hash']
+    assert 'calibrator_total_t.pkl' in mr.read_manifest('_t', b)['files']
+
+
+def test_total_calibration_meta_and_std_are_on_the_calibrated_residuals(trained_calibrated, trained_default):
+    d, csv, m, _ = trained_calibrated
+    meta = json.loads((d / 'saved' / 'calibration_meta_t.json').read_text())
+    raw_meta = json.loads((trained_default[0] / 'saved' / 'calibration_meta_t.json').read_text())
+    assert meta['total_calibrator'] == 'level_shrink_to_line' and meta['total_calibrator_params']['n_fit'] > 0
+    # the raw figures are exactly what the default run recorded; the headline figures are the calibrated ones
+    assert np.isclose(meta['total_std_raw'], raw_meta['total_std']) and np.isclose(meta['total_mae_raw'], raw_meta['total_mae'])
+    assert meta['total_std'] != raw_meta['total_std'] and meta['total_mae'] <= meta['total_mae_raw'] + 1e-9
+    b = mr.load_bundle('_t', d / 'saved')
+    assert b.calibrator_total.params == meta['total_calibrator_params'] and meta['total_target'] == 'total'
+
+
+def test_predict_markets_on_a_calibrated_set_applies_the_calibrator_to_the_total_only(trained_calibrated):
+    d, csv, m, _ = trained_calibrated
+    b = mr.load_bundle('_t', d / 'saved')
+    frame = m.df.tail(60)
+    out = mm.predict_markets(b, frame)
+    raw_b = mr.load_bundle('_t', d / 'saved')
+    raw_b.calibrator_total = None
+    raw = mm.predict_markets(raw_b, frame)
+    assert np.allclose(out['total_pred'], b.calibrator_total.predict(raw['total_pred'], frame['odds_total'].to_numpy(float)))
+    for col in ('ml_prob_raw', 'ml_prob', 'spread_pred', 'spread_std', 'total_std'):
+        assert np.array_equal(out[col].to_numpy(), raw[col].to_numpy())
+
+
+def test_total_calibration_needs_the_market_aware_level_total(tmp_path):
+    csv = tmp_path / 'train.csv'
+    training_csv(csv, per_season=300)
+    m = BaselineModel(csv, model_dir=str(tmp_path / 's'))
+    with pytest.raises(ValueError, match='total_calibration'):
+        m.train_and_save_all(use_odds=True, save_suffix='_r', time_budget=1, calib_holdout_days=80, total_target='residual', total_calibration=True, tuner='grid')
+    with pytest.raises(ValueError, match='total_calibration'):
+        m.train_and_save_all(use_odds=False, save_suffix='_n', time_budget=1, calib_holdout_days=80, total_calibration=True, tuner='grid')
+    assert not (tmp_path / 's').exists() or not list((tmp_path / 's').glob('*_r*'))         # refused before anything was written
 
 
 def test_default_total_model_predicts_the_level_as_validated_in_e1(trained_default):

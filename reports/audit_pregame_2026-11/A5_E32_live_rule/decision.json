@@ -1,0 +1,593 @@
+{
+ "H1": {
+  "spread": {
+   "metric": "roi at -110",
+   "R0_roi": -0.043840774610005386,
+   "ci": [
+    -0.08386314787994578,
+    -0.006065937374027075
+   ],
+   "ci_entirely_below_0": true,
+   "confirmed": true
+  },
+  "total": {
+   "metric": "roi at -110",
+   "R0_roi": -0.04578782751371584,
+   "ci": [
+    -0.07626241122726791,
+    -0.013185095810890729
+   ],
+   "ci_entirely_below_0": true,
+   "confirmed": true
+  },
+  "ml": {
+   "metric": "roi0 (zero vig)",
+   "R0_roi": -0.011828188427700727,
+   "ci": [
+    -0.055192279611092215,
+    0.030777907865707554
+   ],
+   "ci_entirely_below_0": false,
+   "confirmed": false
+  }
+ },
+ "H2": {
+  "spread/R1": {
+   "metric": "roi at -110",
+   "diff_vs_R0": -0.0029124721432413625,
+   "ci": [
+    -0.07733870311302951,
+    0.06654179025423189
+   ],
+   "union_bet_days": 1039,
+   "ci_excludes_0": false,
+   "ci_lower_above_0": false,
+   "seasons_higher": 4,
+   "seasons": [
+    {
+     "season": "2019-20",
+     "arm_roi": -0.209188660801564,
+     "R0_roi": -0.12539184952978052,
+     "arm_bets": 93,
+     "R0_bets": 261,
+     "higher": false
+    },
+    {
+     "season": "2020-21",
+     "arm_roi": 0.05087572977481235,
+     "R0_roi": -0.0944281524926686,
+     "arm_bets": 109,
+     "R0_bets": 310,
+     "higher": true
+    },
+    {
+     "season": "2021-22",
+     "arm_roi": -0.09859154929577464,
+     "R0_roi": -0.14217585692995527,
+     "arm_bets": 71,
+     "R0_bets": 305,
+     "higher": true
+    },
+    {
+     "season": "2022-23",
+     "arm_roi": -0.0888192267502612,
+     "R0_roi": 0.03948330489885449,
+     "arm_bets": 87,
+     "R0_bets": 373,
+     "higher": false
+    },
+    {
+     "season": "2023-24",
+     "arm_roi": -0.03076923076923078,
+     "R0_roi": 0.06243756243756243,
+     "arm_bets": 65,
+     "R0_bets": 364,
+     "higher": false
+    },
+    {
+     "season": "2024-25",
+     "arm_roi": 0.036585365853658534,
+     "R0_roi": -0.04231141199226306,
+     "arm_bets": 82,
+     "R0_bets": 376,
+     "higher": true
+    },
+    {
+     "season": "2025-26",
+     "arm_roi": -0.002066115702479337,
+     "R0_roi": -0.05280925970581142,
+     "arm_bets": 88,
+     "R0_bets": 377,
+     "higher": true
+    }
+   ],
+   "better_than_R0": false
+  },
+  "spread/R2": {
+   "metric": "roi at -110",
+   "diff_vs_R0": 0.003185777433269081,
+   "ci": [
+    -0.06342687290234321,
+    0.06898370158365057
+   ],
+   "union_bet_days": 1041,
+   "ci_excludes_0": false,
+   "ci_lower_above_0": false,
+   "seasons_higher": 4,
+   "seasons": [
+    {
+     "season": "2019-20",
+     "arm_roi": -0.201048951048951,
+     "R0_roi": -0.12539184952978052,
+     "arm_bets": 104,
+     "R0_bets": 261,
+     "higher": false
+    },
+    {
+     "season": "2020-21",
+     "arm_roi": 0.05118411000763941,
+     "R0_roi": -0.0944281524926686,
+     "arm_bets": 119,
+     "R0_bets": 310,
+     "higher": true
+    },
+    {
+     "season": "2021-22",
+     "arm_roi": -0.1111111111111111,
+     "R0_roi": -0.14217585692995527,
+     "arm_bets": 72,
+     "R0_bets": 305,
+     "higher": true
+    },
+    {
+     "season": "2022-23",
+     "arm_roi": -0.12262156448202961,
+     "R0_roi": 0.03948330489885449,
+     "arm_bets": 86,
+     "R0_bets": 373,
+     "higher": false
+    },
+    {
+     "season": "2023-24",
+     "arm_roi": -0.04545454545454545,
+     "R0_roi": 0.06243756243756243,
+     "arm_bets": 72,
+     "R0_bets": 364,
+     "higher": false
+    },
+    {
+     "season": "2024-25",
+     "arm_roi": 0.12059369202226343,
+     "R0_roi": -0.04231141199226306,
+     "arm_bets": 98,
+     "R0_bets": 376,
+     "higher": true
+    },
+    {
+     "season": "2025-26",
+     "arm_roi": -0.014662756598240456,
+     "R0_roi": -0.05280925970581142,
+     "arm_bets": 93,
+     "R0_bets": 377,
+     "higher": true
+    }
+   ],
+   "better_than_R0": false
+  },
+  "total/R1": {
+   "metric": "roi at -110",
+   "diff_vs_R0": 0.027647005539748436,
+   "ci": [
+    -0.013241506069985835,
+    0.06757529199783364
+   ],
+   "union_bet_days": 1165,
+   "ci_excludes_0": false,
+   "ci_lower_above_0": false,
+   "seasons_higher": 4,
+   "seasons": [
+    {
+     "season": "2019-20",
+     "arm_roi": -0.06587615283267456,
+     "R0_roi": -0.03795688847235239,
+     "arm_bets": 276,
+     "R0_bets": 388,
+     "higher": false
+    },
+    {
+     "season": "2020-21",
+     "arm_roi": 0.0005846243788366027,
+     "R0_roi": 0.005760576057605767,
+     "arm_bets": 311,
+     "R0_bets": 505,
+     "higher": false
+    },
+    {
+     "season": "2021-22",
+     "arm_roi": 0.03624480095068331,
+     "R0_roi": -0.04968287526427059,
+     "arm_bets": 153,
+     "R0_bets": 430,
+     "higher": true
+    },
+    {
+     "season": "2022-23",
+     "arm_roi": 0.004053271569195135,
+     "R0_roi": -0.0072072072072072,
+     "arm_bets": 314,
+     "R0_bets": 555,
+     "higher": true
+    },
+    {
+     "season": "2023-24",
+     "arm_roi": -0.053556715188135116,
+     "R0_roi": -0.04995499549954996,
+     "arm_bets": 331,
+     "R0_bets": 606,
+     "higher": false
+    },
+    {
+     "season": "2024-25",
+     "arm_roi": -0.045221445221445215,
+     "R0_roi": -0.09370376458984055,
+     "arm_bets": 195,
+     "R0_bets": 553,
+     "higher": true
+    },
+    {
+     "season": "2025-26",
+     "arm_roi": 0.028584817244611063,
+     "R0_roi": -0.08465797463832826,
+     "arm_bets": 194,
+     "R0_bets": 509,
+     "higher": true
+    }
+   ],
+   "better_than_R0": false
+  },
+  "total/R2": {
+   "metric": "roi at -110",
+   "diff_vs_R0": 0.025330941454358102,
+   "ci": [
+    -0.01477197968729458,
+    0.061777598240153005
+   ],
+   "union_bet_days": 1167,
+   "ci_excludes_0": false,
+   "ci_lower_above_0": false,
+   "seasons_higher": 4,
+   "seasons": [
+    {
+     "season": "2019-20",
+     "arm_roi": -0.07548988114359138,
+     "R0_roi": -0.03795688847235239,
+     "arm_bets": 283,
+     "R0_bets": 388,
+     "higher": false
+    },
+    {
+     "season": "2020-21",
+     "arm_roi": 0.0016783216783216822,
+     "R0_roi": 0.005760576057605767,
+     "arm_bets": 325,
+     "R0_bets": 505,
+     "higher": false
+    },
+    {
+     "season": "2021-22",
+     "arm_roi": 0.05465699944227552,
+     "R0_roi": -0.04968287526427059,
+     "arm_bets": 163,
+     "R0_bets": 430,
+     "higher": true
+    },
+    {
+     "season": "2022-23",
+     "arm_roi": 0.004992117708880713,
+     "R0_roi": -0.0072072072072072,
+     "arm_bets": 346,
+     "R0_bets": 555,
+     "higher": true
+    },
+    {
+     "season": "2023-24",
+     "arm_roi": -0.07321867321867322,
+     "R0_roi": -0.04995499549954996,
+     "arm_bets": 370,
+     "R0_bets": 606,
+     "higher": false
+    },
+    {
+     "season": "2024-25",
+     "arm_roi": -0.0127659574468085,
+     "R0_roi": -0.09370376458984055,
+     "arm_bets": 235,
+     "R0_bets": 553,
+     "higher": true
+    },
+    {
+     "season": "2025-26",
+     "arm_roi": 0.0024793388429751964,
+     "R0_roi": -0.08465797463832826,
+     "arm_bets": 220,
+     "R0_bets": 509,
+     "higher": true
+    }
+   ],
+   "better_than_R0": false
+  },
+  "ml/R1": {
+   "metric": "roi0 (zero vig)",
+   "diff_vs_R0": -0.0008443200313951009,
+   "ci": [
+    -0.03847190962000761,
+    0.038451941131887435
+   ],
+   "union_bet_days": 1245,
+   "ci_excludes_0": false,
+   "ci_lower_above_0": false,
+   "seasons_higher": 3,
+   "seasons": [
+    {
+     "season": "2019-20",
+     "arm_roi": -0.10899090085117726,
+     "R0_roi": -0.03485206355275117,
+     "arm_bets": 391,
+     "R0_bets": 484,
+     "higher": false
+    },
+    {
+     "season": "2020-21",
+     "arm_roi": -0.09444296346841641,
+     "R0_roi": -0.03499987045113189,
+     "arm_bets": 406,
+     "R0_bets": 571,
+     "higher": false
+    },
+    {
+     "season": "2021-22",
+     "arm_roi": 0.12407375506711342,
+     "R0_roi": 0.015657088798016486,
+     "arm_bets": 365,
+     "R0_bets": 527,
+     "higher": true
+    },
+    {
+     "season": "2022-23",
+     "arm_roi": 0.0640133373867746,
+     "R0_roi": 0.08647347830807105,
+     "arm_bets": 396,
+     "R0_bets": 625,
+     "higher": false
+    },
+    {
+     "season": "2023-24",
+     "arm_roi": -0.09796040110767582,
+     "R0_roi": -0.06890776948075016,
+     "arm_bets": 462,
+     "R0_bets": 628,
+     "higher": false
+    },
+    {
+     "season": "2024-25",
+     "arm_roi": 0.08207269093201573,
+     "R0_roi": 0.016554145894361258,
+     "arm_bets": 360,
+     "R0_bets": 565,
+     "higher": true
+    },
+    {
+     "season": "2025-26",
+     "arm_roi": -0.02273580202031366,
+     "R0_roi": -0.06420234486756328,
+     "arm_bets": 410,
+     "R0_bets": 606,
+     "higher": true
+    }
+   ],
+   "better_than_R0": false
+  },
+  "ml/R2": {
+   "metric": "roi0 (zero vig)",
+   "diff_vs_R0": 0.01607715733387777,
+   "ci": [
+    -0.021018216318467564,
+    0.057635341970946184
+   ],
+   "union_bet_days": 1248,
+   "ci_excludes_0": false,
+   "ci_lower_above_0": false,
+   "seasons_higher": 3,
+   "seasons": [
+    {
+     "season": "2019-20",
+     "arm_roi": -0.1109642341404776,
+     "R0_roi": -0.03485206355275117,
+     "arm_bets": 406,
+     "R0_bets": 484,
+     "higher": false
+    },
+    {
+     "season": "2020-21",
+     "arm_roi": -0.0887323292980891,
+     "R0_roi": -0.03499987045113189,
+     "arm_bets": 424,
+     "R0_bets": 571,
+     "higher": false
+    },
+    {
+     "season": "2021-22",
+     "arm_roi": 0.16494078758769387,
+     "R0_roi": 0.015657088798016486,
+     "arm_bets": 392,
+     "R0_bets": 527,
+     "higher": true
+    },
+    {
+     "season": "2022-23",
+     "arm_roi": 0.07643652030718233,
+     "R0_roi": 0.08647347830807105,
+     "arm_bets": 435,
+     "R0_bets": 625,
+     "higher": false
+    },
+    {
+     "season": "2023-24",
+     "arm_roi": -0.06929346074555856,
+     "R0_roi": -0.06890776948075016,
+     "arm_bets": 488,
+     "R0_bets": 628,
+     "higher": false
+    },
+    {
+     "season": "2024-25",
+     "arm_roi": 0.0881892806478752,
+     "R0_roi": 0.016554145894361258,
+     "arm_bets": 404,
+     "R0_bets": 565,
+     "higher": true
+    },
+    {
+     "season": "2025-26",
+     "arm_roi": -0.010341001001429356,
+     "R0_roi": -0.06420234486756328,
+     "arm_bets": 426,
+     "R0_bets": 606,
+     "higher": true
+    }
+   ],
+   "better_than_R0": false
+  }
+ },
+ "H3": {
+  "spread/R0": {
+   "hit_rate": 0.500639658848614,
+   "ci": [
+    0.4795023290296574,
+    0.5206107849605308
+   ],
+   "lower_above_50": false,
+   "expected_to_pay_on_zero_fee_venue": false,
+   "roi0": 0.001267962806424345,
+   "roi0_ci": [
+    -0.04064475032355479,
+    0.040810938386629476
+   ]
+  },
+  "spread/R1": {
+   "hit_rate": 0.49915397631133673,
+   "ci": [
+    0.45655595391437004,
+    0.5402741416606579
+   ],
+   "lower_above_50": false,
+   "expected_to_pay_on_zero_fee_venue": false,
+   "roi0": -0.0016806722689075631,
+   "roi0_ci": [
+    -0.08629968559534891,
+    0.08001480263157894
+   ]
+  },
+  "spread/R2": {
+   "hit_rate": 0.5023474178403756,
+   "ci": [
+    0.46019638225288045,
+    0.5420062317010933
+   ],
+   "lower_above_50": false,
+   "expected_to_pay_on_zero_fee_venue": false,
+   "roi0": 0.004658385093167702,
+   "roi0_ci": [
+    -0.07851793721973094,
+    0.08308832106145657
+   ]
+  },
+  "total/R0": {
+   "hit_rate": 0.49971671388101985,
+   "ci": [
+    0.48371539834234545,
+    0.5168689523656896
+   ],
+   "lower_above_50": false,
+   "expected_to_pay_on_zero_fee_venue": false,
+   "roi0": -0.0005640157924421884,
+   "roi0_ci": [
+    -0.03244966961526165,
+    0.03357223595498076
+   ]
+  },
+  "total/R1": {
+   "hit_rate": 0.5142207053469852,
+   "ci": [
+    0.49077425329516466,
+    0.5383352319287519
+   ],
+   "lower_above_50": false,
+   "expected_to_pay_on_zero_fee_venue": false,
+   "roi0": 0.02818489289740699,
+   "roi0_ci": [
+    -0.018354781929044252,
+    0.07608239102851172
+   ]
+  },
+  "total/R2": {
+   "hit_rate": 0.512993762993763,
+   "ci": [
+    0.4908423547725182,
+    0.5367913928172834
+   ],
+   "lower_above_50": false,
+   "expected_to_pay_on_zero_fee_venue": false,
+   "roi0": 0.025746652935118436,
+   "roi0_ci": [
+    -0.018191480131875756,
+    0.07294213010286266
+   ]
+  },
+  "ml/R0": {
+   "hit_rate": 0.4348477284073889,
+   "ci": [
+    0.41844312265964556,
+    0.45073331805361905
+   ],
+   "lower_above_50": false,
+   "expected_to_pay_on_zero_fee_venue": false,
+   "roi0": -0.011828188427700727,
+   "roi0_ci": [
+    -0.055192279611092215,
+    0.030777907865707554
+   ]
+  },
+  "ml/R1": {
+   "hit_rate": 0.48100358422939066,
+   "ci": [
+    0.4615300546448088,
+    0.5007126330745988
+   ],
+   "lower_above_50": false,
+   "expected_to_pay_on_zero_fee_venue": false,
+   "roi0": -0.012672508459095828,
+   "roi0_ci": [
+    -0.06214669473343755,
+    0.03355006189332754
+   ]
+  },
+  "ml/R2": {
+   "hit_rate": 0.4904201680672269,
+   "ci": [
+    0.47143628141659805,
+    0.5108167551682848
+   ],
+   "lower_above_50": false,
+   "expected_to_pay_on_zero_fee_venue": false,
+   "roi0": 0.0042489689061770445,
+   "roi0_ci": [
+    -0.04242004599743513,
+    0.049551028401849384
+   ]
+  }
+ },
+ "notes": [
+  "ML has no -110 ROI in the registration: H1 and H2 use the zero-vig ROI for ML; H3 uses the zero-vig hit rate (literal rule) for every market."
+ ]
+}

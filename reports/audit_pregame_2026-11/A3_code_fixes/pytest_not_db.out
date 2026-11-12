@@ -1,0 +1,31 @@
+........................................................................ [ 18%]
+........................................................................ [ 36%]
+........................................................................ [ 54%]
+..................F..................................................... [ 72%]
+........................................................................ [ 90%]
+......................................                                   [100%]
+================================== FAILURES ===================================
+______________ test_deployed_suffix_is_what_the_entry_points_use ______________
+
+    def test_deployed_suffix_is_what_the_entry_points_use():
+        import inspect
+        import run_inference_v2
+        from team import train_baseline
+        assert inspect.signature(run_inference_v2.InferenceEngine).parameters['suffix'].default == mr.DEPLOYED_SUFFIX
+>       assert 'DEPLOYED_SUFFIX' in inspect.getsource(train_baseline.main)
+E       AssertionError: assert 'DEPLOYED_SUFFIX' in '                lambda tr, te: MarginStackCalibrator().fit(calib_probs_ml[tr], calib_spread_pred[tr], spread_std, y_cal[tr])\n'
+E        +  where '                lambda tr, te: MarginStackCalibrator().fit(calib_probs_ml[tr], calib_spread_pred[tr], spread_std, y_cal[tr])\n' = <function getsource at 0x00000207B75C8B80>(<function main at 0x000002078118EB60>)
+E        +    where <function getsource at 0x00000207B75C8B80> = <module 'inspect' from 'C:\\Users\\jorda\\anaconda3\\Lib\\inspect.py'>.getsource
+E        +    and   <function main at 0x000002078118EB60> = <module 'team.train_baseline' from 'C:\\Users\\jorda\\nba-pregame-audit\\team\\train_baseline.py'>.main
+
+tests\team\test_model_registry.py:65: AssertionError
+============================== warnings summary ===============================
+tests/core/test_prediction_logger.py: 10 warnings
+  C:\Users\jorda\nba-pregame-audit\core\prediction_logger.py:212: FutureWarning:
+  
+  Downcasting behavior in `replace` is deprecated and will be removed in a future version. To retain the old behavior, explicitly call `result.infer_objects(copy=False)`. To opt-in to the future behavior, set `pd.set_option('future.no_silent_downcasting', True)`
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/team/test_model_registry.py::test_deployed_suffix_is_what_the_entry_points_use
+1 failed, 397 passed, 8 deselected, 10 warnings in 184.32s (0:03:04)

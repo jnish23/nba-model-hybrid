@@ -1,0 +1,31 @@
+## T7 (exploratory). Model side on every completed game, by edge size versus the run-time line
+
+
+### Spread
+
+| |edge| bucket (pts) | games | hit rate [95% CI] | ROI at -110 [CI] | games with close | mean CLV pts [CI] |
+|---|---|---|---|---|---|
+| 0-1 | 79 | 50.6% [38.6, 62.1] | -3.3% [-26.4, +18.5] | 68 | +0.04 [-0.22, +0.27] |
+| 1-2 | 52 | 44.2% [34.0, 52.7] | -15.6% [-35.0, +0.7] | 47 | +0.26 [+0.06, +0.43] |
+| 2-2.66 | 11 | 45.5% [10.0, 81.8] | -13.2% [-81.0, +56.2] | 10 | -0.40 [-1.10, +0.29] |
+| 2.66-4 (bet zone) | 14 | 57.1% [27.3, 77.3] | +9.1% [-47.9, +47.6] | 14 | +0.43 [-0.36, +1.27] |
+| 4+ | 3 | 66.7% [50.0, 100.0] | +27.3% [-4.5, +90.9] | 3 | -0.33 [-0.50, +0.00] |
+| ALL | 159 | 49.1% [42.4, 54.9] | -6.3% [-19.0, +4.8] | 142 | +0.11 [-0.13, +0.29] |
+
+corr(|edge|, win) = +0.055, day-bootstrap 95% CI [-0.100, +0.177] (n=159).
+
+### Total
+
+| |edge| bucket (pts) | games | hit rate [95% CI] | ROI at -110 [CI] | games with close | mean CLV pts [CI] |
+|---|---|---|---|---|---|
+| 0-2 | 69 | 53.6% [43.7, 63.5] | +2.4% [-16.7, +21.2] | 61 | +0.39 [-0.02, +0.92] |
+| 2-3.46 | 58 | 53.4% [43.6, 63.5] | +2.0% [-16.8, +21.2] | 54 | +0.21 [-0.27, +0.75] |
+| 3.46-5 (bet zone) | 22 | 36.4% [19.0, 55.0] | -30.6% [-63.6, +5.0] | 19 | +0.63 [+0.16, +1.23] |
+| 5-7 | 5 | 80.0% [25.0, 100.0] | +52.7% [-52.3, +90.9] | 4 | +0.62 [+0.00, +2.00] |
+| 7+ | 5 | 20.0% [0.0, 75.0] | -61.8% [-100.0, +43.2] | 4 | +0.25 [+0.00, +1.00] |
+| ALL | 159 | 50.9% [44.0, 58.0] | -2.7% [-16.0, +10.8] | 142 | +0.36 [+0.05, +0.76] |
+
+corr(|edge|, win) = -0.083, day-bootstrap 95% CI [-0.205, +0.063] (n=159).
+
+Unconditional drift of the total from the run-time line to the close, all games with a close: mean -0.28 pts [-0.51, -0.03] (n=142); a bettor taking Under at the run-time line on every game would have CLV +0.28.
+Home spread drift (close minus run-time home line; positive = home gets more points at the close): mean +0.07 pts [-0.09, +0.26] (n=142).

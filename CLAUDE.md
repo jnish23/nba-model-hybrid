@@ -16,11 +16,12 @@ If you meet `live_*` code or reports that are not described here, they belong to
 - Python: `C:/Users/jorda/nba-model-hybrid/.venv/Scripts/python.exe` (3.12, pandas, lightgbm, flaml, pytest). Plain `python` on PATH is 3.9 without the dependencies.
 - From Bash use Windows-style paths (`C:/Users/...`), not `/c/Users/...`.
 - Tests: `.venv/Scripts/python.exe -m pytest tests -q`; add `-m "not db"` to skip tests that need `data/nba_stats.db`.
-- `streamlit` and `seaborn` are not in the venv; check dashboard files with `ast.parse`.
+- `streamlit` and `plotly` are in the venv: the dashboard tests run the real page under streamlit's `AppTest` (`tests/team/test_dashboard_record.py`). `seaborn` and `statsmodels` are not installed.
 - `data/` is gitignored (databases, odds snapshots, props stores up to several GB). Every worktree reaches it through a `data` link or copy. Never delete a worktree's `data` folder recursively: unlink it first.
 
 ## Working rules
 - The main checkout (`C:\Users\jorda\nba-model-hybrid`) must stay on `main`. Windows Task Scheduler jobs (daily inference, odds and props snapshots, props signals/settle/publish, weekly retrain) run scripts from it, and one of them publishes the props dashboard from its working tree. Do branch work in a separate git worktree; never run a `--publish` mode from a worktree.
+- Scheduled-task triggers must be local times with no UTC offset in the start boundary (`2026-11-12T09:15:00`, not `...-08:00`): a fixed offset moves the job by an hour when the clocks change. Changing a task needs an Administrator shell.
 - Stage explicit file paths with `git add <file>`, never `git add <dir>` or `-A`: the working tree has many untracked model artifacts and reports that belong to the owner.
 - Write commit messages with `git commit -F - <<'EOF' ... EOF`; backticks inside `-m "..."` are executed by the shell.
 - Never print API keys. They live in the gitignored `.env` (`core/env.py` loads it). The Odds API spends paid credits: state the upper-bound cost and ask before any call that is not free.

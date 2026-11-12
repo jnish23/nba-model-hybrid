@@ -1,0 +1,495 @@
+{
+ "constants_by_fold": {
+  "2019-20": {
+   "mean_actual_minus_line": 0.19409148665819567,
+   "mean_actual_minus_pred": 1.101121288222958,
+   "n_cal": 1574
+  },
+  "2020-21": {
+   "mean_actual_minus_line": 0.9320576816417082,
+   "mean_actual_minus_pred": 1.212657518508977,
+   "n_cal": 1803
+  },
+  "2021-22": {
+   "mean_actual_minus_line": 0.34739941118743867,
+   "mean_actual_minus_pred": 0.6880160540454279,
+   "n_cal": 2038
+  },
+  "2022-23": {
+   "mean_actual_minus_line": -0.1384548611111111,
+   "mean_actual_minus_pred": -0.38264684003838956,
+   "n_cal": 2304
+  },
+  "2023-24": {
+   "mean_actual_minus_line": 0.5105140186915887,
+   "mean_actual_minus_pred": 1.0913481981805442,
+   "n_cal": 2568
+  },
+  "2024-25": {
+   "mean_actual_minus_line": 0.3814341498047568,
+   "mean_actual_minus_pred": 1.3133413028601597,
+   "n_cal": 2817
+  },
+  "2025-26": {
+   "mean_actual_minus_line": 0.46183825917505683,
+   "mean_actual_minus_pred": 0.8450710097842776,
+   "n_cal": 3079
+  }
+ },
+ "levels": {
+  "raw": {
+   "n": 8899,
+   "mae": 14.763268915754722,
+   "mae_lo": 14.527444755554798,
+   "mae_hi": 15.000414686606153,
+   "rmse": 18.69699848092038,
+   "bias": 1.2682928819883852,
+   "bias_lo": 0.8791033650411926,
+   "bias_hi": 1.6689770804986432
+  },
+  "fix_c": {
+   "n": 8899,
+   "mae": 14.610147102564701,
+   "mae_lo": 14.380065133223999,
+   "mae_hi": 14.846932470435787,
+   "rmse": 18.47052267188516,
+   "bias": 0.506754474764352,
+   "bias_lo": 0.11369188776830891,
+   "bias_hi": 0.8704010843585539
+  },
+  "line": {
+   "n": 8899,
+   "mae": 14.617709855039893,
+   "mae_lo": 14.38459685454562,
+   "mae_hi": 14.859058670719497,
+   "rmse": 18.480442218140844,
+   "bias": 0.4402741881110237,
+   "bias_lo": 0.05813422213480614,
+   "bias_hi": 0.8035623361345149
+  },
+  "line_plus_mean_actual_minus_line (L1)": {
+   "n": 8899,
+   "mae": 14.620241704450104,
+   "mae_lo": 14.391561015016961,
+   "mae_hi": 14.863693921748341,
+   "rmse": 18.482823510829466,
+   "bias": 0.061751898248431886,
+   "bias_lo": -0.3290310698716772,
+   "bias_hi": 0.42688665999851627
+  },
+  "line_plus_mean_actual_minus_pred (L2)": {
+   "n": 8899,
+   "mae": 14.628485768245852,
+   "mae_lo": 14.400747104335641,
+   "mae_hi": 14.86849687767737,
+   "rmse": 18.48888321454672,
+   "bias": -0.38600905354514525,
+   "bias_lo": -0.7815677333090962,
+   "bias_hi": -0.019572285600777794
+  },
+  "raw_plus_mean_actual_minus_pred (L3)": {
+   "n": 8899,
+   "mae": 14.752785443297705,
+   "mae_lo": 14.516527043786862,
+   "mae_hi": 14.994651934411296,
+   "rmse": 18.67073888993905,
+   "bias": 0.44200964033221607,
+   "bias_lo": 0.04235150084231894,
+   "bias_hi": 0.8345343881897556
+  }
+ },
+ "mae_by_season": {
+  "raw": {
+   "2019-20": 15.282082478646545,
+   "2020-21": 14.952095079462374,
+   "2021-22": 14.67983147842803,
+   "2022-23": 14.507332607511445,
+   "2023-24": 14.540363104224355,
+   "2024-25": 14.585815092792506,
+   "2025-26": 14.883765847503415
+  },
+  "fix_c": {
+   "2019-20": 15.126754636352002,
+   "2020-21": 14.66225484708956,
+   "2021-22": 14.587045411364844,
+   "2022-23": 14.369665931705446,
+   "2023-24": 14.28841955376322,
+   "2024-25": 14.539688075865476,
+   "2025-26": 14.768672788707498
+  },
+  "line": {
+   "2019-20": 15.126970227670753,
+   "2020-21": 14.659265584970111,
+   "2021-22": 14.549508692365835,
+   "2022-23": 14.390530303030303,
+   "2023-24": 14.30713190184049,
+   "2024-25": 14.578528072837633,
+   "2025-26": 14.781604844814535
+  },
+  "line_plus_mean_actual_minus_line (L1)": {
+   "2019-20": 15.122211417139725,
+   "2020-21": 14.693922928528359,
+   "2021-22": 14.55187195366643,
+   "2022-23": 14.391369423400675,
+   "2023-24": 14.316148013301989,
+   "2024-25": 14.563479077549434,
+   "2025-26": 14.774962205204902
+  },
+  "line_plus_mean_actual_minus_pred (L2)": {
+   "2019-20": 15.121037362820408,
+   "2020-21": 14.713856976214602,
+   "2021-22": 14.558736703111007,
+   "2022-23": 14.392849374788112,
+   "2023-24": 14.349899867350716,
+   "2024-25": 14.551021725939727,
+   "2025-26": 14.784600885224519
+  },
+  "raw_plus_mean_actual_minus_pred (L3)": {
+   "2019-20": 15.229638154047333,
+   "2020-21": 14.935193697028955,
+   "2021-22": 14.69775739990528,
+   "2022-23": 14.534858417586246,
+   "2023-24": 14.532338527282914,
+   "2024-25": 14.545828919068708,
+   "2025-26": 14.875822076128188
+  }
+ },
+ "paired_mae": {
+  "line_plus_mean_actual_minus_line (L1) minus raw": {
+   "diff": -0.14302721130461823,
+   "lo": -0.2223157031865813,
+   "hi": -0.07226105482829492,
+   "seasons_first_better": 7
+  },
+  "line_plus_mean_actual_minus_line (L1) minus fix_c": {
+   "diff": 0.0100946018854024,
+   "lo": -0.012528383015418297,
+   "hi": 0.033991888148496734,
+   "seasons_first_better": 2
+  },
+  "line_plus_mean_actual_minus_line (L1) minus line": {
+   "diff": 0.002531849410212163,
+   "lo": -0.007392790330234905,
+   "hi": 0.012986004392954513,
+   "seasons_first_better": 3
+  },
+  "line_plus_mean_actual_minus_pred (L2) minus raw": {
+   "diff": -0.13478314750886855,
+   "lo": -0.21406694505495893,
+   "hi": -0.060945607550126964,
+   "seasons_first_better": 7
+  },
+  "line_plus_mean_actual_minus_pred (L2) minus fix_c": {
+   "diff": 0.018338665681152055,
+   "lo": -0.011229303272860277,
+   "hi": 0.049314218192431446,
+   "seasons_first_better": 2
+  },
+  "line_plus_mean_actual_minus_pred (L2) minus line": {
+   "diff": 0.010775913205961819,
+   "lo": -0.009086907410898515,
+   "hi": 0.03181576289795618,
+   "seasons_first_better": 2
+  },
+  "raw_plus_mean_actual_minus_pred (L3) minus raw": {
+   "diff": -0.010483472457014767,
+   "lo": -0.031831549402256354,
+   "hi": 0.010681713782289428,
+   "seasons_first_better": 5
+  },
+  "raw_plus_mean_actual_minus_pred (L3) minus fix_c": {
+   "diff": 0.14263834073300588,
+   "lo": 0.09133390951843982,
+   "hi": 0.20391679066427867,
+   "seasons_first_better": 0
+  },
+  "raw_plus_mean_actual_minus_pred (L3) minus line": {
+   "diff": 0.13507558825781563,
+   "lo": 0.07058613074438408,
+   "hi": 0.21266617735371357,
+   "seasons_first_better": 1
+  }
+ },
+ "by_line_bucket": [
+  {
+   "bucket": "<215",
+   "n": 995,
+   "share_games": 0.11181031576581639,
+   "mae_raw": 13.853680463492521,
+   "mae_line": 13.817587939698493,
+   "mae_fix_c": 13.815761320446791,
+   "excess_mae_per_game": 0.03609252379402891,
+   "contribution_to_pooled_excess_mae": 0.004035516482195614,
+   "excess_mse_per_game": 0.9931538194697105,
+   "contribution_to_pooled_excess_mse": 0.11104484215893493,
+   "mean_gap_pred_minus_line": 1.3630651618943315,
+   "mean_actual_minus_line": 0.9763819095477387,
+   "mean_E_gap2": 6.915353235348216,
+   "mean_2_gap_times_y": 5.922199415878505
+  },
+  {
+   "bucket": "215-225",
+   "n": 3093,
+   "share_games": 0.3475671423755478,
+   "mae_raw": 14.559495656877848,
+   "mae_line": 14.513417394115745,
+   "mae_fix_c": 14.514665789917473,
+   "excess_mae_per_game": 0.04607826276210176,
+   "contribution_to_pooled_excess_mae": 0.016015290113853328,
+   "excess_mse_per_game": 0.7867780491323878,
+   "contribution_to_pooled_excess_mse": 0.27345819822075235,
+   "mean_gap_pred_minus_line": 0.5603611406080183,
+   "mean_actual_minus_line": 0.36340122858066604,
+   "mean_E_gap2": 4.337644367819426,
+   "mean_2_gap_times_y": 3.550866318687037
+  },
+  {
+   "bucket": "225-235",
+   "n": 3526,
+   "share_games": 0.39622429486459154,
+   "mae_raw": 14.811978206388444,
+   "mae_line": 14.738655700510494,
+   "mae_fix_c": 14.731086495043343,
+   "excess_mae_per_game": 0.07332250587795101,
+   "contribution_to_pooled_excess_mae": 0.029052158189196008,
+   "excess_mse_per_game": 3.7100999741341525,
+   "contribution_to_pooled_excess_mse": 1.4700317461284438,
+   "mean_gap_pred_minus_line": -0.8056098067161304,
+   "mean_actual_minus_line": 0.5999716392512763,
+   "mean_E_gap2": 7.421140030408227,
+   "mean_2_gap_times_y": 3.7110400562740757
+  },
+  {
+   "bucket": "235-242",
+   "n": 1049,
+   "share_games": 0.11787841330486572,
+   "mae_raw": 15.552510256682988,
+   "mae_line": 15.126310772163965,
+   "mae_fix_c": 15.08720503889993,
+   "excess_mae_per_game": 0.4261994845190218,
+   "contribution_to_pooled_excess_mae": 0.05023971898645397,
+   "excess_mse_per_game": 28.767097917906316,
+   "contribution_to_pooled_excess_mse": 3.391019857948503,
+   "mean_gap_pred_minus_line": -4.900728606113333,
+   "mean_actual_minus_line": -0.2149666348903718,
+   "mean_E_gap2": 34.37002308094713,
+   "mean_2_gap_times_y": 5.602925163040809
+  },
+  {
+   "bucket": ">242",
+   "n": 236,
+   "share_games": 0.02651983368917856,
+   "mae_raw": 17.032964145834438,
+   "mae_line": 15.290254237288135,
+   "mae_fix_c": 15.28333134040313,
+   "excess_mae_per_game": 1.742709908546301,
+   "contribution_to_pooled_excess_mae": 0.04621637694313148,
+   "excess_mse_per_game": 105.78697460628125,
+   "contribution_to_pooled_excess_mse": 2.8054529730399342,
+   "mean_gap_pred_minus_line": -10.49381658689042,
+   "mean_actual_minus_line": -0.2860169491525424,
+   "mean_E_gap2": 127.43792602382669,
+   "mean_2_gap_times_y": 21.650951417545425
+  }
+ ],
+ "pooled_excess": {
+  "mae": 0.14555906071483038,
+  "mse": 8.051007617496568
+ },
+ "extremes_lt215_or_ge242": {
+  "share_games": 0.13833014945499494,
+  "contribution_to_pooled_excess_mae": 0.05025189342532709,
+  "contribution_to_pooled_excess_mse": 2.916497815198869
+ },
+ "above_242_only": {
+  "share_games": 0.02651983368917856,
+  "contribution_to_pooled_excess_mae": 0.04621637694313148,
+  "contribution_to_pooled_excess_mse": 2.8054529730399342
+ },
+ "by_line_decile": [
+  {
+   "decile": 1,
+   "line_range": [
+    195.5,
+    214.5
+   ],
+   "n": 995,
+   "excess_mae_per_game": 0.03609252379402891,
+   "mean_gap": 1.3630651618943315,
+   "mean_actual_minus_line": 0.9763819095477387,
+   "mean_actual_minus_raw": -0.3866832523465929
+  },
+  {
+   "decile": 2,
+   "line_range": [
+    215.0,
+    218.0
+   ],
+   "n": 877,
+   "excess_mae_per_game": 0.0033172358672361978,
+   "mean_gap": 0.5287595771841922,
+   "mean_actual_minus_line": 0.7833523375142531,
+   "mean_actual_minus_raw": 0.2545927603300609
+  },
+  {
+   "decile": 3,
+   "line_range": [
+    218.5,
+    221.0
+   ],
+   "n": 897,
+   "excess_mae_per_game": 0.09498400302516502,
+   "mean_gap": 0.44774180604913033,
+   "mean_actual_minus_line": 0.750278706800446,
+   "mean_actual_minus_raw": 0.30253690075131556
+  },
+  {
+   "decile": 4,
+   "line_range": [
+    221.5,
+    223.5
+   ],
+   "n": 895,
+   "excess_mae_per_game": 0.033039644682967315,
+   "mean_gap": 0.43500585769038097,
+   "mean_actual_minus_line": -0.39608938547486033,
+   "mean_actual_minus_raw": -0.8310952431652414
+  },
+  {
+   "decile": 5,
+   "line_range": [
+    224.0,
+    225.5
+   ],
+   "n": 827,
+   "excess_mae_per_game": 0.008120533795172186,
+   "mean_gap": 1.174447819872669,
+   "mean_actual_minus_line": 0.9328899637243047,
+   "mean_actual_minus_raw": -0.24155785614836445
+  },
+  {
+   "decile": 6,
+   "line_range": [
+    226.0,
+    227.5
+   ],
+   "n": 878,
+   "excess_mae_per_game": 0.09578965512010525,
+   "mean_gap": 0.2597101988995736,
+   "mean_actual_minus_line": 0.5945330296127562,
+   "mean_actual_minus_raw": 0.3348228307131827
+  },
+  {
+   "decile": 7,
+   "line_range": [
+    228.0,
+    230.0
+   ],
+   "n": 869,
+   "excess_mae_per_game": 0.04609649298442365,
+   "mean_gap": -0.8169126316456318,
+   "mean_actual_minus_line": 0.49712313003452246,
+   "mean_actual_minus_raw": 1.3140357616801541
+  },
+  {
+   "decile": 8,
+   "line_range": [
+    230.5,
+    233.0
+   ],
+   "n": 931,
+   "excess_mae_per_game": 0.1380225370781091,
+   "mean_gap": -1.4965571403432951,
+   "mean_actual_minus_line": 1.270139634801289,
+   "mean_actual_minus_raw": 2.7666967751445837
+  },
+  {
+   "decile": 9,
+   "line_range": [
+    233.5,
+    236.5
+   ],
+   "n": 859,
+   "excess_mae_per_game": 0.17133896679771107,
+   "mean_gap": -3.723741975559433,
+   "mean_actual_minus_line": -1.1268917345750873,
+   "mean_actual_minus_raw": 2.596850240984346
+  },
+  {
+   "decile": 10,
+   "line_range": [
+    237.0,
+    261.5
+   ],
+   "n": 871,
+   "excess_mae_per_game": 0.8440662066812223,
+   "mean_gap": -6.74727067147222,
+   "mean_actual_minus_line": 0.001148105625717566,
+   "mean_actual_minus_raw": 6.748418777097939
+  }
+ ],
+ "follow_the_line": {
+  "slope_pred_on_line": 0.753199359821107,
+  "slope_actual_on_line": 0.961825606118542,
+  "sd_line": 8.738681996702029,
+  "sd_pred": 7.116016079505584,
+  "sd_actual": 20.294509711759506,
+  "sd_gap_pred_minus_line": 3.459301648389417,
+  "corr_gap_with_actual_minus_line": 0.04170223007135495,
+  "slope_actual_minus_line_on_gap": 0.22272036183080474,
+  "corr_gap_with_line": -0.6234530926523653,
+  "slope_gap_on_line": -0.2468006401788898,
+  "mean_E_gap2": 12.652382851960109,
+  "mean_2_gap_times_y": 4.60137523446354,
+  "share_of_gap_variance_explained_by_quadratic_in_line": 0.5266230071322641
+ },
+ "lines_ge_235_contribution": {
+  "share_games": 0.14439824699404427,
+  "excess_mae": 0.09645609592958544,
+  "excess_mse": 6.196472830988437
+ },
+ "high_line_by_season": {
+  "2019-20": {
+   "share_ge_235": 0.06567425569176882,
+   "mean_line": 222.15936952714537,
+   "mean_gap_when_ge_235": -12.19031616451654,
+   "mean_actual_minus_line_when_ge_235": -1.58
+  },
+  "2020-21": {
+   "share_ge_235": 0.08368915456874466,
+   "mean_line": 224.467122117848,
+   "mean_gap_when_ge_235": -11.148912692872987,
+   "mean_actual_minus_line_when_ge_235": -0.8214285714285714
+  },
+  "2021-22": {
+   "share_ge_235": 0.0400604686318972,
+   "mean_line": 220.64096749811034,
+   "mean_gap_when_ge_235": -6.9460849391410395,
+   "mean_actual_minus_line_when_ge_235": -4.1415094339622645
+  },
+  "2022-23": {
+   "share_ge_235": 0.16893939393939394,
+   "mean_line": 228.0625,
+   "mean_gap_when_ge_235": -5.5810650249171925,
+   "mean_actual_minus_line_when_ge_235": -1.2914798206278026
+  },
+  "2023-24": {
+   "share_ge_235": 0.22929447852760737,
+   "mean_line": 227.17446319018404,
+   "mean_gap_when_ge_235": -6.4413625158760155,
+   "mean_actual_minus_line_when_ge_235": 0.5618729096989966
+  },
+  "2024-25": {
+   "share_ge_235": 0.15781487101669195,
+   "mean_line": 226.2613808801214,
+   "mean_gap_when_ge_235": -3.9442246716522757,
+   "mean_actual_minus_line_when_ge_235": -0.0889423076923077
+  },
+  "2025-26": {
+   "share_ge_235": 0.24905374716124148,
+   "mean_line": 229.2683573050719,
+   "mean_gap_when_ge_235": -3.803804680234408,
+   "mean_actual_minus_line_when_ge_235": 0.8024316109422492
+  }
+ }
+}

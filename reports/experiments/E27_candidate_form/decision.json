@@ -1,0 +1,39 @@
+{
+ "experiment": "E27",
+ "verdict_seed42": "KEEP",
+ "verdict_seed20261017": "KEEP",
+ "ml_spread_unchanged": true,
+ "passes": true,
+ "keep_rule": {
+  "brief_42": {
+   "seasons_c_better_than_raw": 7,
+   "pooled_ci_below_zero": true,
+   "pooled_diff": -0.15312181319002066,
+   "pooled_ci": [
+    -0.21177379232963914,
+    -0.10202627272108392
+   ],
+   "R1_diff": -0.14576577313350864,
+   "R2_diff": -0.14741384754772252,
+   "R1_R2_negative": true,
+   "verdict": "KEEP",
+   "seasons_with_own_ci_excluding_zero": 4
+  },
+  "e18_20261017": {
+   "seasons_c_better_than_raw": 7,
+   "pooled_ci_below_zero": true,
+   "pooled_diff": -0.15312181319002066,
+   "pooled_ci": [
+    -0.20724050913820458,
+    -0.10000499181778995
+   ],
+   "R1_diff": -0.14576577313350864,
+   "R2_diff": -0.14741384754772252,
+   "R1_R2_negative": true,
+   "verdict": "KEEP",
+   "seasons_with_own_ci_excluding_zero": 4
+  }
+ },
+ "replication_E25_verdict_seed42": "KEEP",
+ "registration_sha256": "a597b60a447e1dcebe50a85b69a21048640a2c514a48f1b1368c9c405e708231"
+}

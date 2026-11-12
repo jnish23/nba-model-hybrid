@@ -1,0 +1,14 @@
+market  status 
+ML      pending     1
+        settled    18
+Spread  pending     1
+        settled    19
+Total   pending     1
+        settled    29
+dtype: int64
+         clv           own_view            move           edge_points          
+       count      mean    count      mean count      mean       count      mean
+market                                                                         
+ML        17  0.013635       19 -0.000500    19  0.078457          19  0.077957
+Spread    19  0.000000       20  0.658434    20  2.950000          20  3.608434
+Total     24  0.604167       30  3.841411    30  1.533333          30  5.374744

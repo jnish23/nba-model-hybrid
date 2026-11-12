@@ -168,6 +168,35 @@ def live(as_of=None):
     return None
 
 
+LIVE_ATTEMPTS = 3
+LIVE_BACKOFF_SECONDS = (10, 30)       # sleep after the 1st and the 2nd failed attempt
+
+
+def live_with_retries(as_of=None, attempts=LIVE_ATTEMPTS, backoff_seconds=LIVE_BACKOFF_SECONDS, sleep_fn=None, live_fn=None):
+    """
+    live(as_of) with up to `attempts` tries (a try fails when live() returns None or raises), sleeping backoff_seconds[i] between
+    tries (sleep_fn is injectable for tests). Returns the saved path, or None after the last failed try; never raises. live()
+    already retries each HTTP request three times; this covers the case where a whole scan finds nothing (site down, report not
+    published yet). A path returned is not checked for age here: the caller compares the report's time with the snapshot it needs.
+    """
+    live_fn = live_fn or live
+    sleep_fn = sleep_fn or time.sleep
+    for i in range(attempts):
+        try:
+            path = live_fn(as_of=as_of)
+        except Exception as e:
+            logging.warning(f"Injury report download attempt {i + 1}/{attempts} raised {type(e).__name__}: {e}")
+            path = None
+        if path is not None:
+            return path
+        if i < attempts - 1:
+            wait = backoff_seconds[min(i, len(backoff_seconds) - 1)]
+            logging.warning(f"Injury report download attempt {i + 1}/{attempts} found no report; retrying in {wait:g} s")
+            sleep_fn(wait)
+    logging.error(f"Injury report download FAILED: no report in {attempts} attempts (as of {as_of})")
+    return None
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--start', default='2019-10-01')

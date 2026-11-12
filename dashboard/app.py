@@ -16,7 +16,7 @@ root_path = Path(__file__).resolve().parent.parent
 if str(root_path) not in sys.path:
     sys.path.append(str(root_path))
 
-from team.betting import (calculate_implied_prob, calculate_payout, calculate_bet_ev, get_ml_bet,
+from team.betting import (calculate_implied_prob, calculate_bet_ev,
                             settle_bet, STANDARD_PRICE, get_spread_bet, get_total_bet, points_threshold,
                             DEFAULT_SPREAD_STD, DEFAULT_TOTAL_STD, DEFAULT_PROB_EDGE, implied_prob_edge,
                             cover_probability)
@@ -25,7 +25,7 @@ from core.season_utils import date_bounds, nba_today, season_date_range, season_
 from team.explain import (COLUMNS as EXPLANATION_COLUMNS, MONEYLINE, SPREAD, TOTAL, chart_steps, driver_stats, game_features, game_flags,
                           game_pieces, load_explanations, normalize_game_ids, outcome_sentence, summary_sentence)
 from core import live_feed
-from dashboard import live_scores
+from dashboard import live_scores, bet_record
 
 # Set page config
 st.set_page_config(
@@ -122,6 +122,70 @@ def _read_predictions():
     raise FileNotFoundError(f"No data: {DB_PATH}, {REMOTE_DATA_URL} and {SNAPSHOT_PATH} are all unavailable")
 
 
+# The recorded bets (dashboard/bet_record.py): bet_recommendations_log rows and the deployed model set's sigmas, from the same three places as the
+# predictions: the local database, the published data branch, the bundled snapshot. Both are optional: without them the page recomputes the bets.
+RECS_URL = DATA_BASE_URL + bet_record.REC_FILE_NAME
+RECORD_META_URL = DATA_BASE_URL + bet_record.RECORD_META_FILE_NAME
+RECS_SNAPSHOT_PATH = Path(__file__).resolve().parent / "snapshot" / bet_record.REC_FILE_NAME
+RECORD_META_SNAPSHOT_PATH = Path(__file__).resolve().parent / "snapshot" / bet_record.RECORD_META_FILE_NAME
+
+
+def _read_recommendations():
+    """bet_recommendations_log rows (+ provenance and closing-line columns when exported). Returns (DataFrame or None, source label). Never raises:
+    None means the page recomputes every bet. With a local database only the local table counts (no table yet = None), like the predictions."""
+    try:
+        if DB_PATH.exists():
+            with sqlite3.connect(DB_PATH) as conn:
+                log = bet_record.read_log_from_db(conn)
+            return (log, "local database") if len(log) else (None, "none logged yet")
+    except Exception:
+        return None, "unreadable"
+    for src, label in ((RECS_URL, "published data"), (RECS_SNAPSHOT_PATH, "bundled snapshot")):
+        try:
+            if src == RECS_SNAPSHOT_PATH and not src.exists():
+                continue
+            log = pd.read_csv(src, dtype={'game_id': str})
+            if len(log):
+                return log, label
+        except Exception:
+            continue
+    return None, "none logged yet"
+
+
+def _read_sigmas():
+    """The deployed model set's spread / total sigma: {'spread_std', 'total_std', 'approximate'} and where it came from. The repo's own calibration_meta file
+    first when the database is local, else the published record_meta.json, the bundled one, then the repo file; betting.py's defaults (flagged) as a last resort."""
+    def from_repo():
+        path = bet_record.deployed_meta_path(root_path)
+        return (json.loads(path.read_text(encoding='utf-8')), f"model files ({path.name})") if path else None
+
+    def from_url():
+        from urllib.request import urlopen
+        with urlopen(RECORD_META_URL, timeout=10) as f:
+            return json.loads(f.read().decode('utf-8')), "published data"
+
+    def from_snapshot():
+        return (json.loads(RECORD_META_SNAPSHOT_PATH.read_text(encoding='utf-8')), "bundled snapshot") if RECORD_META_SNAPSHOT_PATH.exists() else None
+
+    order = [from_repo, from_url, from_snapshot] if DB_PATH.exists() else [from_url, from_snapshot, from_repo]
+    for read in order:
+        try:
+            found = read()
+        except Exception:
+            continue
+        if found:
+            return bet_record.sigmas_from_meta(found[0]), found[1]
+    return bet_record.sigmas_from_meta(None), "defaults in team/betting.py (approximate)"
+
+
+@st.cache_data(ttl=DATA_TTL)
+def load_record_context():
+    """The recorded bets' inputs: the log (or None), the sigmas, and where each came from. Never raises."""
+    log, log_source = _read_recommendations()
+    sigmas, sigma_source = _read_sigmas()
+    return {'log': log, 'log_source': log_source, 'sigmas': sigmas, 'sigma_source': sigma_source}
+
+
 NO_ODDS = "No odds found"
 LIVE_REFRESH_S = 30
 
@@ -134,13 +198,13 @@ def live_scoreboard(game_date):
 
 @st.fragment(run_every=LIVE_REFRESH_S)
 def render_live_scores(games):
-    """Score, period and clock of today's started games next to the model's picks. Display only; nothing shown before the first tip."""
+    """Score, period and clock of today's started games next to the recommended bets. Display only; nothing shown before the first tip."""
     try:
         board = live_feed.attach_nba_ids(live_scoreboard(str(games['game_date'].iloc[0])), games[['game_id', 'game_date', 'home_team', 'away_team']])
         if board.empty:
             st.caption("Live scores unavailable right now.")
             return
-        games_with_sides = live_scores.pick_sides(games)
+        games_with_sides = bet_record.override_pick_sides(live_scores.pick_sides(games))      # the recommended bets only
         view = live_scores.live_view(games_with_sides, board)
     except Exception as e:                       # a live-score problem must never take the schedule down with it
         live_feed.log.warning('live scores panel: %s: %s', type(e).__name__, e)
@@ -150,15 +214,15 @@ def render_live_scores(games):
         return
     render_day_record(live_scores.day_record(games_with_sides, view))
     st.markdown("**Live scores (live, not final)**")
-    st.caption(f"Updates every {LIVE_REFRESH_S} s (last {pd.Timestamp.now(tz='America/New_York'):%H:%M:%S} ET), scores from ESPN. Each pick is shown against the score right now (green / red once it has won / lost): "
-               "who leads for the moneyline pick (only games with a 5% moneyline edge have one), the current margin against the spread pick, the combined score against the total pick. "
+    st.caption(f"Updates every {LIVE_REFRESH_S} s (last {pd.Timestamp.now(tz='America/New_York'):%H:%M:%S} ET), scores from ESPN. Each recommended bet is shown against the score right now (green / red once it has won / lost): "
+               "who leads for the moneyline bet, the current margin against the spread bet, the combined score against the total bet. A market with no recommended bet shows only the score. "
                "Results in the log are graded after the nightly update.")
     st.dataframe(colour_live_scores(view), hide_index=True, width='stretch')
 
 
 def render_day_record(record):
-    """Today's W-L (and pushes) of the ML, Spread and Total picks in the table below, with the picks still open; counts exactly what the table colours green / red."""
-    st.markdown("**Today's record**")
+    """Today's W-L (and pushes) of the recommended ML, Spread and Total bets in the table below, with the bets still open; counts exactly what the table colours green / red."""
+    st.markdown("**Today's record (recommended bets)**")
     for col, (name, label) in zip(st.columns(3), (('ML', 'Moneyline'), ('Spread', 'Spread'), ('Total', 'Total'))):
         r = record[name]
         col.metric(label, f"{r['won']}-{r['lost']}" + (f"-{r['push']}" if r['push'] else ''), f"{r['open']} open", delta_color='off')
@@ -341,244 +405,81 @@ def load_data():
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
 
+        # What the live run recommended (rec_<market>_* columns): the logged bet where there is one, else the live rule recomputed
+        ctx = load_record_context()
+        df = bet_record.attach_recommendations(df, ctx['log'], ctx['sigmas'])
         return df, source
     except Exception as e:
         st.error(f"Error loading data: {e}")
         return pd.DataFrame(), "unavailable"
 
 # Helper functions moved to team.betting
-# calculate_implied_prob and calculate_payout are now imported
+# calculate_implied_prob is now imported
 
 
-def compute_model_accuracy_and_roi(df, ml_threshold=0.05):
-    """Compute model's pick correctness and ROI for each bet type. The moneyline pick is the side with the larger edge,
-    kept only when that edge exceeds `ml_threshold` (pass a negative value for every game's raw pick).
-    Returns summary dict and df with correctness flags.
+def simulate_strategies(df, threshold, bet_type, recorded=True, points_edge=None):
     """
-    res = {}
-    d = df.copy()
-    # Ensure numeric
-    d['home_score'] = pd.to_numeric(d['home_score'], errors='coerce')
-    d['away_score'] = pd.to_numeric(d['away_score'], errors='coerce')
-
-    # Moneyline pick: the better-edge side, filtered by ml_threshold
-    def ml_pick_func(row):
-        # Ensure market_prob is available or let get_ml_bet compute it from odds
-        if 'odds_home_ml' not in row: return None
-        pick, _ = get_ml_bet(row, threshold=ml_threshold)
-        return pick
-
-    d['model_ml_pick'] = d.apply(ml_pick_func, axis=1)
-    # Moneyline bets settle at the price of the side picked (never a flat -110)
-    home_ml = pd.to_numeric(d.get('odds_home_ml'), errors='coerce')
-    away_ml = pd.to_numeric(d.get('odds_away_ml'), errors='coerce')
-    d['model_ml_odds'] = np.where(d['model_ml_pick'] == 'home', home_ml,
-                                  np.where(d['model_ml_pick'] == 'away', away_ml, np.nan))
-
-    def ml_correct(row):
-        if pd.isna(row['home_score']) or row['model_ml_pick'] is None: return None
-        if row['model_ml_pick'] == 'home':
-            return row['home_score'] > row['away_score']
-        else:
-            return row['away_score'] > row['home_score']
-
-    d['ml_correct'] = d.apply(ml_correct, axis=1)
-
-    # Spread pick (model predicts home margin = spread_pred; pick home if spread_pred + line > 0)
-    def spread_pick(row):
-        if pd.isna(row.get('spread_pred')) or pd.isna(row.get('odds_home_spread')): return None
-        cover_margin = row['spread_pred'] + row['odds_home_spread']
-        return 'home' if cover_margin > 0 else 'away'
-
-    def spread_correct(row):
-        if pd.isna(row['home_score']) or pd.isna(row.get('odds_home_spread')) or pd.isna(row.get('spread_pred')): return None
-        line = row['odds_home_spread']
-        # Home covers when home_score + line > away_score
-        if row['model_spread_pick'] == 'home':
-            return (row['home_score'] + line) > row['away_score']
-        else:
-            return (row['home_score'] + line) < row['away_score']
-
-    d['model_spread_pick'] = d.apply(spread_pick, axis=1)
-    d['spread_correct'] = d.apply(spread_correct, axis=1)
-
-    # Totals pick (model picks over when total_pred > odds_total)
-    def total_pick(row):
-        if pd.isna(row.get('total_pred')) or pd.isna(row.get('odds_total')): return None
-        return 'over' if row['total_pred'] > row['odds_total'] else 'under'
-
-    def total_correct(row):
-        if pd.isna(row['home_score']) or pd.isna(row.get('odds_total')) or pd.isna(row.get('total_pred')): return None
-        total = row['home_score'] + row['away_score']
-        if row['model_total_pick'] == 'over':
-            return total > row['odds_total']
-        else:
-            return total < row['odds_total']
-
-    d['model_total_pick'] = d.apply(total_pick, axis=1)
-    d['total_correct'] = d.apply(total_correct, axis=1)
-
-    # Compute ROI/win% for each bet type assuming $100 stake per bet.
-    def compute_metrics_for(pick_col, correct_col, odds_cols):
-        sub = d[d[pick_col].notnull() & d[correct_col].notnull()].copy()
-        if sub.empty:
-            return {'bets': 0, 'wins': 0, 'win_rate': 0.0, 'profit': 0.0, 'roi': 0.0}
-
-        total_bets = len(sub)
-        wins = int(sub[correct_col].sum())
-        # profit computation
-        profit = 0.0
-        for _, r in sub.iterrows():
-            won = r[correct_col]
-            if pick_col == 'model_ml_pick':
-                # determine which odds to use
-                odds = r['odds_home_ml'] if r[pick_col] == 'home' else r['odds_away_ml']
-                if pd.isna(odds):
-                    # skip bet (treat as no bet)
-                    total_bets -= 1
-                    continue
-                if won:
-                    profit += calculate_payout(odds)
-                else:
-                    profit -= 100
-            else:
-                # use -110 market assumption for spread/totals
-                if won:
-                    profit += calculate_payout(-110)
-                else:
-                    profit -= 100
-
-        if total_bets <= 0:
-            return {'bets': 0, 'wins': 0, 'win_rate': 0.0, 'profit': 0.0, 'roi': 0.0}
-
-        roi = (profit / (total_bets * 100)) * 100
-        win_rate = (wins / total_bets) * 100
-        return {'bets': total_bets, 'wins': wins, 'win_rate': win_rate, 'profit': profit, 'roi': roi}
-
-    res['Moneyline'] = compute_metrics_for('model_ml_pick', 'ml_correct', ['odds_home_ml','odds_away_ml'])
-    res['Spread'] = compute_metrics_for('model_spread_pick', 'spread_correct', [])
-    res['Totals'] = compute_metrics_for('model_total_pick', 'total_correct', [])
-
-    return res, d
-
-def simulate_strategies(df, threshold, bet_type):
+    The settled bets of one market for the completed games of `df`, one row per game with the bet columns (bet_outcome 'Win' / 'Loss' / 'Push' / 'No Bet',
+    bet_result = profit in dollars on a $100 stake, subgroup labels, bet_side / bet_line / bet_price / bet_edge / bet_src / bet_clv).
+    bet_type: 'Moneyline', 'Spread', 'Totals'.
+    recorded=True: the RECOMMENDED bets, as the live run wrote them down (or, for games with no log row, recomputed with the live rule; see dashboard/bet_record.py),
+    graded at the logged line and the side's own price, a push as a push. `threshold` is ignored.
+    recorded=False: a what-if, the same rule with another minimum edge: `threshold` (probability points) or, for spread / totals, `points_edge` (points, converted per
+    game with its own line and sigma, so whole-number lines are right).
     """
-    Simulates betting strategies based on a threshold.
-    bet_type: 'Moneyline', 'Spread', 'Totals'
-    """
-    # Clone to avoid modifying original
-    sim_df = df.copy()
-    
-    # Filter for completed games only
-    sim_df = sim_df[sim_df['status'] == 'COMPLETED'].copy()
-    
+    m = bet_record.MARKET_OF_BET_TYPE[bet_type]
+    if f'rec_{m}_side' not in df.columns:                        # a frame that did not come through load_data()
+        df = bet_record.attach_recommendations(df, None, None)
+    sim_df = df[df['status'] == 'COMPLETED'].copy()
+    dec = bet_record.decide(sim_df, m, threshold, points_edge, recorded)
+    res = bet_record.settle(sim_df, m, dec)
+    placed = dec['side'].notna() & res.notna()
+
     sim_df['bet_result'] = 0.0
-    sim_df['bet_outcome'] = 'No Bet'
     sim_df['bet_subgroup'] = None     # Favorite/Underdog/Over/Under
     sim_df['bet_home_away'] = None    # Home/Away (ML & Spread only)
     sim_df['bet_intersection'] = None # Home Fav / Home Dog / Away Fav / Away Dog
-    
-    for idx, row in sim_df.iterrows():
-        bet_placed = False
-        won = False
-        odds = -110 # Default for Spread/Total
-        
-        if bet_type == 'Moneyline':
-            home_prob = row.get('ml_prob')
-            market_home_prob = calculate_implied_prob(row.get('odds_home_ml'))
-            market_away_prob = calculate_implied_prob(row.get('odds_away_ml'))
-            
-            if pd.notna(home_prob) and pd.notna(market_home_prob) and pd.notna(market_away_prob):
-                pick, edge = get_ml_bet(row, threshold=threshold)
-                
-                if pick == 'home':
-                    bet_placed = True
-                    odds = row.get('odds_home_ml')
-                    is_fav = odds < 0
-                    sim_df.at[idx, 'bet_subgroup'] = 'Favorite' if is_fav else 'Underdog'
-                    sim_df.at[idx, 'bet_home_away'] = 'Home'
-                    sim_df.at[idx, 'bet_intersection'] = 'Home Fav' if is_fav else 'Home Dog'
-                    if row['home_score'] > row['away_score']:
-                        won = True
-                        
-                elif pick == 'away':
-                    bet_placed = True
-                    odds = row.get('odds_away_ml')
-                    is_fav = odds < 0
-                    sim_df.at[idx, 'bet_subgroup'] = 'Favorite' if is_fav else 'Underdog'
-                    sim_df.at[idx, 'bet_home_away'] = 'Away'
-                    sim_df.at[idx, 'bet_intersection'] = 'Away Fav' if is_fav else 'Away Dog'
-                    if row['away_score'] > row['home_score']:
-                        won = True
+    sim_df['bet_side'] = None
+    for col in ('bet_line', 'bet_price', 'bet_edge', 'bet_clv'):
+        sim_df[col] = np.nan
+    sim_df['bet_src'] = None
+    sim_df['bet_price_assumed'] = False
+    sim_df['bet_outcome'] = np.where(placed, res.map({'W': 'Win', 'L': 'Loss', 'P': 'Push'}), 'No Bet')
+    for idx in sim_df.index[placed]:
+        side, price, line = dec.at[idx, 'side'], dec.at[idx, 'price'], dec.at[idx, 'line']
+        sim_df.at[idx, 'bet_result'] = bet_record.bet_profit(res[idx], price)
+        for col, val in (('bet_side', side), ('bet_line', line), ('bet_price', price), ('bet_edge', dec.at[idx, 'edge']), ('bet_src', dec.at[idx, 'src']),
+                         ('bet_clv', dec.at[idx, 'clv']), ('bet_price_assumed', bool(dec.at[idx, 'price_assumed']))):
+            sim_df.at[idx, col] = val
+        if m == 'total':
+            sim_df.at[idx, 'bet_subgroup'] = 'Over' if side == 'over' else 'Under'
+            continue
+        is_fav = (price < 0) if m == 'ml' else ((line < 0) if side == 'home' else ((-line) < 0))
+        label = 'Home' if side == 'home' else 'Away'
+        sim_df.at[idx, 'bet_subgroup'] = 'Favorite' if is_fav else 'Underdog'
+        sim_df.at[idx, 'bet_home_away'] = label
+        sim_df.at[idx, 'bet_intersection'] = f"{label} {'Fav' if is_fav else 'Dog'}"
 
-        elif bet_type == 'Spread':
-            spread_pred = row.get('spread_pred')
-            line = row.get('odds_home_spread')
-            
-            if pd.notna(spread_pred) and pd.notna(line):
-                side, _ = get_spread_bet(spread_pred, line, DEFAULT_SPREAD_STD, threshold)
-                
-                if side == 'home':
-                    # Bet Home Spread
-                    bet_placed = True
-                    is_fav = line < 0
-                    sim_df.at[idx, 'bet_subgroup'] = 'Favorite' if is_fav else 'Underdog'
-                    sim_df.at[idx, 'bet_home_away'] = 'Home'
-                    sim_df.at[idx, 'bet_intersection'] = 'Home Fav' if is_fav else 'Home Dog'
-                    if (row['home_score'] + line) > row['away_score']:
-                        won = True
-                elif side == 'away':
-                    # Bet Away Spread
-                    bet_placed = True
-                    is_fav = (-line) < 0
-                    sim_df.at[idx, 'bet_subgroup'] = 'Favorite' if is_fav else 'Underdog'
-                    sim_df.at[idx, 'bet_home_away'] = 'Away'
-                    sim_df.at[idx, 'bet_intersection'] = 'Away Fav' if is_fav else 'Away Dog'
-                    if (row['home_score'] + line) < row['away_score']:
-                        won = True
-
-        elif bet_type == 'Totals':
-            # Threshold is the probability edge (same rule as ML and the live picks)
-            total_pred = row.get('total_pred')
-            line = row.get('odds_total')
-            
-            if pd.notna(total_pred) and pd.notna(line):
-                side, _ = get_total_bet(total_pred, line, DEFAULT_TOTAL_STD, threshold)
-                
-                if side == 'over':
-                    # Bet Over
-                    bet_placed = True
-                    sim_df.at[idx, 'bet_subgroup'] = 'Over'
-                    if (row['home_score'] + row['away_score']) > line:
-                        won = True
-                elif side == 'under':
-                    # Bet Under
-                    bet_placed = True
-                    sim_df.at[idx, 'bet_subgroup'] = 'Under'
-                    if (row['home_score'] + row['away_score']) < line:
-                        won = True
-
-        if bet_placed:
-            if won:
-                profit = calculate_payout(odds)
-                sim_df.at[idx, 'bet_result'] = profit
-                sim_df.at[idx, 'bet_outcome'] = 'Win'
-            else:
-                sim_df.at[idx, 'bet_result'] = -100
-                sim_df.at[idx, 'bet_outcome'] = 'Loss'
-                    
     # Cumulative ROI
     # Fix: Sort by date ASCENDING to calculate cumulative sum correctly (Past -> Future)
     sim_df = sim_df.sort_values(by='game_date', ascending=True)
     sim_df['cumulative_profit'] = sim_df['bet_result'].cumsum()
-    
+
     # Sort back to DESCENDING for display (Latest -> Past)
     sim_df = sim_df.sort_values(by='game_date', ascending=False)
-    
+
     return sim_df
 
+
+def record_of(sim_df):
+    """bet_record.summarize() of the bets of a simulate_strategies() frame (record, units, ROI, mean CLV, where the bets came from)."""
+    placed = sim_df[sim_df['bet_outcome'] != 'No Bet']
+    return bet_record.summarize(pd.DataFrame({
+        'result': placed['bet_outcome'].map({'Win': 'W', 'Loss': 'L', 'Push': 'P'}), 'profit': placed['bet_result'], 'clv': placed['bet_clv'], 'src': placed['bet_src']}))
+
+
 def _team_model_record(sim_df, team_name, is_totals=False):
-    """ (bets, wins, roi) for model bets involving team_name in a simulate_strategies() result. """
+    """ (bets, wins, losses, pushes, roi) for model bets involving team_name in a simulate_strategies() result. """
     if is_totals:
         team_bets = sim_df[((sim_df['home_team'] == team_name) | (sim_df['away_team'] == team_name)) & (sim_df['bet_outcome'] != 'No Bet')]
     else:
@@ -588,27 +489,27 @@ def _team_model_record(sim_df, team_name, is_totals=False):
 
     bets = len(team_bets)
     if bets == 0:
-        return 0, 0, 0.0
+        return 0, 0, 0, 0, 0.0
+    wins, losses, pushes = (int((team_bets['bet_outcome'] == k).sum()) for k in ('Win', 'Loss', 'Push'))
     profit = team_bets['bet_result'].sum()
-    roi = (profit / (bets * 100)) * 100
-    wins = (team_bets['bet_result'] > 0).sum()
-    return bets, wins, roi
+    roi = (profit / ((wins + losses) * 100)) * 100 if wins + losses else 0.0
+    return bets, wins, losses, pushes, roi
 
 
 @st.cache_data(ttl=600)
-def build_league_summary(df, threshold):
-    """ Builds a single league-wide summary table for all teams with Actual and Model records. """
+def build_league_summary(df, threshold, recorded=True):
+    """ Builds a single league-wide summary table for all teams with Actual and Model records. recorded=True: the model columns are the recommended bets. """
     teams = sorted(set(df['home_team'].dropna().unique().tolist() + df['away_team'].dropna().unique().tolist()))
-    
+
     completed = df[df['status'] == 'COMPLETED'].copy()
     for c in ['home_score', 'away_score', 'odds_home_spread', 'odds_total']:
         if c in completed.columns:
             completed[c] = pd.to_numeric(completed[c], errors='coerce')
-            
-    sim_ml = simulate_strategies(df, threshold, 'Moneyline')
-    sim_sp = simulate_strategies(df, threshold, 'Spread')
-    sim_tl = simulate_strategies(df, threshold, 'Totals')
-    
+
+    sim_ml = simulate_strategies(df, threshold, 'Moneyline', recorded)
+    sim_sp = simulate_strategies(df, threshold, 'Spread', recorded)
+    sim_tl = simulate_strategies(df, threshold, 'Totals', recorded)
+
     rows = []
     for team in teams:
         home_games = completed[completed['home_team'] == team]
@@ -616,48 +517,49 @@ def build_league_summary(df, threshold):
         gp = len(home_games) + len(away_games)
         if gp == 0:
             continue
-            
+
         home_su_w = (home_games['home_score'] > home_games['away_score']).sum()
         away_su_w = (away_games['away_score'] > away_games['home_score']).sum()
         su_wins = home_su_w + away_su_w
-        
+
         # Home cover margin (home_score + home line - away_score); pushes (0) and missing lines (NaN) excluded
         home_margin_h = home_games['home_score'] + home_games['odds_home_spread'] - home_games['away_score']
         home_margin_a = away_games['home_score'] + away_games['odds_home_spread'] - away_games['away_score']
         ats_wins = (home_margin_h > 0).sum() + (home_margin_a < 0).sum()
         ats_losses = (home_margin_h < 0).sum() + (home_margin_a > 0).sum()
-        
+
         total_diff = pd.concat([
             home_games['home_score'] + home_games['away_score'] - home_games['odds_total'],
             away_games['home_score'] + away_games['away_score'] - away_games['odds_total'],
         ])
         over_wins = (total_diff > 0).sum()
         under_wins = (total_diff < 0).sum()
-        
-        m_ml_bets, m_ml_wins, m_ml_roi = _team_model_record(sim_ml, team, False)
-        m_sp_bets, m_sp_wins, m_sp_roi = _team_model_record(sim_sp, team, False)
-        m_tl_bets, m_tl_wins, m_tl_roi = _team_model_record(sim_tl, team, True)
-        
+
+        m_ml = _team_model_record(sim_ml, team, False)
+        m_sp = _team_model_record(sim_sp, team, False)
+        m_tl = _team_model_record(sim_tl, team, True)
+        wl = lambda r: f"{r[1]}-{r[2]}" + (f"-{r[3]}" if r[3] else '')
+
         rows.append({
             'Team': team,
             'GP': gp,
             'Actual SU': f"{su_wins}-{gp-su_wins}",
             'Actual ATS': f"{ats_wins}-{ats_losses}",
             'Actual O/U': f"{over_wins}-{under_wins}",
-            'ML W-L': f"{m_ml_wins}-{m_ml_bets-m_ml_wins}",
-            'ML ROI': m_ml_roi,
-            'Spread W-L': f"{m_sp_wins}-{m_sp_bets-m_sp_wins}",
-            'Spread ROI': m_sp_roi,
-            'Totals W-L': f"{m_tl_wins}-{m_tl_bets-m_tl_wins}",
-            'Totals ROI': m_tl_roi,
+            'ML W-L': wl(m_ml),
+            'ML ROI': m_ml[4],
+            'Spread W-L': wl(m_sp),
+            'Spread ROI': m_sp[4],
+            'Totals W-L': wl(m_tl),
+            'Totals ROI': m_tl[4],
         })
-        
+
     return pd.DataFrame(rows)
 
 
-def build_team_breakdown(df, team, bet_type, threshold):
+def build_team_breakdown(df, team, bet_type, threshold, recorded=True, points_edge=None):
     """
-    Build per-team breakdown tables.
+    Build per-team breakdown tables. The model's bets are the recommended bets (recorded=True) or the what-if at `threshold`.
     Returns (actual_record_df, model_bets_df) — both pandas DataFrames ready for display.
     """
     completed = df[df['status'] == 'COMPLETED'].copy()
@@ -677,9 +579,15 @@ def build_team_breakdown(df, team, bet_type, threshold):
     if team_games.empty:
         return pd.DataFrame(), pd.DataFrame()
 
+    mkt = bet_record.MARKET_OF_BET_TYPE[bet_type]
+    if f'rec_{mkt}_side' not in team_games.columns:
+        team_games = bet_record.attach_recommendations(team_games, None, None)
+    dec = bet_record.decide(team_games, mkt, threshold, points_edge, recorded)
+    res = bet_record.settle(team_games, mkt, dec)
+
     # --- Build per-game labels from team's perspective ---
     rows = []
-    for _, g in team_games.iterrows():
+    for gidx, g in team_games.iterrows():
         is_home = g['home_team'] == team
         ha = 'Home' if is_home else 'Away'
 
@@ -710,7 +618,7 @@ def build_team_breakdown(df, team, bet_type, threshold):
         # O/U
         total_line = g.get('odds_total')
         actual_total = g['home_score'] + g['away_score']
-        if pd.notna(total_line):
+        if pd.notna(total_line) and actual_total != total_line:      # exactly on the line is a push: neither over nor under
             over_hit = actual_total > total_line
         else:
             over_hit = None
@@ -722,62 +630,22 @@ def build_team_breakdown(df, team, bet_type, threshold):
         else:
             intersection = None
 
-        # --- Model bet info ---
+        # --- Model bet info: the recommended bet of this game (bet_record.decide), graded at its own line and price ---
         model_bet_on_team = None  # Did model bet on THIS team?
         model_bet_won = None
         model_bet_odds = None
-        model_bet_type_label = None
+        model_bet_push = False
 
-        if bet_type == 'Moneyline':
-            if pd.notna(g.get('ml_prob')) and pd.notna(g.get('odds_home_ml')) and pd.notna(g.get('odds_away_ml')):
-                pick, edge = get_ml_bet(g, threshold=threshold)
-                if pick == 'home' and is_home:
-                    model_bet_on_team = True
-                    model_bet_won = su_win
-                    model_bet_odds = g['odds_home_ml']
-                elif pick == 'away' and not is_home:
-                    model_bet_on_team = True
-                    model_bet_won = su_win
-                    model_bet_odds = g['odds_away_ml']
-                elif pick == 'home' and not is_home:
-                    model_bet_on_team = False  # Bet against this team
-                elif pick == 'away' and is_home:
-                    model_bet_on_team = False
-
-        elif bet_type == 'Spread':
-            sp = g.get('spread_pred')
-            line = g.get('odds_home_spread')
-            if pd.notna(sp) and pd.notna(line):
-                side, _ = get_spread_bet(sp, line, DEFAULT_SPREAD_STD, threshold)
-                if side == 'home':
-                    # Model bets home
-                    if is_home:
-                        model_bet_on_team = True
-                        model_bet_won = ats_win
-                        model_bet_odds = -110
-                    else:
-                        model_bet_on_team = False
-                elif side == 'away':
-                    # Model bets away
-                    if not is_home:
-                        model_bet_on_team = True
-                        model_bet_won = ats_win
-                        model_bet_odds = -110
-                    else:
-                        model_bet_on_team = False
-
-        elif bet_type == 'Totals':
-            tp = g.get('total_pred')
-            tl = g.get('odds_total')
-            if pd.notna(tp) and pd.notna(tl):
-                side, _ = get_total_bet(tp, tl, DEFAULT_TOTAL_STD, threshold)
-                if side is not None:
-                    model_bet_on_team = True  # Totals are team-agnostic, counts for both
-                    if side == 'over':
-                        model_bet_won = over_hit
-                    else:
-                        model_bet_won = (not over_hit) if over_hit is not None else None
-                    model_bet_odds = -110
+        side = dec.at[gidx, 'side']
+        if isinstance(side, str):
+            if mkt == 'total':
+                model_bet_on_team = True      # Totals are team-agnostic, counts for both
+            else:
+                model_bet_on_team = (side == 'home') == is_home
+            if model_bet_on_team and res[gidx] is not None:
+                model_bet_push = res[gidx] == 'P'
+                model_bet_won = None if model_bet_push else res[gidx] == 'W'
+                model_bet_odds = dec.at[gidx, 'price']
 
         rows.append({
             'home_away': ha,
@@ -789,6 +657,7 @@ def build_team_breakdown(df, team, bet_type, threshold):
             'model_bet_on_team': model_bet_on_team,
             'model_bet_won': model_bet_won,
             'model_bet_odds': model_bet_odds,
+            'model_bet_push': model_bet_push,
         })
 
     if not rows:
@@ -852,9 +721,10 @@ def build_team_breakdown(df, team, bet_type, threshold):
         if n == 0:
             model_rows.append({'Split': label, 'Bets': 0, 'Record': '-', 'ROI': '-'})
             continue
+        pushes = int(bet_on['model_bet_push'].sum())
         valid = bet_on[bet_on['model_bet_won'].notna()]
         if valid.empty:
-            model_rows.append({'Split': label, 'Bets': n, 'Record': '-', 'ROI': '-'})
+            model_rows.append({'Split': label, 'Bets': n, 'Record': f"0-0-{pushes}" if pushes else '-', 'ROI': '-'})
             continue
         w = int(valid['model_bet_won'].sum())
         l = len(valid) - w
@@ -871,8 +741,8 @@ def build_team_breakdown(df, team, bet_type, threshold):
         roi = (profit / (staked * 100)) * 100 if staked else 0.0
         model_rows.append({
             'Split': label,
-            'Bets': len(valid),
-            'Record': f"{w}-{l} ({w/len(valid)*100:.0f}%)",
+            'Bets': len(valid) + pushes,
+            'Record': f"{w}-{l}" + (f"-{pushes}" if pushes else '') + f" ({w/len(valid)*100:.0f}%)",
             'ROI': f"{roi:+.1f}%",
         })
 
@@ -881,11 +751,58 @@ def build_team_breakdown(df, team, bet_type, threshold):
     return actual_df, model_df
 
 
+def _clv_text(rec, unit):
+    """'CLV +0.60 pts (24 bets with a close)' for a bet_record.summarize() dict; says so when there is no closing line in the data."""
+    if not rec['n_clv']:
+        return "CLV: no closing lines in this data"
+    return f"Mean CLV {rec['mean_clv']:+.2f} {unit} ({rec['n_clv']} of {rec['bets']} bets with a close)"
+
+
+def render_record_metrics(sims, columns):
+    """W-L-P, units and ROI of the recommended bets of each market (sims: {bet type: simulate_strategies frame}), with the mean closing-line value under each."""
+    for col, (bt, label, unit) in zip(columns, (("Moneyline", "Moneyline", "prob. pts"), ("Spread", "Spread", "pts"), ("Totals", "Totals", "pts"))):
+        rec = record_of(sims[bt])
+        col.metric(label, f"{bet_record.record_text(rec)}  ·  {rec['units']:+.2f}u", f"{rec['bets']} bets · ROI {rec['roi']:+.1f}%", delta_color='off')
+        col.caption(_clv_text(rec, unit))
+
+
+def render_record_panel(df, ctx, label):
+    """The season record: the RECOMMENDED bets of each market (never the what-if sliders), with CLV, and how many of the bets are logged versus recomputed."""
+    sims = {bt: simulate_strategies(df, DEFAULT_PROB_EDGE, bt) for bt in ("Moneyline", "Spread", "Totals")}
+    st.markdown(f"**Record of the recommended bets** ({label})")
+    render_record_metrics(sims, st.columns(3))
+    by_src = {k: sum(record_of(s)['by_src'][k] for s in sims.values()) for k in bet_record.SOURCE_LABELS}
+    logged, recomputed = bet_record.logged_share(by_src)
+    st.caption(f"{logged + recomputed} bets: {bet_record.source_sentence(by_src)}. Each bet is graded at the line and the side's own price it was judged at "
+               f"(* a spread or total price that was not stored is taken as -110); a push is a push (W-L-P, no profit or loss). "
+               f"Recommendations logged: {ctx['log_source']}; sigmas for recomputed bets: {ctx['sigma_source']}. "
+               "CLV = closing line value, positive when the line moved toward the bet after it was taken.")
+    if recomputed:
+        st.caption("A recomputed bet applies the live rule to the stored prediction and the stored (run-time) line, the deployed model set's sigma and, for spread and totals, "
+                   "-110: the live run's own price and per-game total sigma are not stored for those games, so a few of them may differ from what the run actually recommended.")
+
+
+def recommended_bets_table(sims):
+    """One row per recommended settled bet of every market in `sims` ({bet type: simulate_strategies frame}), newest first."""
+    rows = []
+    for bt, sim in sims.items():
+        m = bet_record.MARKET_OF_BET_TYPE[bt]
+        for _, r in sim[sim['bet_outcome'] != 'No Bet'].iterrows():
+            score = f"{r['away_score']:.0f}-{r['home_score']:.0f}" if pd.notna(r['home_score']) and pd.notna(r['away_score']) else ''
+            rows.append({'Date': r['game_date'], 'Game': r['matchup'], 'Market': bt,
+                         'Bet': bet_record.bet_label(m, r['bet_side'], r['bet_line'], r['bet_price'], r['bet_edge'], r['home_team'], r['away_team'], bool(r['bet_price_assumed'])),
+                         'Final (away-home)': score, 'Result': r['bet_outcome'], 'Units': round(r['bet_result'] / 100, 2),
+                         'CLV': None if pd.isna(r['bet_clv']) else round(r['bet_clv'], 2), 'Source': bet_record.SOURCE_LABELS.get(r['bet_src'], r['bet_src'])})
+    table = pd.DataFrame(rows, columns=['Date', 'Game', 'Market', 'Bet', 'Final (away-home)', 'Result', 'Units', 'CLV', 'Source'])
+    return table.sort_values('Date', ascending=False, kind='stable').reset_index(drop=True)
+
+
 def main():
     st.title("🏀 NBA Model Dashboard")
 
     df, source = load_data()
-    
+    ctx = load_record_context()
+
     if df.empty:
         st.warning("No prediction data available.")
         st.stop() # Stop execution if no data
@@ -913,19 +830,26 @@ def main():
 
     # What-If Analysis
     st.sidebar.subheader("What-If Analysis")
+    st.sidebar.caption("At the default settings the tabs show the RECOMMENDED bets (the live rule), which is the season record. Moving a slider switches to a what-if "
+                       "with another minimum edge: it is not what the model recommended.")
+    sigmas = ctx['sigmas']
 
     bet_type = st.sidebar.selectbox("Bet Type", ["Moneyline", "Spread", "Totals"])
 
     # One rule for every market (team/betting.py): bet when the model's win probability beats the price's break-even
     # probability by `threshold`. For the moneyline that is the natural control. For spread/totals a point edge over the line
-    # is easier to reason about, so the slider is in points and converted: P(win) = Phi(edge / residual std) at -110.
+    # is easier to reason about, so the slider is in points and converted: P(win) = Phi(edge / residual std) at -110, per game with its own line
+    # (a whole-number line can push, so the same points are a slightly different probability) and the model set's sigma (not betting.py's defaults).
     if bet_type == "Moneyline":
         threshold = st.sidebar.slider("Minimum edge (probability points)", 0.0, 0.20, DEFAULT_PROB_EDGE, 0.005, format="%.3f",
                                       help="Bet only when the model's win probability exceeds the price's break-even probability by this much "
                                            "(0.05 = 5 percentage points, e.g. the model says 60% and the price implies 55%).")
         points_edge = None
+        recorded = bool(np.isclose(threshold, DEFAULT_PROB_EDGE))
+        if recorded:
+            threshold = DEFAULT_PROB_EDGE
     else:
-        std = DEFAULT_SPREAD_STD if bet_type == "Spread" else DEFAULT_TOTAL_STD
+        std = sigmas['spread_std'] if bet_type == "Spread" else sigmas['total_std']
         line_word = "spread" if bet_type == "Spread" else "total"
         default_pts = round(points_threshold(std, DEFAULT_PROB_EDGE), 1)
         points_edge = st.sidebar.slider(f"Minimum edge (points vs the {line_word})", 0.0, 10.0, default_pts, 0.1,
@@ -933,21 +857,20 @@ def main():
                                         help=f"Bet only when the model's {line_word} differs from the market line by at least this many points. "
                                              f"{default_pts} points is the model's standard 5% edge rule. The probability shown below the slider is the model's own estimate, "
                                              f"not an observed win rate.")
-        threshold = implied_prob_edge(points_edge, std)
+        recorded = bool(np.isclose(points_edge, default_pts))
+        threshold = DEFAULT_PROB_EDGE if recorded else implied_prob_edge(points_edge, std)
         st.sidebar.caption(f"{points_edge:.1f} pts: the model ESTIMATES {cover_probability(points_edge, std):.1%} of such bets win, vs 52.4% to break even at -110 "
-                           f"(a {threshold:+.1%} claimed edge). That estimate assumes its error is a bell curve with std {std} pts around its prediction; "
+                           f"(a {implied_prob_edge(points_edge, std):+.1%} claimed edge, half-point line; a whole-number line is converted per game). That estimate assumes its error is a bell curve "
+                           f"with std {std:.1f} pts around its prediction (the deployed model set's: {ctx['sigma_source']}); "
                            f"backtested bets that clear the threshold have won less often than estimated, so read the results tabs for what actually happened.")
-    threshold_label = f"≥ {points_edge:.1f} pts ({threshold:+.1%} edge)" if points_edge is not None else f"{threshold:.3f}"
+    if recorded:
+        threshold_label = "the live rule (5% probability edge): the recommended bets"
+    else:
+        threshold_label = f"what-if, minimum edge {points_edge:.1f} pts ({threshold:+.1%} edge)" if points_edge is not None else f"what-if, minimum edge {threshold:.3f}"
 
     # Filter Data for Display
     mask = (df['game_date'] >= start_date) & (df['game_date'] <= end_date)
     display_df = df.loc[mask]
-
-    # Compute model accuracy & ROI across available data (use filtered range). The moneyline pick is the better-edge side;
-    # the sidebar filter keeps only picks whose edge clears the chosen minimum ("All picks" = every game with both prices).
-    ml_filter = st.sidebar.selectbox("Recent Performance: ML picks with edge above", ["All picks", "3%", "5%"], index=2)
-    ml_pick_threshold = {"All picks": -1.0, "3%": 0.03, "5%": 0.05}[ml_filter]
-    model_metrics, model_df = compute_model_accuracy_and_roi(display_df, ml_pick_threshold)
 
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["📅 Today's Games", "Recent Performance", "📊 Predictions Log & Analysis", "📋 Team Breakdown", "🏆 League Summary", "🔍 Model Drivers"])
 
@@ -977,39 +900,19 @@ def main():
             todays_games['Model Home Prob (%)'] = (100.0 * todays_games['ml_prob']).round(2)
             todays_games['Implied Away Prob (%)'] = (100.0 * todays_games['odds_away_ml'].apply(calculate_implied_prob)).round(2)
             todays_games['Model Away Prob (%)'] = (100.0 * (1 - todays_games['ml_prob'])).round(2)
-            # 2. Picks
-            def get_ml_pick_display(row):
-                if pd.isna(row['odds_home_ml']) and pd.isna(row['odds_away_ml']): return NO_ODDS
-                # Using 5% threshold as default for "ML Pick" display recommendation.
-                # get_ml_bet prices each side with its own moneyline (odds_home_ml / odds_away_ml).
-                pick, edge = get_ml_bet(row, threshold=0.05)
-                if pick:
-                    return f"BET {pick.upper()} (Edge {edge*100:.1f}%)"
-                # Below the bet threshold the model still leans to the better-edge side; show it unmarked as a lean.
-                lean, lean_edge = get_ml_bet(row, threshold=-1.0)
-                return f"Lean {lean.upper()} ({lean_edge*100:+.1f}%)" if lean else ""
-            
-            def get_spread_pick(row):
-                if pd.isna(row['odds_home_spread']): return NO_ODDS
-                if pd.isna(row['spread_pred']): return ""
-                # Pred Margin (Home - Away) vs Line
-                # cover_margin = spread_pred + line
-                # If > 0, Home Covers.
-                margin = row['spread_pred'] + row['odds_home_spread']
-                if margin > 0: return f"Home {row['odds_home_spread']} (Margin: {margin:.1f})"
-                else: return f"Away {-1 * row['odds_home_spread']} (Margin: {abs(margin):.1f})"
+            # 2. Bets (the recommended ones, bet_record.decide)
+            def bet_column(m, no_line):
+                dec = bet_record.decide(todays_games, m)
+                labels = []
+                for (idx, r), (_, d) in zip(todays_games.iterrows(), dec.iterrows()):
+                    if no_line(r): labels.append(NO_ODDS)
+                    else: labels.append(bet_record.bet_label(m, d['side'], d['line'], d['price'], d['edge'], r['home_team'], r['away_team'], d['price_assumed']) or "-")
+                return labels
 
-            def get_total_pick(row):
-                if pd.isna(row['odds_total']): return NO_ODDS
-                if pd.isna(row['total_pred']): return ""
-                diff = row['total_pred'] - row['odds_total']
-                if diff > 0: return f"Over {row['odds_total']} (+{diff:.1f})"
-                else: return f"Under {row['odds_total']} ({diff:.1f})"
+            todays_games['ML Bet'] = bet_column('ml', lambda r: pd.isna(r['odds_home_ml']) and pd.isna(r['odds_away_ml']))
+            todays_games['Spread Bet'] = bet_column('spread', lambda r: pd.isna(r['odds_home_spread']))
+            todays_games['Total Bet'] = bet_column('total', lambda r: pd.isna(r['odds_total']))
 
-            todays_games['ML Pick'] = todays_games.apply(get_ml_pick_display, axis=1)
-            todays_games['Spread Pick'] = todays_games.apply(get_spread_pick, axis=1)
-            todays_games['Total Pick'] = todays_games.apply(get_total_pick, axis=1)
-            
             # 3. Clean Columns: one row per game, the away-side and duplicate numbers folded into combined columns
             def pct(x):
                 return f"{x:.0f}%" if pd.notna(x) else "-"
@@ -1024,14 +927,16 @@ def main():
                 'Home Team': todays_games['home_team'],
                 'Home win % (model / market)': [f"{pct(m)} / {pct(i)}" for m, i in zip(todays_games['Model Home Prob (%)'], todays_games['Implied Home Prob (%)'])],
                 'Moneyline (away / home)': [moneyline(a, h) for a, h in zip(todays_games['odds_away_ml'], todays_games['odds_home_ml'])],
-                'ML Pick': todays_games['ML Pick'],
-                'Spread Pick': todays_games['Spread Pick'],
-                'Total Pick': todays_games['Total Pick'],
+                'ML Bet': todays_games['ML Bet'],
+                'Spread Bet': todays_games['Spread Bet'],
+                'Total Bet': todays_games['Total Bet'],
             })
             render_rerun_status(_read_rerun_status(), todays_games['game_date'].iloc[0])
             if todays_games['game_date'].iloc[0] == today:
                 render_live_scores(todays_games)
-            st.caption(f"Games on {todays_games['game_date'].iloc[0]}. Tick **Why?** on a game to see what moves the model's number away from the line.")
+            st.caption(f"Games on {todays_games['game_date'].iloc[0]}. The **Bet** columns are the bets the live run recommended (5% probability edge over the price's break-even, "
+                       "judged at the line and price shown; * = -110 assumed because the price is not stored). "
+                       "Tick **Why?** on a game to see what moves the model's number away from the line.")
             edited = st.data_editor(table, hide_index=True, width='stretch', key="todays_games_table",
                                     disabled=[c for c in table.columns if c != 'Why?'],
                                     column_config={'Why?': st.column_config.CheckboxColumn('Why?', width='small')})
@@ -1040,275 +945,104 @@ def main():
                 render_explanation(load_explanation_data(), todays_games.iloc[i])
 
     with tab2:
-        st.subheader("Model Performance: Last 14 Days")
-        
-        # Filter to this week (Monday to today)
+        st.subheader("Recommended bets: last 14 days")
+        st.caption("Only the bets the live run recommended (5% probability edge over the price's break-even), graded at the line and price they were judged at; a push is a push. "
+                   "This is the betting record.")
+
+        # Last 14 days, before today
         today = nba_today()
         previous_two_weeks = today - datetime.timedelta(days=14)
-        week_df = model_df[(model_df['game_date'] >= previous_two_weeks) & (model_df['game_date'] < today)].copy()
-        week_df = week_df.sort_values('game_date', ascending=False)
-        
-        if week_df.empty:
+        window_df = display_df[(display_df['game_date'] >= previous_two_weeks) & (display_df['game_date'] < today)]
+        sims = {bt: simulate_strategies(window_df, DEFAULT_PROB_EDGE, bt) for bt in ("Moneyline", "Spread", "Totals")}
+        bets_by_type = {bt: sim[sim['bet_outcome'] != 'No Bet'] for bt, sim in sims.items()}
+
+        if window_df.empty:
             st.info("No predictions yet this week.")
         else:
-            # Compute records and ROI for each bet type
-            def compute_record_and_roi(correct_series, odds_series=None):
-                """Returns (wins, losses, pushes, roi) tuple. odds_series: American odds of each bet
-                (moneyline); None = the standard -110 spread/total price. Bets without a price are
-                not settled and not counted in the stake."""
-                valid = correct_series[correct_series.notna()]
-                if valid.empty:
-                    return 0, 0, 0, 0.0
-                wins = int(valid.sum())
-                losses = len(valid) - wins
+            render_record_metrics(sims, st.columns(3))
+            if all(b.empty for b in bets_by_type.values()):
+                st.info("No recommended bets settled in the last 14 days.")
+            else:
+                # --- Breakdown Metrics for the window ---
+                st.divider()
+                st.markdown("##### Performance Breakdown (Favorite vs Underdog / Over vs Under)")
+                ml_df_b, sp_df_b, tl_df_b = bets_by_type["Moneyline"], bets_by_type["Spread"], bets_by_type["Totals"]
 
-                profit, staked = 0.0, 0
-                for idx in valid.index:
-                    odds = STANDARD_PRICE if odds_series is None else odds_series.loc[idx]
-                    if pd.isna(odds):
-                        continue
-                    profit += settle_bet(odds, bool(valid.loc[idx]))
-                    staked += 1
+                # Row 1: Favorite / Underdog & Over / Under
+                b1, b2, b3 = st.columns(3)
+                with b1:
+                    st.caption("Moneyline — Fav vs Dog")
+                    if not ml_df_b.empty:
+                        display_subgroup_metrics(ml_df_b, 'bet_subgroup', 'bet_result', 'ML')
+                    else:
+                        st.write("-")
+                with b2:
+                    st.caption("Spread — Fav vs Dog")
+                    if not sp_df_b.empty:
+                        display_subgroup_metrics(sp_df_b, 'bet_subgroup', 'bet_result', 'Spread')
+                    else:
+                        st.write("-")
+                with b3:
+                    st.caption("Totals — Over vs Under")
+                    if not tl_df_b.empty:
+                        display_subgroup_metrics(tl_df_b, 'bet_subgroup', 'bet_result', 'Total')
+                    else:
+                        st.write("-")
 
-                roi = (profit / (staked * 100)) * 100 if staked > 0 else 0.0
-                return wins, losses, 0, roi
+                st.divider()
 
-            ml_wins, ml_losses, ml_pushes, ml_roi = compute_record_and_roi(week_df['ml_correct'], week_df['model_ml_odds'])
-            sp_wins, sp_losses, sp_pushes, sp_roi = compute_record_and_roi(week_df['spread_correct'])
-            tl_wins, tl_losses, tl_pushes, tl_roi = compute_record_and_roi(week_df['total_correct'])
-            
-            # Display records with ROI as top metrics
-            cols = st.columns(3)
-            cols[0].metric("Moneyline", f"{ml_wins}-{ml_losses}-{ml_pushes}", f"{ml_roi:.1f}%")
-            cols[1].metric("Spread", f"{sp_wins}-{sp_losses}-{sp_pushes}", f"{sp_roi:.1f}%")
-            cols[2].metric("Totals", f"{tl_wins}-{tl_losses}-{tl_pushes}", f"{tl_roi:.1f}%")
+                # Row 2: Home vs Away (ML & Spread only)
+                st.markdown("##### Home vs Away Performance")
+                h1, h2 = st.columns(2)
+                with h1:
+                    st.caption("Moneyline — Home vs Away")
+                    if not ml_df_b.empty:
+                        display_subgroup_metrics(ml_df_b, 'bet_home_away', 'bet_result', 'ML', group_order=['Home', 'Away'])
+                    else:
+                        st.write("-")
+                with h2:
+                    st.caption("Spread — Home vs Away")
+                    if not sp_df_b.empty:
+                        display_subgroup_metrics(sp_df_b, 'bet_home_away', 'bet_result', 'Spread', group_order=['Home', 'Away'])
+                    else:
+                        st.write("-")
 
-            # --- Breakdown Metrics for Week ---
-            st.divider()
-            st.markdown("##### Performance Breakdown (Favorite vs Underdog / Over vs Under)")
-            
-            # Helper to calculate profit + subgroup labels for a row in week_df
-            def get_row_profit(row, pick_col, correct_col, odds_col=None, spread_total=False):
-                """Returns (profit, fav_dog_subgroup, home_away, intersection) or (0.0, None, None, None) if skip."""
-                if pd.isna(row.get(correct_col)) or pd.isna(row.get(pick_col)):
-                    return 0.0, None, None, None
-                
-                subgroup = None
-                home_away = None
-                is_fav = False
-                
-                if spread_total:
-                    if 'total' in pick_col:  # Totals: no home/away intersection
-                        subgroup = 'Over' if row[pick_col] == 'over' else 'Under'
-                        home_away = None
-                    else:  # Spread
-                        home_away = 'Home' if row[pick_col] == 'home' else 'Away'
-                        line = row.get('odds_home_spread', 0)
-                        if row[pick_col] == 'home':
-                            is_fav = line < 0
-                        else:
-                            is_fav = (-line) < 0
-                        subgroup = 'Favorite' if is_fav else 'Underdog'
-                    odds = -110
-                else:  # Moneyline
-                    home_away = 'Home' if row[pick_col] == 'home' else 'Away'
-                    odds = row.get('odds_home_ml') if row[pick_col] == 'home' else row.get('odds_away_ml')
-                    if pd.isna(odds): return 0.0, None, None, None
-                    is_fav = odds < 0
-                    subgroup = 'Favorite' if is_fav else 'Underdog'
+                st.divider()
 
-                # Build intersection label (only for ML & Spread)
-                intersection = None
-                if home_away and subgroup in ('Favorite', 'Underdog'):
-                    fav_label = 'Fav' if subgroup == 'Favorite' else 'Dog'
-                    intersection = f"{home_away} {fav_label}"
+                # Row 3: 4-way intersection (ML & Spread)
+                st.markdown("##### Intersection: Home/Away × Favorite/Underdog")
+                ix_order = ['Home Fav', 'Home Dog', 'Away Fav', 'Away Dog']
+                i1, i2 = st.columns(2)
+                with i1:
+                    st.caption("Moneyline")
+                    if not ml_df_b.empty:
+                        display_subgroup_metrics(ml_df_b, 'bet_intersection', 'bet_result', 'ML', group_order=ix_order)
+                    else:
+                        st.write("-")
+                with i2:
+                    st.caption("Spread")
+                    if not sp_df_b.empty:
+                        display_subgroup_metrics(sp_df_b, 'bet_intersection', 'bet_result', 'Spread', group_order=ix_order)
+                    else:
+                        st.write("-")
 
-                won = row[correct_col]
-                profit = calculate_payout(odds) if won else -100
-                    
-                return profit, subgroup, home_away, intersection
-
-            # Compute Breakdowns — collect profit + all label dimensions
-            ml_data, sp_data, tl_data = [], [], []
-            for _, row in week_df.iterrows():
-                p, sg, ha, ix = get_row_profit(row, 'model_ml_pick', 'ml_correct', spread_total=False)
-                if sg is not None:
-                    ml_data.append({'profit': p, 'subgroup': sg, 'home_away': ha, 'intersection': ix})
-                p, sg, ha, ix = get_row_profit(row, 'model_spread_pick', 'spread_correct', spread_total=True)
-                if sg is not None:
-                    sp_data.append({'profit': p, 'subgroup': sg, 'home_away': ha, 'intersection': ix})
-                p, sg, ha, ix = get_row_profit(row, 'model_total_pick', 'total_correct', spread_total=True)
-                if sg is not None:
-                    tl_data.append({'profit': p, 'subgroup': sg, 'home_away': ha, 'intersection': ix})
-
-            ml_df_b = pd.DataFrame(ml_data) if ml_data else pd.DataFrame()
-            sp_df_b = pd.DataFrame(sp_data) if sp_data else pd.DataFrame()
-            tl_df_b = pd.DataFrame(tl_data) if tl_data else pd.DataFrame()
-
-            # Row 1: Favorite / Underdog & Over / Under
-            b1, b2, b3 = st.columns(3)
-            with b1:
-                st.caption("Moneyline — Fav vs Dog")
-                if not ml_df_b.empty:
-                    display_subgroup_metrics(ml_df_b, 'subgroup', 'profit', 'ML')
-                else:
-                    st.write("-")
-            with b2:
-                st.caption("Spread — Fav vs Dog")
-                if not sp_df_b.empty:
-                    display_subgroup_metrics(sp_df_b, 'subgroup', 'profit', 'Spread')
-                else:
-                    st.write("-")
-            with b3:
-                st.caption("Totals — Over vs Under")
-                if not tl_df_b.empty:
-                    display_subgroup_metrics(tl_df_b, 'subgroup', 'profit', 'Total')
-                else:
-                    st.write("-")
-
-            st.divider()
-
-            # Row 2: Home vs Away (ML & Spread only)
-            st.markdown("##### Home vs Away Performance")
-            h1, h2 = st.columns(2)
-            with h1:
-                st.caption("Moneyline — Home vs Away")
-                if not ml_df_b.empty:
-                    display_subgroup_metrics(ml_df_b, 'home_away', 'profit', 'ML', group_order=['Home', 'Away'])
-                else:
-                    st.write("-")
-            with h2:
-                st.caption("Spread — Home vs Away")
-                if not sp_df_b.empty:
-                    display_subgroup_metrics(sp_df_b, 'home_away', 'profit', 'Spread', group_order=['Home', 'Away'])
-                else:
-                    st.write("-")
-
-            st.divider()
-
-            # Row 3: 4-way intersection (ML & Spread)
-            st.markdown("##### Intersection: Home/Away × Favorite/Underdog")
-            ix_order = ['Home Fav', 'Home Dog', 'Away Fav', 'Away Dog']
-            i1, i2 = st.columns(2)
-            with i1:
-                st.caption("Moneyline")
-                if not ml_df_b.empty:
-                    display_subgroup_metrics(ml_df_b, 'intersection', 'profit', 'ML', group_order=ix_order)
-                else:
-                    st.write("-")
-            with i2:
-                st.caption("Spread")
-                if not sp_df_b.empty:
-                    display_subgroup_metrics(sp_df_b, 'intersection', 'profit', 'Spread', group_order=ix_order)
-                else:
-                    st.write("-")
-
-            st.divider()
-            # ----------------------------------
-            
-            # Format predictions table (similar to tab1)
-            week_df = week_df.copy()
-            
-            # Helper functions for formatting picks
-            def format_ml_pick(row):
-                if pd.isna(row['model_ml_pick']):
-                    return ""
-                team = row['home_team'] if row['model_ml_pick'] == 'home' else row['away_team']
-                prob = row['ml_prob'] if row['model_ml_pick'] == 'home' else (1 - row['ml_prob'])
-                return f"{team} ({prob:.1%})"
-            
-            def format_spread_pick(row):
-                if pd.isna(row.get('model_spread_pick')) or pd.isna(row.get('odds_home_spread')):
-                    return ""
-                line = row['odds_home_spread']
-                if row['model_spread_pick'] == 'home':
-                    margin = row.get('spread_pred', 0) + line
-                    return f"Home {line} (Margin: {margin:.1f})"
-                else:
-                    margin = -(row.get('spread_pred', 0) + line)
-                    return f"Away {-line} (Margin: {margin:.1f})"
-            
-            def format_total_pick(row):
-                if pd.isna(row.get('model_total_pick')) or pd.isna(row.get('odds_total')):
-                    return ""
-                line = row['odds_total']
-                diff = row.get('total_pred', 0) - line
-                if row['model_total_pick'] == 'over':
-                    return f"Over {line} (+{diff:.1f})"
-                else:
-                    return f"Under {line} ({diff:.1f})"
-            
-            week_df['ML Pick'] = week_df.apply(format_ml_pick, axis=1)
-            week_df['Spread Pick'] = week_df.apply(format_spread_pick, axis=1)
-            week_df['Total Pick'] = week_df.apply(format_total_pick, axis=1)
-            week_df['Model Home Prob (%)'] = (100.0 * week_df['ml_prob'])
-            week_df['Implied Home Prob (%)'] = (100.0 * week_df['odds_home_ml'].apply(calculate_implied_prob)).round(2)
-            
-            # Build display table
-            cols_to_show = [
-                'home_team',
-                'away_team',
-                'game_date',
-                'home_score',
-                'away_score',
-                'Model Home Prob (%)',
-                'Implied Home Prob (%)',
-                'odds_home_ml',
-                'ML Pick',
-                'Spread Pick',
-                'Total Pick'
-            ]
-
-
-            # Format columns on display_df BEFORE selecting into show_df
-            if 'Model Home Prob (%)' in week_df.columns:
-                week_df['Model Home Prob (%)'] = week_df['Model Home Prob (%)'].apply(lambda x: f"{x:.0f}%" if pd.notna(x) else x)
-            if 'Implied Home Prob (%)' in week_df.columns:
-                week_df['Implied Home Prob (%)'] = week_df['Implied Home Prob (%)'].apply(lambda x: f"{x:.0f}%" if pd.notna(x) else x)
-            if 'odds_home_ml' in week_df.columns:
-                week_df['odds_home_ml'] = week_df['odds_home_ml'].apply(lambda x: f"{x:.0f}" if pd.notna(x) and x < 0 else f"+{x}")
-            if 'home_score' in week_df.columns:
-                week_df['home_score'] = week_df['home_score'].apply(lambda x: f"{x:.0f}" if pd.notna(x) else x)
-            if 'away_score' in week_df.columns:
-                week_df['away_score'] = week_df['away_score'].apply(lambda x: f"{x:.0f}" if pd.notna(x) else x)
-            
-            final_cols = [c for c in cols_to_show if c in week_df.columns]
-            # Include correctness columns for styling (not displayed, but used by highlight_wins)
-            show_df = week_df[final_cols + ['ml_correct', 'spread_correct', 'total_correct']].copy()
-            
-            # Function to highlight winning bet pick columns
-            def highlight_wins(row):
-                """Apply green background to pick columns when predictions are correct."""
-                result = [''] * len(row)
-                for i, col in enumerate(show_df.columns):
-                    if col == 'ML Pick' and pd.notna(row.get('ml_correct')) and row['ml_correct'] is True:
-                        result[i] = 'background-color: #90EE90'
-                    elif col == 'Spread Pick' and pd.notna(row.get('spread_correct')) and row['spread_correct'] is True:
-                        result[i] = 'background-color: #90EE90'
-                    elif col == 'Total Pick' and pd.notna(row.get('total_correct')) and row['total_correct'] is True:
-                        result[i] = 'background-color: #90EE90'
-                return result
-                        
-            # Apply row-by-row styling
-            styled_df = show_df.style.apply(highlight_wins, axis=1)
-
-            st.dataframe(styled_df,
-                         column_config={'ml_correct':None,
-                                        'spread_correct':None,
-                                        'total_correct':None},
-                                        hide_index=True)
+                st.divider()
+                st.markdown("##### The bets")
+                st.dataframe(recommended_bets_table(sims), hide_index=True, width='stretch')
 
     with tab3:
         st.subheader(f"Simulation & Analysis: {bet_type}")
-        
+        render_record_panel(display_df, ctx, f"{start_date} to {end_date}")
+
         # Show all data first but collapsed
         with st.expander("View Raw Data", expanded=False):
-            st.dataframe(display_df)
+            st.dataframe(display_df.drop(columns=[c for c in display_df.columns if c.startswith('rec_')]))      # the rec_* columns are the recorded bets' inputs (dashboard/bet_record.py)
         
-        st.caption(f"Simulating {bet_type} bets with minimum edge {threshold_label} from {start_date} to {end_date}.")
-        
+        st.caption(f"{bet_type} bets, {threshold_label}, from {start_date} to {end_date}. "
+                   + ("These are the RECOMMENDED bets: the record above." if recorded else "WHAT-IF: the live rule with another minimum edge, NOT the record of the bets the model recommended."))
+
         # Reactive Simulation (Runs automatically)
-        sim_df = simulate_strategies(display_df, threshold, bet_type)
+        sim_df = simulate_strategies(display_df, threshold, bet_type, recorded, points_edge)
         
         # Check if we have final games
         final_games = display_df[display_df['status'] == 'COMPLETED']
@@ -1323,12 +1057,14 @@ def main():
         else:
             wins = len(sim_df[sim_df['bet_outcome'] == 'Win'])
             losses = len(sim_df[sim_df['bet_outcome'] == 'Loss'])
-            win_rate = (wins / total_bets * 100) if total_bets > 0 else 0.0
+            pushes = len(sim_df[sim_df['bet_outcome'] == 'Push'])
+            settled = wins + losses                       # a push returns the stake: it is in the record but not in the win rate or the ROI base
+            win_rate = (wins / settled * 100) if settled > 0 else 0.0
             total_profit = sim_df['bet_result'].sum()
-            roi = (total_profit / (total_bets * 100) * 100) if total_bets > 0 else 0.0
-            
+            roi = (total_profit / (settled * 100) * 100) if settled > 0 else 0.0
+
             c1, c2, c3, c4 = st.columns(4)
-            c1.metric("Total Bets", total_bets)
+            c1.metric("Total Bets (W-L-P)", f"{total_bets} ({wins}-{losses}-{pushes})")
             c2.metric("Win Rate", f"{win_rate:.1f}%")
             c3.metric("Total Profit (Units)", f"{total_profit/100:.2f}u")
             c4.metric("ROI", f"{roi:.1f}%")
@@ -1370,7 +1106,7 @@ def main():
             
         st.markdown("### Detailed Log")
         st.caption("Tick **Why?** on a game to see what moved the model's numbers away from the line, and how the game ended.")
-        log_cols = ['game_date', 'matchup', 'bet_outcome', 'bet_result', 'ml_prob', 'spread_pred', 'total_pred', 'odds_home_ml', 'odds_home_spread', 'odds_total', 'home_score', 'away_score']
+        log_cols = ['game_date', 'matchup', 'bet_outcome', 'bet_result', 'bet_side', 'bet_line', 'bet_price', 'bet_src', 'ml_prob', 'spread_pred', 'total_pred', 'odds_home_ml', 'odds_home_spread', 'odds_total', 'home_score', 'away_score']
         log_table = sim_df[log_cols].copy()
         log_table.insert(0, 'Why?', False)
         ticked = st.data_editor(log_table, key="detailed_log_table", width='stretch', hide_index=True, disabled=log_cols,
@@ -1385,7 +1121,7 @@ def main():
 
     with tab4:
         st.subheader("📋 Team Performance Breakdown")
-        st.caption(f"Bet Type: **{bet_type}** · Minimum edge: **{threshold_label}** · Date Range: {start_date} → {end_date}")
+        st.caption(f"Bet Type: **{bet_type}** · Bets: **{threshold_label}** · Date Range: {start_date} → {end_date}")
 
         # Build team list from filtered data
         all_teams = sorted(set(
@@ -1398,7 +1134,7 @@ def main():
         else:
             selected_team = st.selectbox("Select Team", all_teams, key='team_breakdown_select')
 
-            actual_df, model_df = build_team_breakdown(display_df, selected_team, bet_type, threshold)
+            actual_df, model_df = build_team_breakdown(display_df, selected_team, bet_type, threshold, recorded, points_edge)
 
             if actual_df.empty:
                 st.info(f"No completed games found for {selected_team} in the selected range.")
@@ -1449,10 +1185,12 @@ def main():
 
     with tab5:
         st.subheader("🏆 League-Wide Summary")
-        st.caption(f"Model minimum edge: **{threshold:+.1%} win-probability edge** (Applies to all model bet columns). Date Range: {start_date} → {end_date}")
+        st.caption((f"Model columns: the **recommended bets** (the live rule, 5% win-probability edge)" if recorded else
+                    f"Model columns: WHAT-IF at a minimum edge of **{threshold:+.1%} win-probability edge** (applies to all three model bet columns; not the record)")
+                   + f". Date Range: {start_date} → {end_date}")
         
         with st.spinner("Calculating league summary..."):
-            league_df = build_league_summary(display_df, threshold)
+            league_df = build_league_summary(display_df, threshold, recorded)
             
             if league_df.empty:
                 st.info("No data available.")

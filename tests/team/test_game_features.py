@@ -10,7 +10,7 @@ def _games():
         'teamId_home': [1, 3],
         'teamId_away': [2, 4],
         'off_offensiveRating_5g_home': [110.0, 100.0],
-        'def_defensiveRating_5g_away': [105.0, 108.0],
+        'off_defensiveRating_5g_away': [105.0, 108.0],
         'off_pts_home': [100.0, 90.0],
         'off_pts_away': [95.0, 99.0],
         'is_home_home': [1, 1],          # excluded: not a feature

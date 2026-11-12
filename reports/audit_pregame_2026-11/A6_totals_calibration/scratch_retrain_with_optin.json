@@ -1,0 +1,45 @@
+{
+ "training_set": "data\\processed\\training_set_v1_reduced_2026-11-01.csv",
+ "calib_set_size": 1330,
+ "calib_date_range": {
+  "start": "2025-10-31 00:00:00",
+  "end": "2026-10-30 00:00:00"
+ },
+ "calibrator_params": {
+  "w0": 0.49732444061978515,
+  "w1": 0.025213849403472793,
+  "mean_level": 229.473604826546,
+  "n_fit": 1326
+ },
+ "weight_by_opening_total": {
+  "205": 0.0,
+  "210": 0.00631990118051351,
+  "215": 0.1323891481978775,
+  "220": 0.25845839521524144,
+  "225": 0.38452764223260544,
+  "230": 0.5105968892499694,
+  "235": 0.6366661362673334,
+  "240": 0.7627353832846973,
+  "245": 0.8888046303020614,
+  "250": 1.0
+ },
+ "total_mae_raw_calib": 14.705348173424081,
+ "total_mae_calibrated_calib": 14.645962012823867,
+ "total_std_raw_calib": 18.557192001234828,
+ "total_std_calibrated_calib": 18.488924391203067,
+ "total_bias_raw_calib": -0.4758357474038557,
+ "total_bias_calibrated_calib": 0.047231837145634954,
+ "sigma_total_mean_calib": 18.59143543710905,
+ "files": [
+  "calibration_meta_a6_optin_scratch.json",
+  "calibrator_ml_a6_optin_scratch.pkl",
+  "calibrator_total_a6_optin_scratch.pkl",
+  "feature_config_a6_optin_scratch.json",
+  "model_ml_a6_optin_scratch.pkl",
+  "model_spread_a6_optin_scratch.pkl",
+  "model_total_a6_optin_scratch.pkl",
+  "sigma_total_a6_optin_scratch.pkl"
+ ],
+ "model_set_hash": "e8a7ca53c9a7a8e0fe574af803d509d849837a0960ffe8dfb59f282fb06cd697",
+ "note": "calibration-block MAE/bias/std are in-sample for the weights (2 parameters); the walk-forward evidence is E27"
+}

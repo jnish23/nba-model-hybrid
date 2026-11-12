@@ -1,0 +1,9 @@
+database: C:/Users/jorda/AppData/Local/Temp/claude/fc2e35238e873ec7/fc5bb23b-cadc-4afa-aeaf-5ecb82331bb5/scratchpad/b1/run2/copy_nba_stats.db
+games 2026-10-20..2026-11-11 in predictions_log_v2: 170; bets in bets.csv: 69
+already backfilled (skipped): 170; written by a real inference run (never overwritten): 0; to insert: 0
+  ml: bets 0 {}
+  spread: bets 0 {}
+  total: bets 0 {}
+  provenance: {}; opening line source: {}
+  spread sigma 14.287, total sigma stand-in 18.936
+nothing to insert

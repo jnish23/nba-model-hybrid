@@ -149,3 +149,42 @@ def test_manifest_written_on_windows_before_hash_version_existed_still_verifies_
     assert mr.load_bundle(suffix, d).model_set_hash == legacy['model_set_hash']
     assert log_audit.provenance_report(pd.DataFrame({'model_set_hash': [legacy['model_set_hash']]}), d)['hashes'][
         legacy['model_set_hash']]['files_unchanged'] is True
+
+
+# ------------------------------------------------------------------ optional calibrator_total (E18 fix c)
+
+def test_hash_changes_when_the_total_calibrator_file_is_added_or_rewritten(tmp_path):
+    write_set(tmp_path)
+    h0 = mr.model_set_hash('_x', tmp_path)
+    joblib.dump({'w0': 0.3}, tmp_path / 'calibrator_total_x.pkl')
+    h1 = mr.model_set_hash('_x', tmp_path)
+    assert h1 != h0
+    joblib.dump({'w0': 0.31}, tmp_path / 'calibrator_total_x.pkl')
+    assert mr.model_set_hash('_x', tmp_path) != h1
+    (tmp_path / 'calibrator_total_x.pkl').unlink()
+    assert mr.model_set_hash('_x', tmp_path) == h0                                      # removing it restores the old set's hash
+
+
+def test_manifest_records_the_total_calibrator_and_a_later_edit_is_refused(tmp_path):
+    from team.market_models import TotalLevelCalibrator
+    import numpy as np
+    d = tmp_path / 'saved'
+    d.mkdir()
+    # a loadable minimal set: real LightGBM models so load_bundle's feature check passes
+    import lightgbm as lgb
+    rng = np.random.default_rng(0)
+    X = pd.DataFrame(rng.normal(size=(100, 2)), columns=['a', 'b'])
+    for stem in ('model_ml', 'model_spread', 'model_total'):
+        est = (lgb.LGBMClassifier if stem == 'model_ml' else lgb.LGBMRegressor)(n_estimators=3, verbosity=-1)
+        joblib.dump(est.fit(X, (X['a'] > 0).astype(int) if stem == 'model_ml' else X['a']), d / f'{stem}_x.pkl')
+    joblib.dump(object(), d / 'calibrator_ml_x.pkl')
+    (d / 'feature_config_x.json').write_text(json.dumps({'ml': ['a', 'b'], 'spread': ['a', 'b'], 'total': ['a', 'b']}))
+    (d / 'calibration_meta_x.json').write_text(json.dumps({'total_std': 18.0}))
+    cal = TotalLevelCalibrator().fit(np.array([220.0, 230.0, 225.0]), np.array([221.0, 226.0, 224.0]), np.array([219.0, 240.0, 220.0]))
+    joblib.dump(cal, d / 'calibrator_total_x.pkl')
+    m = mr.write_manifest('_x', d)
+    assert 'calibrator_total_x.pkl' in m['files'] and mr.load_bundle('_x', d).calibrator_total.params == cal.params
+    cal.w0 += 0.05                                                                       # overwritten in place after training
+    joblib.dump(cal, d / 'calibrator_total_x.pkl')
+    with pytest.raises(mr.ModelSetHashMismatch, match='changed after it was trained'):
+        mr.load_bundle('_x', d)
