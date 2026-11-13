@@ -74,6 +74,8 @@ def test_throttled_publish_skips_volatile_only_changes_until_the_interval_has_pa
 
 def test_the_published_app_finds_its_modules_when_only_its_own_folder_is_on_the_path(tmp_path):
     """Streamlit Cloud runs `streamlit run dashboard_props/app.py`: the script's folder is importable, the bundle root is not until app.py adds it."""
+    pytest.importorskip('streamlit')                       # the app's own packages (dashboard_props/requirements.txt) are not in the CI environment
+    pytest.importorskip('plotly')
     repo = Path(__file__).resolve().parents[2]
     bundle = tmp_path / 'bundle'
     bundle.mkdir()
