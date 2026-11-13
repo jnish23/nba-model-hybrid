@@ -19,6 +19,9 @@ jobs:
           python-version: '3.12'
           cache: pip
       - run: pip install -r requirements.txt
+      # The dashboard tests run the real pages and skip without these two packages. Versions are the ones of the local test environment;
+      # the dashboards' own requirements files are not installed here because they pin an older pandas and numpy for Streamlit Cloud.
+      - run: pip install streamlit==1.66.1 plotly==5.24.1
       - run: python -m compileall -q core team props scripts
       - run: python scripts/smoke_check.py
       - run: python -m pytest tests -q -ra
