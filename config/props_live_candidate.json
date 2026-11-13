@@ -1,0 +1,20 @@
+{
+ "rule_file": "reports/props/audit_2026-11/candidate_rule_a11.json",
+ "rule_sha256": "fd026afd076e728cf38ea8a1aaf2321cce21ad1837256dd55b6a670878dd941d",
+ "model_version": "v4_live_2026-27c1",
+ "model_season": "2026-27",
+ "model_bundle_sha256": "4cc85ee601c261ee0c82c71f649638b8d93243816c8f403653041563e750fdf0",
+ "features_db": "data/props_features_v4_pregame_all.db",
+ "features_db_bytes": 684691456,
+ "features_db_sha256": "ee64d102c6ba1abcdc29251666826eec6784df0bc4e828721d020a4576079bd6",
+ "roster_rule": "pregame_all",
+ "n_sims": 20000,
+ "effective_from": "2026-11-14",
+ "spec": "base",
+ "waivers": [
+  "A1 (October coverage ~60%)",
+  "A5",
+  "A6"
+ ],
+ "note": "CANDIDATE, not deployed. Not read by the scheduled jobs; reached only through scripts/props_signal_job.py --config."
+}
