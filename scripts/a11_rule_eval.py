@@ -6,6 +6,8 @@ minutes under 20), with the rule of the 6b choice (k_walkforward.json: candidate
                                 --experiments 7c 7d --out $OUT/results/7cd --report $RPT/7cd/report.md [--features-db data/props_features_v3.db] [--quotes-dir $OUT/quotes]
 
 S16 re-report on the final model (descriptive only): the same command with the final --p5-version and --rule-file <candidate_rule_a11.json> instead of --k-file.
+--causal-cap (7c, descriptive): adds cap1_causal / cap2_causal, the per-player-game cap the live job applies (earliest slot first, never replaced by a later or better bet, highest EV within a
+slot; props.betting.rules.cap_per_player_game_causal), next to the non-causal cap1 / cap2 (highest EV over all slots at once), with the same metrics, paired differences and keep-rule clauses.
 Inputs and refusals as scripts/a11_k_estimation.py (shares its loaders). Writes only under --out and --report.
 """
 import argparse
@@ -28,11 +30,19 @@ SCORE = '2024-25'
 TRAIN = '2023-24'
 
 
-def variants(sel):
-    """flat (the rule's own bets, 1 unit), cap 1 and cap 2 per player-game (rules.cap_per_player_game, highest EV kept), and quarter-Kelly with the per-game cap (units)."""
+def variants(sel, causal=False):
+    """
+    flat (the rule's own bets, 1 unit), cap 1 and cap 2 per player-game (rules.cap_per_player_game, highest EV kept over ALL slots at once: not causal), and quarter-Kelly with the per-game cap (units).
+    With `causal` (descriptive, for the live switch): cap1_causal / cap2_causal = rules.cap_per_player_game_causal, the cap the live job applies (earliest slot first, never replaced by a later or better bet,
+    highest EV within a slot).
+    """
     k = sel.copy()
     k['units'] = ar.kelly_units(k)
-    return {'flat': sel, 'cap1': rules.cap_per_player_game(sel, 1), 'cap2': rules.cap_per_player_game(sel, 2), 'kelly': k}
+    out = {'flat': sel, 'cap1': rules.cap_per_player_game(sel, 1), 'cap2': rules.cap_per_player_game(sel, 2), 'kelly': k}
+    if causal:
+        out['cap1_causal'] = rules.cap_per_player_game_causal(sel, 1)
+        out['cap2_causal'] = rules.cap_per_player_game_causal(sel, 2)
+    return out
 
 
 def metrics_row(name, season, b):
@@ -72,11 +82,11 @@ def load_rule(a):
     return cand, p, (rf['pmarket']['devig_method'], rf['pmarket']['consensus_set']), f'candidate rule file (fit on {rf.get("developed_on")}; descriptive only)'
 
 
-def run_7c(sels, n_boot, seed):
+def run_7c(sels, n_boot, seed, causal=False):
     met, stat_rows, pair_rows, decisions, shared = [], [], [], {}, {}
     m = {}
     for season, (sel, q) in sels.items():
-        vs = variants(sel)
+        vs = variants(sel, causal)
         shared[season] = share_shared(sel)
         bd = ar.PairedBoot(q['game_date'], n_boot, seed)
         for name, b in vs.items():
@@ -84,11 +94,14 @@ def run_7c(sels, n_boot, seed):
             met.append(m[(name, season)])
             stat_rows += by_stat(name, season, b)
             bd.add_bets(name, b, 'med')
-        for name in ('cap1', 'cap2', 'kelly'):
+        for name in [n for n in vs if n != 'flat']:
             d, db_ = bd.diff(name, 'flat'), bd.diff(name, 'flat', ar.ALPHA_BONF)
             pair_rows.append({'season': season, 'comparison': f'{name} - flat (median ROI)', **d, 'lo_bonf': db_['lo'], 'hi_bonf': db_['hi']})
+        for n in ('1', '2') if causal else ():
+            d, db_ = bd.diff(f'cap{n}_causal', f'cap{n}'), bd.diff(f'cap{n}_causal', f'cap{n}', ar.ALPHA_BONF)
+            pair_rows.append({'season': season, 'comparison': f'cap{n}_causal - cap{n} (median ROI)', **d, 'lo_bonf': db_['lo'], 'hi_bonf': db_['hi']})
     if all((v, s) in m for v in ('flat', 'cap1') for s in (SCORE, TRAIN)):
-        for cap in ('cap1', 'cap2'):
+        for cap in ('cap1', 'cap2') + (('cap1_causal', 'cap2_causal') if causal else ()):
             decisions[cap] = ar.c7_cap_decide(cap, m[(cap, SCORE)], m[('flat', SCORE)], m[(cap, TRAIN)], m[('flat', TRAIN)])
         decisions['kelly'] = ar.c7_kelly_decide(m[('kelly', SCORE)], m[('flat', SCORE)], m[('kelly', TRAIN)], m[('flat', TRAIN)])
     return pd.DataFrame(met), pd.DataFrame(stat_rows), pd.DataFrame(pair_rows), decisions, shared
@@ -149,6 +162,8 @@ def main(argv=None):
     ap.add_argument('--rule-file', default=None, help='S16 re-report: the candidate rule file instead of --k-file (descriptive)')
     ap.add_argument('--pmarket', default=None, help='choice.json; must agree with the k-file / rule file (default: theirs)')
     ap.add_argument('--quotes-dir', default=None)
+    ap.add_argument('--causal-cap', action='store_true',
+                    help='7c: also evaluate the causal per-player-game cap of the live job (cap1_causal, cap2_causal) next to the non-causal cap, same metrics (descriptive; default output unchanged)')
     ap.add_argument('--seasons', nargs='+', default=list(SEASONS))
     ap.add_argument('--experiments', nargs='+', default=['7c', '7d'], choices=('7c', '7d'))
     ap.add_argument('--out', required=True)
@@ -183,7 +198,7 @@ def main(argv=None):
           f'Median-price ROI (primary), settlement `stands`, date-clustered bootstrap ({a.n_boot} resamples, seed {a.seed}), paired on the same resamples; Bonferroni level 0.05/{ar.N_COMPARISONS}. '
           f'{TRAIN} is in sample for the rule parameters, {SCORE} out of sample.\n']
     if '7c' in a.experiments:
-        met, st, pairs, dec, shared = run_7c(sels, a.n_boot, a.seed)
+        met, st, pairs, dec, shared = run_7c(sels, a.n_boot, a.seed, a.causal_cap)
         res['7c'] = {'metrics': met, 'by_stat': st, 'paired': pairs, 'decisions': dec, 'sharing': shared,
                      'parameters': {**ar.KELLY, 'cap_roi_tol': ar.CAP_ROI_TOL, 'kelly_sharpe_mult': ar.KELLY_SHARPE_MULT, 'kelly_roi_tol': ar.KELLY_ROI_TOL}}
         md += ['## 7c: caps and quarter-Kelly (f* = EV/(d-1) at the best price; stake = min(0.25 f*, 0.02) B, B = 100; per-game total at most 0.05 B, lower-EV bets cut first)\n',

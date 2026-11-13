@@ -21,7 +21,7 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 from props import schedule as S  # noqa: E402
 from props.betting import evaluate as be, export, rules  # noqa: E402
 from props.features import build, history, rows as rows_mod  # noqa: E402
-from props.live import at_t as A, parity, roster  # noqa: E402
+from props.live import at_t as A, parity, pregame_frames, roster  # noqa: E402
 from props.live.base import build_live_base  # noqa: E402
 from props.live.frame import live_frame  # noqa: E402
 from props.live.predict import predict_rows  # noqa: E402
@@ -64,37 +64,29 @@ def build_live_frames(dates, hist, pos, reports, tips, tables, sched, cons, rule
     return pd.concat(bases, ignore_index=True), blocks, unresolved_all
 
 
-def build_live_frames_pregame(dates, hist, pos, reports, tips, tables, sched, rule):
+def build_live_frames_pregame(dates, hist, pos, reports, tips, tables, sched, rule, cons=None, skipped_out=None):
     """
-    Live frames under a pre-game teammate rule ('v2nq', 'pregame_all'; props/live/roster.rule_member_teams, shared with the training builder). The live rows are the
-    members; their T-independent block comes from the live history path (build_live_base on placeholders for the members of every T) and the T-dependent block from
-    the live at-T function (props/live/at_t.live_at_t, i.e. injury_at_t.at_t_block over the members, each on the team the rule gives him). Quotes play no part.
+    Live frames under a pre-game teammate rule ('v2nq', 'pregame_all'), through props/live/pregame_frames.build_pregame_date: the function the production signal job calls.
+    The members are the rule's set (props/live/roster.rule_member_teams, shared with the training builder); quotes never change it. cons: the price file's consensus table; when given,
+    every quoted player gets a target row (a quoted non-member too: his teammate columns are aggregated over his team's members with no self-subtraction); None keeps the members only.
+    skipped_out: a list that receives (date, game_id, slot, player_id, reason) of the quoted players that got no row.
     """
-    from props.features import pregame_roster
     bases, blocks, unresolved_all = [], [], []
-    no_extra = pd.DataFrame({'game_id': pd.Series(dtype=str), 'player_id': pd.Series(dtype='int64'), 'team_id': pd.Series(dtype=float)})
     for date in dates:
         t0 = time.time()
         g = sched[sched['et_game_date'] == date].rename(columns={'et_game_date': 'game_date'}).assign(season=SEASON)
-        gids = set(g['game_id'])
-        per_t = {}
-        for T in build.GRID:
-            rep = A.asof_reports(reports, tips, T)
-            assert (pd.to_datetime(rep['report_ts']) <= rep['gameId'].map(tips) - pd.Timedelta(minutes=T + 15)).all()
-            rp = A.report_players(rep, tips, T)
-            rp = rp[rp['game_id'].isin(gids)]
-            per_t[T] = (rep, roster.rule_member_teams(rule, g, hist, date, rp))
-        # placeholders for every member of any T, one row per (game, player); a player on both teams of one game at different T keeps the latest T's team
-        allm = pd.concat([per_t[T][1] for T in build.GRID], ignore_index=True).drop_duplicates(['game_id', 'player_id'], keep='last')
-        rosters = {int(t): set(map(int, grp['player_id'])) for t, grp in allm.groupby('team_id')}
-        base_all, unresolved = build_live_base(hist, pos, g, no_extra, date, DB, rosters=rosters)
+        quoted = {}
+        if cons is not None:
+            cd = cons[cons['game_id'].isin(set(g['game_id']))]
+            quoted = {(k[0], int(k[1])): tuple(int(p) for p in v) for k, v in cd.groupby(['game_id', 'minutes_before'])['player_id'].unique().items()}
+        views = [pregame_frames.PregameView(str(gid), T, float(T), quoted.get((gid, T), ())) for T in build.GRID for gid in g['game_id']]
+        base_all, bl, unresolved, skipped = pregame_frames.build_pregame_date(rule, hist, pos, date, g, views, reports, tips, tables, DB, date_games=g)
         unresolved_all += [(date,) + u for u in unresolved]
-        for T, (rep, members) in per_t.items():
-            base_T = base_all.drop(columns=['team_id', 'opp_team_id']).merge(members[pregame_roster.MEMBER_COLS], on=['game_id', 'player_id'], how='inner', validate='one_to_one')
-            assert len(base_T) == len(members), 'a member has no live base row'
-            blocks.append(A.live_at_t(base_T, rep, tips, T, tables[T]))
+        if skipped_out is not None:
+            skipped_out += [{'date': date, **r} for r in skipped]
+        blocks += bl
         bases.append(base_all)
-        logging.info(f'{date}: {len(g)} games, {len(base_all)} live rows, {time.time() - t0:.0f}s')
+        logging.info(f'{date}: {len(g)} games, {len(base_all)} live rows, {len(skipped)} quoted players skipped, {time.time() - t0:.0f}s')
     return pd.concat(bases, ignore_index=True), blocks, unresolved_all
 
 
@@ -118,6 +110,7 @@ def parse_args(argv=None):
     ap.add_argument('--dates', default='reports/props/d1_parity_dates.json')
     ap.add_argument('--season', default='2025-26')
     ap.add_argument('--roster-rule', default='registered', choices=roster.RULES)
+    ap.add_argument('--with-quotes', action='store_true', help='pre-game rules only: give every quoted player of the price file a target row (default: the members only, as before)')
     ap.add_argument('--no-model', action='store_true', help='development: only A1-A4')
     ap.add_argument('--model', default='v3_final_2025-26')
     ap.add_argument('--prices', default=None)
@@ -155,19 +148,24 @@ def main(argv=None):
     cons, bets = cons[cons['game_id'].isin(gids)].reset_index(drop=True), bets[bets['game_id'].isin(gids)].reset_index(drop=True)
 
     cache = out / 'live_frames.pkl'
+    skipped = []
     if cache.exists():                                           # the build takes ~30 minutes; a later crash must not repeat it (the cache is keyed by the attempt directory, i.e. rule and dates)
-        base_live, blocks, unresolved = pickle.load(open(cache, 'rb'))
+        loaded = pickle.load(open(cache, 'rb'))
+        base_live, blocks, unresolved = loaded[:3]
+        skipped = loaded[3] if len(loaded) > 3 else []
     else:
         if a.roster_rule in roster.PREGAME_RULES:
-            base_live, blocks, unresolved = build_live_frames_pregame(dates, hist, pos, reports, tips, tables, sched, a.roster_rule)
+            base_live, blocks, unresolved = build_live_frames_pregame(dates, hist, pos, reports, tips, tables, sched, a.roster_rule, cons=cons if a.with_quotes else None, skipped_out=skipped)
         else:
             base_live, blocks, unresolved = build_live_frames(dates, hist, pos, reports, tips, tables, sched, cons, a.roster_rule)
-        pickle.dump((base_live, blocks, unresolved), open(cache, 'wb'))
+        pickle.dump((base_live, blocks, unresolved, skipped), open(cache, 'wb'))
+    if skipped:
+        pd.DataFrame(skipped).to_csv(out / 'skipped_quoted.csv', index=False)
     live = live_frame(base_live, blocks)
     train = data.load_frame(FDB, gids)
     train['game_id'] = train['game_id'].astype(str)
     logging.info(f'live frame {live.shape}, training frame {train.shape}')
-    res, cols = {'attempt': a.attempt, 'roster_rule': a.roster_rule, 'season': SEASON, 'dates': dates, 'model': a.model, 'rule_sha256': sha(RULE), 'n_sims': a.n_sims, 'seed': a.seed}, list(train.columns)
+    res, cols = {'attempt': a.attempt, 'roster_rule': a.roster_rule, 'with_quotes': bool(a.with_quotes), 'quoted_skipped': len(skipped), 'season': SEASON, 'dates': dates, 'model': a.model, 'rule_sha256': sha(RULE), 'n_sims': a.n_sims, 'seed': a.seed}, list(train.columns)
     if FDB != FDB_DEFAULT:
         res['features_db'] = str(FDB)
 

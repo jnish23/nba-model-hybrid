@@ -5,6 +5,7 @@ point-in-time features, predicts with the pinned live model, applies the frozen 
     python scripts/props_signal_job.py                  # live
     python scripts/props_signal_job.py --dry-run        # evaluate and print, write nothing
     python scripts/props_signal_job.py --now 2026-10-23T22:00:00Z --dry-run
+    python scripts/props_signal_job.py --config config/props_live_candidate.json --db data/props_candidate_dryrun.db --now ... --dry-run    # candidate: own store, own play-table cache
 
 A slot that raises is isolated: the other slots of the run are still written, the failing one gets no slot-log row (the next run retries it until it is missed) and the run's health row is
 'error' with the failing game/slot list in detail.failed_slots (exit 1).
@@ -24,6 +25,7 @@ import pandas as pd
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from props import schedule as S  # noqa: E402
+from props.betting import prices, rules  # noqa: E402
 from props.features import build, history, rows as rows_mod  # noqa: E402
 from props.live import at_t as A, config, events, quotes, reports as live_reports_mod, signal, store  # noqa: E402
 from props.live.freshness import GAME_PREFIXES, HISTORY_LAG_HOURS, stale_history  # noqa: E402
@@ -39,8 +41,14 @@ def utc_now():
 iso = events.iso
 
 
+def play_tables_cache_path(features_db, season):
+    """The deployed database keeps its cache name; any other features database (a candidate) gets its own, so a candidate run never replaces the deployed cache."""
+    stem = Path(features_db).stem
+    return Path(f'data/processed/live_play_tables_{season}.pkl' if stem == 'props_features_v3' else f'data/processed/live_play_tables_{season}_{stem}.pkl')
+
+
 def play_tables_cached(features_db, season):
-    path = Path(f'data/processed/live_play_tables_{season}.pkl')
+    path = play_tables_cache_path(features_db, season)
     key = (Path(features_db).stat().st_size, season)
     if path.exists():
         k, t = pickle.load(open(path, 'rb'))
@@ -51,11 +59,13 @@ def play_tables_cached(features_db, season):
     return t
 
 
-def due_items(conn, odds_db, sched, matched, now, season, log, failed=None):
+def due_items(conn, odds_db, sched, matched, now, season, log, failed=None, pmarket=None):
     """
     The slots that are due, as SlotItems; missed and quote-less slots go to `log`. A game whose slots cannot be prepared (its schedule row or quotes raise) is skipped and appended
     to `failed` (when given) with its error: it gets no slot-log row, so the next run retries it, and the other games are not affected.
+    pmarket: the rule file's (devig_method, consensus_set); a variant other than the current method is built by quotes.slot_quotes and recorded on the SlotItem.
     """
+    variant = tuple(pmarket) if pmarket is not None and tuple(pmarket) != prices.CURRENT_PMARKET else None
     items = []
     for g in matched.itertuples(index=False):
         if not isinstance(g.game_id, str):
@@ -76,12 +86,12 @@ def due_items(conn, odds_db, sched, matched, now, season, log, failed=None):
                 if status == 'missed':
                     log.append((g.game_id, T, 'missed', {'minutes_to_tip': round(now_m, 1), 'snapshots': len(sm)}, None, None))
                     continue
-                cons, bets, raw = quotes.slot_quotes(odds_db, g.event_id_vendor, g.game_id, ts, T)
+                cons, bets, raw = quotes.slot_quotes(odds_db, g.event_id_vendor, g.game_id, ts, T, **({'pmarket': variant} if variant else {}))
                 if cons is None or cons.empty:
                     log.append((g.game_id, T, 'no_quotes', {'snapshot': ts}, None, None))
                     continue
                 names = dict(zip(raw['player_id'].astype(int), raw['player_name_raw']))
-                items.append(signal.SlotItem(game=srow, slot=T, snapshot_ts_utc=ts, snapshot_minutes=m, event_id=g.event_id_vendor, cons=cons, bets=bets, names=names))
+                items.append(signal.SlotItem(game=srow, slot=T, snapshot_ts_utc=ts, snapshot_minutes=m, event_id=g.event_id_vendor, cons=cons, bets=bets, names=names, pmarket=variant))
         except Exception as e:                   # noqa: BLE001 - one bad game must not stop the others
             del items[n_before:], log[n_log:]
             logging.error(f'{g.game_id}: slots not prepared: {traceback.format_exc()}')
@@ -148,7 +158,9 @@ def main():
     job = 'signal'
     try:
         cfg = config.verify(config.load(a.config))
-    except (config.ConfigRefused, FileNotFoundError) as e:
+        rule = json.loads(Path(cfg['rule_file']).read_text(encoding='utf-8'))
+        spec = rules.rule_spec(rule)                       # an unknown candidate / pmarket variant or a missing parameter refuses the run here, before any slot
+    except (config.ConfigRefused, FileNotFoundError, rules.RuleFileError, json.JSONDecodeError) as e:
         logging.error(f'refused: {e}')
         store.health(conn, run_id, job, started, iso(utc_now()), 'refused', 0, {'reason': str(e)})
         return 2
@@ -159,7 +171,7 @@ def main():
         ev = events.events_in_window(a.odds_db, now)
         matched = S.match_games(ev, sched, S.team_id_map(a.nba_db)) if len(ev) else ev.assign(game_id=None, tip_ref_utc=None)
         log, failed = [], []
-        items = due_items(conn, a.odds_db, sched, matched, now, season, log, failed)
+        items = due_items(conn, a.odds_db, sched, matched, now, season, log, failed, pmarket=spec['pmarket'])
         if not items and not log and not failed:
             store.health(conn, run_id, job, started, iso(utc_now()), 'idle', 0, {'events': len(ev)})
             logging.info(f'nothing due ({len(ev)} events in the window)')
@@ -178,9 +190,9 @@ def main():
             ctx = signal.Context(
                 hist=hist, pos=history.position_groups(a.nba_db), reports=live_reports_mod.live_reports(a.nba_db, sched, season, str((now - pd.Timedelta(days=2)).date())),
                 tips=build.reference_tips_et([season]), tables=play_tables_cached(cfg['features_db'], season), bundle=registry.load_bundle(cfg['model_version'], cfg['model_season']),
-                rule=json.loads(Path(cfg['rule_file']).read_text(encoding='utf-8')), nba_db=a.nba_db, n_sims=cfg['n_sims'], model_version=cfg['model_version'],
+                rule=rule, nba_db=a.nba_db, n_sims=cfg['n_sims'], model_version=cfg['model_version'],
                 provenance={'model_sha256': cfg['model_bundle_sha256'], 'features_db_sha256': cfg['features_db_sha256'], 'rule_sha256': cfg['rule_sha256'],
-                            'roster_rule': cfg['roster_rule'], 'code_commit': config.code_commit()}, roster_rule=cfg['roster_rule'])
+                            'roster_rule': cfg['roster_rule'], 'code_commit': config.code_commit()}, roster_rule=cfg['roster_rule'], schedule=sched)
             logging.info(f'context ready in {time.time() - t0:.0f}s; {len(items)} slots due')
             by_date = {}
             for it in sorted(items, key=lambda i: (i.game['game_date'], -i.slot)):

@@ -44,10 +44,8 @@ from props.betting import prices  # noqa: E402
 SEASONS = {'2023-24': ('2023-10-01', '2024-06-30'), '2024-25': ('2024-10-01', '2025-06-30')}      # the date ranges of props/betting/export.SEASONS
 LAST_ALLOWED_DATE = '2025-06-30'
 DEVIG_METHODS = tuple(devig.METHODS)                                                              # multiplicative, power, shin
-CONSENSUS_SETS = {'all_mean': {'agg': 'mean', 'books': None},                                     # the current method
-                  'bettable_mean': {'agg': 'mean', 'books': prices.BETTABLE},
-                  'all_median': {'agg': 'median', 'books': None}}
-CURRENT = ('multiplicative', 'all_mean')
+CONSENSUS_SETS = prices.CONSENSUS_SETS                                                            # all books mean = the current method, bettable books mean, all books median (props.betting.prices)
+CURRENT = prices.CURRENT_PMARKET
 # the current method first (it is the reference of every comparison), then the other eight in a fixed order (the tie-break order of the keep rule)
 VARIANTS = [CURRENT] + [(m, s) for m in DEVIG_METHODS for s in CONSENSUS_SETS if (m, s) != CURRENT]
 KEY = ['game_id', 'player_id', 'minutes_before', 'stat']
@@ -160,17 +158,7 @@ def read_chunk(conn, event_ids, start, end, grid=prices.GRID):
 # Variants
 # ----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-def finish_consensus(cons_raw, d):
-    """The post-processing of prices.quotes_from_snapshots applied to analysis.consensus output (adds game, player and slot; one row per game-player-slot-market). Keeps n_books."""
-    cons = cons_raw.dropna(subset=['consensus_fair_over'])
-    keys = d[['snapshot_ts_utc', 'event_id_vendor', 'player_name_raw', 'game_id', 'player_id', 'minutes_before']].dropna(subset=['player_id']).drop_duplicates(
-        ['snapshot_ts_utc', 'event_id_vendor', 'player_name_raw'])
-    cons = cons.merge(keys, on=['snapshot_ts_utc', 'event_id_vendor', 'player_name_raw'], how='inner', validate='many_to_one')
-    cons['player_id'] = cons['player_id'].astype(int)
-    key = ['game_id', 'player_id', 'minutes_before', 'market']
-    cons = cons.sort_values(key + ['n_at_line', 'snapshot_ts_utc'], ascending=[True] * len(key) + [False, True]).drop_duplicates(key)
-    return cons.rename(columns={'market': 'stat'})[['game_id', 'player_id', 'minutes_before', 'stat', 'snapshot_ts_utc', 'event_id_vendor', 'player_name_raw',
-                                                     'consensus_line', 'consensus_fair_over', 'n_at_line', 'n_books', 'book_spread']]
+finish_consensus = prices.finish_consensus          # moved to props.betting.prices: the live job builds the variant consensus through the same function
 
 
 def variant_tables(d, game_dates, min_books=prices.MIN_BOOKS, stale_minutes=prices.STALE_MINUTES):
@@ -180,8 +168,8 @@ def variant_tables(d, game_dates, min_books=prices.MIN_BOOKS, stale_minutes=pric
         return {v: pd.DataFrame(columns=SLIM_COLUMNS) for v in VARIANTS}
     for method in DEVIG_METHODS:
         flagged = analysis.flag_main_lines(analysis.add_devig(d, method=method, stale_after_minutes=stale_minutes))
-        for sname, spec in CONSENSUS_SETS.items():
-            cons = finish_consensus(analysis.consensus(flagged, min_books=min_books, agg=spec['agg'], books=spec['books']), d)
+        for sname in CONSENSUS_SETS:
+            cons = prices.variant_consensus(d, method, sname, min_books, stale_minutes, flagged=flagged)
             cons['game_date'] = cons['event_id_vendor'].map(game_dates)
             out[(method, sname)] = cons[SLIM_COLUMNS].reset_index(drop=True)
         del flagged

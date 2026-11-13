@@ -25,7 +25,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from props.betting import evaluate as be, rules, settle
+from props.betting import evaluate as be, prices, rules, settle
 from props.live import monitor as mon
 
 # ----------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -40,7 +40,7 @@ N_COMPARISONS = 23                                                  # A.5
 ALPHA = 0.05
 ALPHA_BONF = 0.05 / N_COMPARISONS                                   # 99.78% intervals
 C_GRID = tuple(round(0.02 + 0.01 * i, 2) for i in range(11))        # E3: {0.02, 0.03, ..., 0.12}
-P_CLIP = (0.01, 0.99)                                               # C2-C4, P0
+P_CLIP = rules.P_CLIP                                               # C2-C4, P0 (0.01, 0.99)
 FLAT_DEC = 1.0 + 100.0 / 110.0                                      # flat -110
 TRIED_RULES = 60                                                    # C.6 / A.5: 37 + 23
 LAST_ALLOWED_DATE = '2025-06-30'                                    # A.1
@@ -273,44 +273,9 @@ def candidate_params(cand, params_by_est):
 # p*, EV, selection
 # ----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-def _map(q, d):
-    return q['stat'].map(d or {}).fillna(0.0).to_numpy(float)          # a stat without a parameter gets 0 (as rules.add_ev's fillna(0) for k)
-
-
-def p_star(cand, q, params):
-    """p* (probability of the OVER) for every quote row of q (columns stat, consensus_fair_over, p_mod, minutes_before)."""
-    pm = q['consensus_fair_over'].to_numpy(float)
-    g = q['p_mod'].to_numpy(float) - pm
-    lo, hi = P_CLIP
-    if cand in ('C0', 'C1'):
-        return rules.shrunk(pm, q['p_mod'].to_numpy(float), _map(q, params['b']))
-    if cand == 'C1_E4':
-        key = q['stat'].astype(str) + '|' + q['minutes_before'].astype(int).astype(str)
-        return rules.shrunk(pm, q['p_mod'].to_numpy(float), key.map(params['b_slot']).fillna(0.0).to_numpy(float))
-    if cand == 'C2':
-        return np.clip(pm + _map(q, params['a']) + _map(q, params['b']) * g, lo, hi)
-    if cand == 'C3':
-        a = np.where(g >= 0, _map(q, params['a_pos']), _map(q, params['a_neg']))
-        return np.clip(pm + a + _map(q, params['b']) * g, lo, hi)
-    if cand == 'C4':
-        c = float(params['c'])
-        return np.clip(pm + _map(q, params['a']) + _map(q, params['b']) * np.clip(g, -c, c), lo, hi)
-    if cand == 'P0':
-        return np.clip(pm + _map(q, params['a']), lo, hi)
-    if cand == 'P00':
-        return pm.copy()
-    raise ValueError(cand)
-
-
-def add_ev_pstar(q, ps):
-    """rules.add_ev with p* given instead of k: the same EV formula (rules.ev_over_under), side choice, best_ev and dec_price, for both sides of every quote."""
-    q = q.copy()
-    q['p_star'] = np.asarray(ps, float)
-    q['ev_over'], q['ev_under'] = rules.ev_over_under(q['p_star'], q['push'], q['over_dec'], q['under_dec'])
-    q['best_side'] = np.where(q['ev_over'] >= q['ev_under'], 'over', 'under')
-    q['best_ev'] = np.maximum(q['ev_over'], q['ev_under'])
-    q['dec_price'] = np.where(q['best_side'] == 'over', q['over_dec'], q['under_dec'])
-    return q
+_map = rules._map                       # p*, EV and the p_market variant substitution are pure and unguarded in props.betting.rules / props.betting.prices (shared with the live job);
+p_star = rules.p_star                   # the season guards of this module (check_season, check_dates) stay here and guard every research entry point
+add_ev_pstar = rules.add_ev_pstar
 
 
 def select_candidate(q, cand, params, primary=PRIMARY):
@@ -589,7 +554,7 @@ def d7_decide(pooled, per_season):
 # p_market variant (7a choice) and the candidate rule file
 # ----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-CURRENT_PMARKET = ('multiplicative', 'all_mean')
+CURRENT_PMARKET = prices.CURRENT_PMARKET
 
 
 def pmarket_from_choice(choice):
@@ -599,22 +564,7 @@ def pmarket_from_choice(choice):
     return (str(choice['devig_method']), str(choice['consensus_set']))
 
 
-def apply_pmarket(cons, bets, variant):
-    """
-    Replace the consensus by a 7a variant table (columns game_id, player_id, minutes_before, stat, snapshot_ts_utc, consensus_line, consensus_fair_over, n_at_line).
-    Bets keep only quotes of the same snapshot that sit on the variant's consensus line; consensus_fair_over and n_at_line come from the variant. Returns (cons, bets, n_bets_dropped).
-    """
-    key = ['game_id', 'player_id', 'minutes_before', 'stat']
-    v = variant.copy()
-    v['game_id'] = v['game_id'].astype(str)
-    v['player_id'] = v['player_id'].astype(int)
-    cols = key + ['snapshot_ts_utc', 'consensus_line', 'consensus_fair_over', 'n_at_line']
-    b = bets.copy()
-    b['game_id'] = b['game_id'].astype(str)
-    nb = b.drop(columns=['consensus_fair_over', 'n_at_line']).merge(v[cols], on=key + ['snapshot_ts_utc'], how='inner', validate='many_to_one')
-    nb = nb[nb['line'] == nb['consensus_line']].drop(columns=['consensus_line']).reset_index(drop=True)
-    keep = [c for c in cons.columns if c in v.columns] or cols
-    return v[list(dict.fromkeys(keep + cols))].reset_index(drop=True), nb[bets.columns], int(len(bets) - len(nb))
+apply_pmarket = prices.apply_pmarket    # moved to props.betting.prices (the live job substitutes the variant through the same function)
 
 
 def guard_output(path, repo_root):

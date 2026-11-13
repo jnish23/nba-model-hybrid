@@ -7,7 +7,7 @@ import json
 import numpy as np
 import pandas as pd
 
-from props.betting import rules
+from props.betting import prices, rules
 from props.live import events, quotes
 from props.models import outcome as oc
 
@@ -15,10 +15,12 @@ COLS = ['bet_id', 'as_of_utc', 'snapshot_minutes_now', 'line_now', 'line_moved',
         'ev_best_now', 'ev_flat_now', 'still_qualifies']
 
 
-def bet_now(bet, mkt, rule, k):
+def bet_now(bet, mkt, rule, k, stat=None):
     """
     bet: a recorded bet (dict-like with side, line, pmf). mkt: the current bettable quotes of its market (rows with line, book, over_dec, under_dec,
     consensus_fair_over, n_at_line). Returns the dict of COLS (without bet_id / timestamps) or None when the market has no quote now.
+    p* follows the rule file: k-only (k, the frozen rule) unless the file names a `candidate`, then props.betting.rules.p_star for `stat` (required in that case). The quotes must have been
+    built with the rule's p_market variant (current_odds does).
     """
     if mkt is None or mkt.empty:
         return None
@@ -27,7 +29,7 @@ def bet_now(bet, mkt, rule, k):
     pmf = np.asarray(bet['pmf'], dtype=float)[None, :]
     p_mod = float(oc.prob_over_no_push(pmf, np.array([line]))[0])
     push = float(oc.prob_push(pmf, np.array([line]))[0])
-    p_star = float(rules.shrunk(p_mkt, p_mod, k))
+    p_star = float(rules.shrunk(p_mkt, p_mod, k)) if rules.rule_spec(rule)['candidate'] is None else rules.pstar_of(rule, stat, p_mkt, p_mod)
     over = bet['side'] == 'over'
     dec = (mkt['over_dec'] if over else mkt['under_dec']).to_numpy(float)
     med = float(np.median(dec))
@@ -52,6 +54,8 @@ def current_odds(pending, schedule, odds_db, now, rule):
     from props import schedule as S
     if pending.empty:
         return pd.DataFrame(columns=COLS)
+    pmarket = rules.rule_spec(rule)['pmarket']
+    variant = pmarket if pmarket != prices.CURRENT_PMARKET else None
     ev = events.events_in_window(odds_db, now, hours_back=0.0, hours_ahead=14.0)
     if ev.empty:
         return pd.DataFrame(columns=COLS)
@@ -69,12 +73,12 @@ def current_odds(pending, schedule, odds_db, now, rule):
         if sm.empty:
             continue
         ts = sm.idxmin()                                                         # the most recent snapshot that is still before the tip
-        cons, bets, _ = quotes.slot_quotes(odds_db, g.event_id_vendor, g.game_id, ts, 0)
+        cons, bets, _ = quotes.slot_quotes(odds_db, g.event_id_vendor, g.game_id, ts, 0, **({'pmarket': variant} if variant else {}))
         if bets is None or bets.empty:
             continue
         for b in mine.itertuples(index=False):
             mkt = bets[(bets['player_id'] == b.player_id) & (bets['stat'] == b.stat)]
-            r = bet_now({'side': b.side, 'line': b.line, 'pmf': json.loads(b.pmf_json)}, mkt, rule, rule['k_by_stat'][b.stat])
+            r = bet_now({'side': b.side, 'line': b.line, 'pmf': json.loads(b.pmf_json)}, mkt, rule, rule['k_by_stat'][b.stat], stat=b.stat)
             if r:
                 rows.append({'bet_id': b.bet_id, 'as_of_utc': ts, 'snapshot_minutes_now': float(sm[ts]), **r})
     return pd.DataFrame(rows, columns=COLS)

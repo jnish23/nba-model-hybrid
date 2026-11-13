@@ -16,6 +16,10 @@ BETTABLE = ('draftkings', 'fanduel', 'betmgm', 'williamhill_us', 'betrivers', 'u
 GRID = (240, 60, 5)
 MIN_BOOKS = 3
 STALE_MINUTES = 60
+CURRENT_PMARKET = ('multiplicative', 'all_mean')                      # (de-vig method, consensus set) of the frozen rule's p_market
+CONSENSUS_SETS = {'all_mean': {'agg': 'mean', 'books': None},         # the current method (7a, reports/props/audit_2026-11/WP6_WP7_experiment_plan.md)
+                  'bettable_mean': {'agg': 'mean', 'books': BETTABLE},
+                  'all_median': {'agg': 'median', 'books': None}}
 
 
 def american_to_decimal(a):
@@ -68,4 +72,60 @@ def quotes_from_snapshots(d, min_books=MIN_BOOKS):
     b['under_dec'] = american_to_decimal(b['under_price'])
     bets = b[['game_id', 'player_id', 'minutes_before', 'stat', 'book', 'line', 'over_price', 'under_price', 'over_dec', 'under_dec', 'fair_over', 'consensus_fair_over',
               'n_at_line', 'snapshot_ts_utc', 'quote_age_min']].reset_index(drop=True)
+    return cons, bets
+
+
+def finish_consensus(cons_raw, d):
+    """The post-processing of quotes_from_snapshots applied to analysis.consensus output (adds game, player and slot; one row per game-player-slot-market). Keeps n_books."""
+    cons = cons_raw.dropna(subset=['consensus_fair_over'])
+    keys = d[['snapshot_ts_utc', 'event_id_vendor', 'player_name_raw', 'game_id', 'player_id', 'minutes_before']].dropna(subset=['player_id']).drop_duplicates(
+        ['snapshot_ts_utc', 'event_id_vendor', 'player_name_raw'])
+    cons = cons.merge(keys, on=['snapshot_ts_utc', 'event_id_vendor', 'player_name_raw'], how='inner', validate='many_to_one')
+    cons['player_id'] = cons['player_id'].astype(int)
+    key = ['game_id', 'player_id', 'minutes_before', 'market']
+    cons = cons.sort_values(key + ['n_at_line', 'snapshot_ts_utc'], ascending=[True] * len(key) + [False, True]).drop_duplicates(key)
+    return cons.rename(columns={'market': 'stat'})[['game_id', 'player_id', 'minutes_before', 'stat', 'snapshot_ts_utc', 'event_id_vendor', 'player_name_raw',
+                                                     'consensus_line', 'consensus_fair_over', 'n_at_line', 'n_books', 'book_spread']]
+
+
+def variant_consensus(d, devig_method, consensus_set, min_books=MIN_BOOKS, stale_minutes=STALE_MINUTES, flagged=None):
+    """
+    The consensus table of one p_market variant (7a) from snapshot rows d: analysis.add_devig(method) -> flag_main_lines -> analysis.consensus(agg, books of the set) -> finish_consensus.
+    `flagged` (the output of add_devig + flag_main_lines for this method) may be passed to share it between the sets of one method. The research cache (scripts/a11_cache_quotes.py) and the
+    live job both build the variant through this function.
+    """
+    spec = CONSENSUS_SETS[consensus_set]
+    if flagged is None:
+        flagged = analysis.flag_main_lines(analysis.add_devig(d, method=devig_method, stale_after_minutes=stale_minutes))
+    return finish_consensus(analysis.consensus(flagged, min_books=min_books, agg=spec['agg'], books=spec['books']), d)
+
+
+def apply_pmarket(cons, bets, variant):
+    """
+    Replace the consensus by a 7a variant table (columns game_id, player_id, minutes_before, stat, snapshot_ts_utc, consensus_line, consensus_fair_over, n_at_line).
+    Bets keep only quotes of the same snapshot that sit on the variant's consensus line; consensus_fair_over and n_at_line come from the variant. Returns (cons, bets, n_bets_dropped).
+    """
+    key = ['game_id', 'player_id', 'minutes_before', 'stat']
+    v = variant.copy()
+    v['game_id'] = v['game_id'].astype(str)
+    v['player_id'] = v['player_id'].astype(int)
+    cols = key + ['snapshot_ts_utc', 'consensus_line', 'consensus_fair_over', 'n_at_line']
+    b = bets.copy()
+    b['game_id'] = b['game_id'].astype(str)
+    nb = b.drop(columns=['consensus_fair_over', 'n_at_line']).merge(v[cols], on=key + ['snapshot_ts_utc'], how='inner', validate='many_to_one')
+    nb = nb[nb['line'] == nb['consensus_line']].drop(columns=['consensus_line']).reset_index(drop=True)
+    keep = [c for c in cons.columns if c in v.columns] or cols
+    return v[list(dict.fromkeys(keep + cols))].reset_index(drop=True), nb[bets.columns], int(len(bets) - len(nb))
+
+
+def quotes_for_pmarket(d, min_books=MIN_BOOKS, pmarket=None):
+    """
+    quotes_from_snapshots under a p_market variant, the way the research path builds it: the current-method (cons, bets), then the variant consensus of the same rows, then apply_pmarket
+    (bettable quotes not on the variant's consensus line of the same snapshot are dropped; consensus_fair_over and n_at_line come from the variant). pmarket None or the current
+    method returns quotes_from_snapshots unchanged.
+    """
+    cons, bets = quotes_from_snapshots(d, min_books)
+    if pmarket is None or tuple(pmarket) == CURRENT_PMARKET:
+        return cons, bets
+    cons, bets, _ = apply_pmarket(cons, bets, variant_consensus(d, pmarket[0], pmarket[1], min_books))
     return cons, bets

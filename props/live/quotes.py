@@ -61,8 +61,13 @@ def minutes_before_tip(snapshot_ts_utc, tip_ref_utc):
     return (pd.to_datetime(tip_ref_utc, utc=True) - pd.to_datetime(snapshot_ts_utc, utc=True)).total_seconds() / 60.0
 
 
-def slot_quotes(props_db, event_id, game_id, snapshot_ts_utc, T, min_books=prices.MIN_BOOKS):
-    """(consensus, bets, raw snapshot rows) of one snapshot served as the slot with nominal minutes T. game_id is the NBA game matched to the vendor event."""
+def slot_quotes(props_db, event_id, game_id, snapshot_ts_utc, T, min_books=prices.MIN_BOOKS, pmarket=None):
+    """
+    (consensus, bets, raw snapshot rows) of one snapshot served as the slot with nominal minutes T. game_id is the NBA game matched to the vendor event.
+    pmarket: (devig_method, consensus_set) of the rule file's `pmarket` key; None or the current method (multiplicative, all_mean) gives the frozen rule's quotes unchanged. A variant is
+    built by prices.quotes_for_pmarket, the research path's substitution: consensus and consensus_fair_over / n_at_line of the bets from the variant, and bettable quotes not on the variant's
+    consensus line of this snapshot dropped.
+    """
     q = """SELECT snapshot_ts_utc, event_id_vendor, book, player_id, player_name_raw, market, line, over_price, under_price, is_alt_line, book_last_update_utc, home_team, away_team
            FROM prop_snapshots WHERE event_id_vendor = ? AND snapshot_ts_utc = ? AND is_alt_line = 0 AND player_id IS NOT NULL AND player_id <> -1"""
     with sqlite3.connect(f'file:{props_db}?mode=ro', uri=True, timeout=120) as conn:
@@ -71,5 +76,5 @@ def slot_quotes(props_db, event_id, game_id, snapshot_ts_utc, T, min_books=price
     d['minutes_before'] = int(T)
     if d.empty:
         return None, None, d
-    cons, bets = prices.quotes_from_snapshots(d, min_books)
+    cons, bets = prices.quotes_for_pmarket(d, min_books, pmarket)
     return cons, bets, d

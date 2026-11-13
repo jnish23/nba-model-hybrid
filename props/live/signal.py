@@ -4,14 +4,15 @@ fold, quotes from props.betting.prices, selection and EV from props.betting.rule
 """
 import hashlib
 import json
+import logging
 from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
 
 from core import props_board_logic as logic
-from props.betting import evaluate as be, export, rules
-from props.live import at_t as A, roster
+from props.betting import evaluate as be, export, prices, rules
+from props.live import at_t as A, pregame_frames, roster
 from props.live.base import build_live_base
 from props.live.frame import live_frame
 from props.live.predict import predict_rows
@@ -32,6 +33,7 @@ class Context:
     model_version: str
     provenance: dict            # model_sha256, features_db_sha256, rule_sha256, roster_rule, code_commit
     roster_rule: str = 'v2'
+    schedule: pd.DataFrame = None   # the season schedule (game_id, et_game_date, home_team_id, away_team_id): the pre-game rules place players with the reports of EVERY game of the date
 
 
 @dataclass
@@ -44,6 +46,7 @@ class SlotItem:
     cons: pd.DataFrame
     bets: pd.DataFrame
     names: dict                  # player_id -> name
+    pmarket: tuple = None        # (devig_method, consensus_set) the quotes were built with (props.live.quotes.slot_quotes); None = the current method. evaluate_item refuses a mismatch with the rule file
 
 
 def slot_seed(game_id, slot):
@@ -52,6 +55,8 @@ def slot_seed(game_id, slot):
 
 def build_frames(ctx, date, items):
     """The model-input frame of every item of one date (one base build for the date)."""
+    if ctx.roster_rule in roster.PREGAME_RULES:
+        return _build_frames_pregame(ctx, date, items)
     games = pd.DataFrame([i.game for i in items]).drop_duplicates('game_id')
     games = games.assign(game_date=date)
     h = ctx.hist[ctx.hist['game_date'] < date]
@@ -77,15 +82,45 @@ def build_frames(ctx, date, items):
     return frame, unresolved
 
 
+def _build_frames_pregame(ctx, date, items):
+    """
+    build_frames under a pre-game roster rule ('v2nq', 'pregame_all'): props.live.pregame_frames.build_pregame_date, the function the parity script runs. Each item keeps its own
+    information time (snapshot_minutes: which reports are usable) and nominal slot (labels the rows). Quoted players who got no row are in frame.attrs['skipped_players'] as
+    {(game_id, slot): {player_id: reason}}; evaluate_item reports them in the slot's detail.
+    """
+    games = pd.DataFrame([i.game for i in items]).drop_duplicates('game_id')
+    date_games = None
+    if ctx.schedule is not None:
+        date_games = ctx.schedule[ctx.schedule['et_game_date'] == date]
+    else:
+        logging.warning(f'{date}: no schedule in the context; the pre-game roster rule sees only the games with a due slot, so a player placed on another game by its report is not removed from his old team')
+    views = [pregame_frames.PregameView(str(i.game['game_id']), int(i.slot), float(i.snapshot_minutes), tuple(int(p) for p in i.cons['player_id'].unique())) for i in items]
+    base_all, blocks, unresolved, skipped = pregame_frames.build_pregame_date(ctx.roster_rule, ctx.hist, ctx.pos, date, games, views, ctx.reports, ctx.tips, ctx.tables, ctx.nba_db, date_games)
+    frame = live_frame(base_all, blocks)
+    frame.attrs['skipped_players'] = pregame_frames.skipped_by_slot(skipped)
+    return frame, unresolved
+
+
 def evaluate_item(ctx, it, frame, existing):
-    """Signals (every evaluated rule-stat market) and the new bets of one slot. existing: set of (game_id, player_id, stat) already in the bet record."""
+    """
+    Signals (every evaluated rule-stat market) and the new bets of one slot. existing: set of (game_id, player_id, stat) already in the bet record.
+    The rule file selects the form (props.betting.rules.rule_spec): without the optional keys p* = p_mkt + k (p_mod - p_mkt) (the frozen rule); with `candidate` the p* of
+    props.betting.rules.p_star; `pmarket` names the p_market variant the item's quotes must have been built with; `cap_per_player_game` n is the causal cap: a player-game with n bets
+    in `existing` gets no new bet, and among the new qualifying markets of one player-game at this slot the n with the highest best-price EV (ties: stat name) are kept. A market the cap
+    removes is shown in the signals with qualified = 0 (already_bet stays the market-level flag) and listed in detail['capped_out'] with its reason.
+    """
     rule = ctx.rule
+    spec = rules.rule_spec(rule)
+    if tuple(it.pmarket or prices.CURRENT_PMARKET) != spec['pmarket']:
+        raise ValueError(f"the quotes of {it.game['game_id']} T-{it.slot} were built with p_market {it.pmarket or prices.CURRENT_PMARKET}, the rule file asks for {spec['pmarket']}")
     gid = it.game['game_id']
     rows = frame[(frame['game_id'] == gid) & (frame['minutes_before'] == it.slot)]
     quoted = it.cons[['game_id', 'player_id']].drop_duplicates()
     rows = rows.merge(quoted, on=['game_id', 'player_id'], how='inner').sort_values(['player_id']).reset_index(drop=True)
     missing = sorted(set(quoted['player_id']) - set(rows['player_id']))
     detail = {'quoted_players': int(quoted['player_id'].nunique()), 'players_without_features': [int(p) for p in missing]}
+    if 'skipped_players' in frame.attrs:          # pre-game roster rules: why each quoted player without a row got none
+        detail['skip_reasons'] = {str(p): r for p, r in frame.attrs['skipped_players'].get((gid, it.slot), {}).items()}
     if rows.empty:
         return pd.DataFrame(), pd.DataFrame(), detail
     mm, pm = predict_rows(ctx.bundle, rows, ctx.n_sims, slot_seed(gid, it.slot))
@@ -94,9 +129,23 @@ def evaluate_item(ctx, it, frame, existing):
     q = q[q['stat'].isin(rule['stats'])].reset_index(drop=True)
     if q.empty:
         return pd.DataFrame(), pd.DataFrame(), detail
-    q = rules.add_ev(q, rule['k_by_stat'])
+    q = rules.add_ev_rule(q, rule)
     prim = rule['primary']
     sel = rules.select(q, prim['e'], 'earliest', prim['min_books'])
+    # A boolean NumPy mask, never a plain list: when sel is empty (no market qualified) `sel[[]]` is read by pandas as "select no columns", the merge below then has no game_id and raised KeyError('game_id')
+    is_new = np.array([tuple(r) not in existing for r in sel[['game_id', 'player_id', 'stat']].itertuples(index=False, name=None)], dtype=bool)
+    new = sel[is_new]
+    capped = {}                                  # (game_id, player_id, stat) -> reason, markets the causal cap removed
+    if spec['cap'] is not None and len(new):
+        taken = {}
+        for g, p, _ in existing:
+            taken[(str(g), int(p))] = taken.get((str(g), int(p)), 0) + 1
+        keep = rules.cap_causal(new, spec['cap'], taken)
+        for r in new[~keep].itertuples(index=False):
+            capped[(r.game_id, r.player_id, r.stat)] = 'player_game_has_bet' if taken.get((str(r.game_id), int(r.player_id)), 0) >= spec['cap'] else 'lower_ev_same_slot'
+        new = new[keep]
+        if capped:
+            detail['capped_out'] = [{'player_id': int(p), 'stat': s, 'reason': why} for (_, p, s), why in capped.items()]
     m = export.market_level(q)
     key = ['game_id', 'player_id', 'stat', 'minutes_before', 'line']
     best = q.sort_values('best_ev', ascending=False).drop_duplicates(['game_id', 'player_id', 'stat']).merge(m, on=key, how='left', validate='many_to_one')
@@ -106,7 +155,7 @@ def evaluate_item(ctx, it, frame, existing):
     best['ev_median'] = np.where(over, eo, eu)
     eo, eu = rules.ev_over_under(best['p_star'], best['push'], logic.FLAT_110, logic.FLAT_110)
     best['ev_flat'] = np.where(over, eo, eu)
-    qual_keys = set(map(tuple, sel[['game_id', 'player_id', 'stat']].itertuples(index=False, name=None)))
+    qual_keys = set(map(tuple, sel[['game_id', 'player_id', 'stat']].itertuples(index=False, name=None))) - set(capped)
     k3 = list(map(tuple, best[['game_id', 'player_id', 'stat']].itertuples(index=False, name=None)))
     best['qualified'] = [int(k in qual_keys) for k in k3]
     best['already_bet'] = [int(k in existing) for k in k3]
@@ -118,9 +167,6 @@ def evaluate_item(ctx, it, frame, existing):
         'p_market': best['consensus_fair_over'], 'p_model': best['p_mod'], 'p_star': best['p_star'], 'push': best['push'], 'side': best['best_side'], 'book': best['book'],
         'dec_best': best['dec_price'], 'dec_median': best['dec_median'], 'ev_best': best['best_ev'], 'ev_median': best['ev_median'], 'ev_flat': best['ev_flat'],
         'expected_minutes': best['expected_minutes'], 'qualified': best['qualified'], 'already_bet': best['already_bet'], 'model_version': ctx.model_version})
-    # A boolean NumPy mask, never a plain list: when sel is empty (no market qualified) `sel[[]]` is read by pandas as "select no columns", the merge below then has no game_id and raised KeyError('game_id')
-    is_new = np.array([tuple(r) not in existing for r in sel[['game_id', 'player_id', 'stat']].itertuples(index=False, name=None)], dtype=bool)
-    new = sel[is_new]
     new = new.merge(m, on=key, how='left', validate='many_to_one')
     if new.empty:
         return sig, pd.DataFrame(), detail

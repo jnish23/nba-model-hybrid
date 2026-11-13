@@ -83,3 +83,37 @@ def pin(model_version, model_season, effective_from, path=None):
            'note': 'Paper record only. The parity gap is disclosed in reports/props/d1_parity_report.md and in every live report.'}
     write(cfg, path=path)
     return cfg
+
+
+CANDIDATE_CONFIG_PATH = 'config/props_live_candidate.json'
+
+
+def pin_candidate(model_version, model_season, effective_from, features_db, roster_rule, *, waivers, rule_file=None, n_sims=20000, path=CANDIDATE_CONFIG_PATH,
+                  check_features_db=True, note=None):
+    """
+    Write a CANDIDATE configuration (A2 plan, P2) to its own file; the deployed config/props_live.json is never touched (a path that resolves to it or to its legacy copy is refused).
+    The model is read from its training manifest: its season and features database must match the arguments, and the pinned features hash is the one recorded at training (re-hashed
+    from the file when check_features_db). `waivers` has no default: name exactly the waivers that still apply to this candidate (an empty list is allowed, None is not).
+    rule_file defaults to the frozen rule; pass the candidate rule file once one exists. Returns the written configuration; `load(path)` and `verify(cfg)` work on it unchanged.
+    """
+    if isinstance(waivers, str) or not isinstance(waivers, (list, tuple)) or not all(isinstance(w, str) for w in waivers):
+        raise TypeError('waivers must be an explicit list of strings (an empty list means no waiver)')
+    target = Path(path)
+    if target.resolve() in {Path(CONFIG_PATH).resolve(), Path(LEGACY_CONFIG_PATH).resolve()}:
+        raise ValueError(f'{path} is the deployed live configuration; a candidate is written to its own file (default {CANDIDATE_CONFIG_PATH})')
+    man = json.loads((registry.version_dir(model_version) / 'manifest.json').read_text(encoding='utf-8'))
+    f = Path(features_db)
+    if man.get('next_season') != model_season:
+        raise ValueError(f"model {model_version} was trained for {man.get('next_season')}, not {model_season}")
+    if Path(man['features_db']).as_posix() != f.as_posix():
+        raise ValueError(f"model {model_version} was trained on {man['features_db']}, not {features_db}")
+    if check_features_db and registry.sha256_file(f) != man['features_db_sha256']:
+        raise ValueError(f'features database {f} does not match the hash recorded when {model_version} was trained')
+    rule = (Path(rule_file) if rule_file is not None else resolve_rule_path()).as_posix()
+    cfg = {'rule_file': rule, 'rule_sha256': registry.sha256_file(rule), 'model_version': model_version, 'model_season': model_season,
+           'model_bundle_sha256': registry.sha256_file(bundle_path({'model_version': model_version, 'model_season': model_season})),
+           'features_db': f.as_posix(), 'features_db_bytes': f.stat().st_size, 'features_db_sha256': man['features_db_sha256'], 'roster_rule': roster_rule, 'n_sims': n_sims,
+           'effective_from': effective_from, 'spec': man.get('spec', 'base'), 'waivers': list(waivers),
+           'note': note or 'CANDIDATE, not deployed. Not read by the scheduled jobs; reached only through scripts/props_signal_job.py --config.'}
+    write(cfg, path=target)
+    return cfg

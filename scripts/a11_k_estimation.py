@@ -10,6 +10,7 @@ Steps S5, S6 and S16 of reports/props/audit_2026-11/WP6_WP7_experiment_plan.md (
     S16 final k and candidate rule file:
         PY scripts/a11_k_estimation.py --mode final --p5-version <final>_p5 --registry-root $REG --prices-dir $OUT/prices --pmarket $OUT/results/7a/choice.json
                                        --train 2023-24 2024-25 --k-file $OUT/results/6b/k_walkforward.json --write-rule $RPT/candidate_rule_a11.json
+                                       [--cap-per-player-game 1]     # writes the key cap_per_player_game (the live job's causal cap); without it the key is absent
 
 Inputs (read-only): <registry-root>/<p5-version>/<season>/index.csv + pred_<stat>.npy (registry.save_predictions); <prices-dir>/prices_<season>.pkl = pickle (cons, bets) as
 props.betting.prices.load_season returns them; labels from player_game_labels of --features-db (opened mode=ro); --pmarket = choice.json of scripts/a11_devig_calibration.py
@@ -428,9 +429,10 @@ def final(a, labels):
     fsha = registry.sha256_file(a.features_db)
     if man.get('features_db_sha256') and man['features_db_sha256'] != fsha:
         logging.warning(f'labels DB sha256 {fsha[:12]} differs from the prediction manifest features_db_sha256 {man["features_db_sha256"][:12]}')
-    rule = ar.candidate_rule(cand, params, ar.BET_STATS, a.train, pooled_slopes, head, man.get('features_db_sha256') or fsha, len(cmp), a.p5_version, pmarket,
-                             extra={'code_dirty': dirty, 'labels_db_sha256': fsha, 'fit_by_stat': fits[est]['by_stat'].to_dict(orient='records'),
-                                    'k_file': a.k_file, 'source_step': 'S16'})
+    extra = {'code_dirty': dirty, 'labels_db_sha256': fsha, 'fit_by_stat': fits[est]['by_stat'].to_dict(orient='records'), 'k_file': a.k_file, 'source_step': 'S16'}
+    if getattr(a, 'cap_per_player_game', None) is not None:
+        extra = {'cap_per_player_game': int(a.cap_per_player_game), **extra}           # the live job's causal per-player-game cap (props.betting.rules.cap_causal); absent = no cap
+    rule = ar.candidate_rule(cand, params, ar.BET_STATS, a.train, pooled_slopes, head, man.get('features_db_sha256') or fsha, len(cmp), a.p5_version, pmarket, extra=extra)
     p, side, h = ar.write_rule_file(a.write_rule, _json(rule), REPO, overwrite=a.overwrite)
     print(json.dumps(_json({k: rule[k] for k in ('candidate', 'estimator', 'k_by_stat')}), indent=2))
     print(f'wrote {p} (sha256 {h}) and {side}')
@@ -457,6 +459,8 @@ def main(argv=None):
     ap.add_argument('--out', default=None)
     ap.add_argument('--report', default=None)
     ap.add_argument('--write-rule', default=None)
+    ap.add_argument('--cap-per-player-game', type=int, default=None, metavar='N',
+                    help='final: write cap_per_player_game N into the rule file (the live job then allows at most N bets per player-game, causally); default: key absent, file unchanged')
     ap.add_argument('--overwrite', action='store_true')
     ap.add_argument('--n-boot', type=int, default=ar.N_BOOT)
     ap.add_argument('--seed', type=int, default=ar.SEED)
@@ -473,6 +477,8 @@ def main(argv=None):
         ap.error('walkforward: --train must precede --score')
     if a.mode == 'final' and not a.write_rule:
         ap.error('--mode final needs --write-rule')
+    if a.cap_per_player_game is not None and (a.mode != 'final' or a.cap_per_player_game < 1):
+        ap.error('--cap-per-player-game is a positive integer and only applies to --mode final')
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
     labels = load_labels(a.features_db)
     return {'reproduce': reproduce, 'walkforward': walkforward, 'final': final}[a.mode](a, labels)
