@@ -1,11 +1,13 @@
 """
-The live signal job (D1.3). Scheduled every 10 minutes; for every game whose decision slot (T-240, T-60, T-5 before the reference tip) has arrived and has no log row, it builds the
+The live signal job (D1.3). Scheduled every 5 minutes; for every game whose decision slot (T-240, T-60, T-5 before the reference tip) has arrived and has no log row, it builds the
 point-in-time features, predicts with the pinned live model, applies the frozen rule and writes the slot's signals and its first-qualification bets in one transaction.
 
     python scripts/props_signal_job.py                  # live
     python scripts/props_signal_job.py --dry-run        # evaluate and print, write nothing
     python scripts/props_signal_job.py --now 2026-10-23T22:00:00Z --dry-run
 
+A slot that raises is isolated: the other slots of the run are still written, the failing one gets no slot-log row (the next run retries it until it is missed) and the run's health row is
+'error' with the failing game/slot list in detail.failed_slots (exit 1).
 Refuses to run (exit 2, health row 'refused') if the rule file, the model bundle or the features database differ from reports/props/live_config.json.
 """
 import argparse
@@ -49,32 +51,84 @@ def play_tables_cached(features_db, season):
     return t
 
 
-def due_items(conn, odds_db, sched, matched, now, season, log):
+def due_items(conn, odds_db, sched, matched, now, season, log, failed=None):
+    """
+    The slots that are due, as SlotItems; missed and quote-less slots go to `log`. A game whose slots cannot be prepared (its schedule row or quotes raise) is skipped and appended
+    to `failed` (when given) with its error: it gets no slot-log row, so the next run retries it, and the other games are not affected.
+    """
     items = []
     for g in matched.itertuples(index=False):
         if not isinstance(g.game_id, str):
             continue
-        srow = sched[sched['game_id'] == g.game_id].iloc[0].copy()
-        srow['tip_ref_utc'], srow['season'], srow['game_date'] = g.tip_ref_utc, season, srow['et_game_date']
-        now_m = quotes.minutes_before_tip(iso(now), g.tip_ref_utc)
-        snaps = quotes.event_snapshots(odds_db, g.event_id_vendor, since_utc=iso(now - pd.Timedelta(hours=8)))
-        sm = pd.Series({ts: quotes.minutes_before_tip(ts, g.tip_ref_utc) for ts in snaps['snapshot_ts_utc']}, dtype=float)
-        for T in SLOTS:
-            if store.slot_done(conn, g.game_id, T):
-                continue
-            status, ts, m = quotes.choose_snapshot(sm, T, now_m)
-            if status == 'wait':
-                continue
-            if status == 'missed':
-                log.append((g.game_id, T, 'missed', {'minutes_to_tip': round(now_m, 1), 'snapshots': len(sm)}, None, None))
-                continue
-            cons, bets, raw = quotes.slot_quotes(odds_db, g.event_id_vendor, g.game_id, ts, T)
-            if cons is None or cons.empty:
-                log.append((g.game_id, T, 'no_quotes', {'snapshot': ts}, None, None))
-                continue
-            names = dict(zip(raw['player_id'].astype(int), raw['player_name_raw']))
-            items.append(signal.SlotItem(game=srow, slot=T, snapshot_ts_utc=ts, snapshot_minutes=m, event_id=g.event_id_vendor, cons=cons, bets=bets, names=names))
+        n_before, n_log = len(items), len(log)
+        try:
+            srow = sched[sched['game_id'] == g.game_id].iloc[0].copy()
+            srow['tip_ref_utc'], srow['season'], srow['game_date'] = g.tip_ref_utc, season, srow['et_game_date']
+            now_m = quotes.minutes_before_tip(iso(now), g.tip_ref_utc)
+            snaps = quotes.event_snapshots(odds_db, g.event_id_vendor, since_utc=iso(now - pd.Timedelta(hours=8)))
+            sm = pd.Series({ts: quotes.minutes_before_tip(ts, g.tip_ref_utc) for ts in snaps['snapshot_ts_utc']}, dtype=float)
+            for T in SLOTS:
+                if store.slot_done(conn, g.game_id, T):
+                    continue
+                status, ts, m = quotes.choose_snapshot(sm, T, now_m)
+                if status == 'wait':
+                    continue
+                if status == 'missed':
+                    log.append((g.game_id, T, 'missed', {'minutes_to_tip': round(now_m, 1), 'snapshots': len(sm)}, None, None))
+                    continue
+                cons, bets, raw = quotes.slot_quotes(odds_db, g.event_id_vendor, g.game_id, ts, T)
+                if cons is None or cons.empty:
+                    log.append((g.game_id, T, 'no_quotes', {'snapshot': ts}, None, None))
+                    continue
+                names = dict(zip(raw['player_id'].astype(int), raw['player_name_raw']))
+                items.append(signal.SlotItem(game=srow, slot=T, snapshot_ts_utc=ts, snapshot_minutes=m, event_id=g.event_id_vendor, cons=cons, bets=bets, names=names))
+        except Exception as e:                   # noqa: BLE001 - one bad game must not stop the others
+            del items[n_before:], log[n_log:]
+            logging.error(f'{g.game_id}: slots not prepared: {traceback.format_exc()}')
+            if failed is not None:
+                failed.append({'game_id': g.game_id, 'slot': None, 'stage': 'prepare', 'error': repr(e)[:300]})
     return items
+
+
+def work_date(ctx, date, group, conn, run_id, dry_run, written, failed):
+    """
+    Evaluate and write the due slots of one game date. A slot that raises (its frame, its evaluation or its write) is NOT written to the slot log, so the next run retries it until
+    it is missed; it is appended to `failed` and the remaining slots of the run are still worked. When the date's shared frame build fails, each slot is rebuilt alone so that one bad
+    game cannot take the others of its date with it.
+    """
+    frames = {}
+    try:
+        frame, _ = signal.build_frames(ctx, date, group)
+        frames = {k: frame for k in range(len(group))}
+    except Exception as e:                       # noqa: BLE001
+        logging.error(f'{date}: frame build for {len(group)} slots failed: {traceback.format_exc()}')
+        if len(group) == 1:
+            failed.append({'game_id': group[0].game['game_id'], 'slot': group[0].slot, 'stage': 'frame', 'error': repr(e)[:300]})
+        else:
+            for k, it in enumerate(group):
+                try:
+                    frames[k] = signal.build_frames(ctx, date, [it])[0]
+                except Exception as e1:          # noqa: BLE001
+                    logging.error(f"{it.game['game_id']} T-{it.slot}: frame build failed: {traceback.format_exc()}")
+                    failed.append({'game_id': it.game['game_id'], 'slot': it.slot, 'stage': 'frame', 'error': repr(e1)[:300]})
+    for k, it in enumerate(group):
+        if k not in frames:
+            continue
+        try:
+            existing = store.existing_bet_keys(conn, [it.game['game_id']])
+            sig, new, detail = signal.evaluate_item(ctx, it, frames[k], existing)
+            detail.update({'snapshot_ts_utc': it.snapshot_ts_utc, 'snapshot_minutes': round(it.snapshot_minutes, 1), 'bets': int(len(new)), 'signals': int(len(sig))})
+            print(f"{it.game['game_id']} T-{it.slot}: {len(sig)} markets evaluated, {len(new)} new bets" + (' [dry run]' if dry_run else ''))
+            if len(new):
+                print(new[['player_name', 'stat', 'side', 'line', 'book', 'dec_best', 'dec_median', 'ev_best', 'ev_median']].round(3).to_string(index=False))
+            if not dry_run:
+                ns, nb = store.write_slot(conn, it.game['game_id'], it.slot, 'done', iso(utc_now()), run_id, sig, new, detail)
+                written['signals'] += ns
+                written['bets'] += nb
+                written['slots'] += 1
+        except Exception as e:                   # noqa: BLE001
+            logging.error(f"{it.game['game_id']} T-{it.slot}: slot failed: {traceback.format_exc()}")
+            failed.append({'game_id': it.game['game_id'], 'slot': it.slot, 'stage': 'evaluate', 'error': repr(e)[:300]})
 
 
 def main():
@@ -104,9 +158,9 @@ def main():
         sched = sched[sched['game_id'].str[:3].isin(GAME_PREFIXES)].reset_index(drop=True)
         ev = events.events_in_window(a.odds_db, now)
         matched = S.match_games(ev, sched, S.team_id_map(a.nba_db)) if len(ev) else ev.assign(game_id=None, tip_ref_utc=None)
-        log = []
-        items = due_items(conn, a.odds_db, sched, matched, now, season, log)
-        if not items and not log:
+        log, failed = [], []
+        items = due_items(conn, a.odds_db, sched, matched, now, season, log, failed)
+        if not items and not log and not failed:
             store.health(conn, run_id, job, started, iso(utc_now()), 'idle', 0, {'events': len(ev)})
             logging.info(f'nothing due ({len(ev)} events in the window)')
             return 0
@@ -132,24 +186,18 @@ def main():
             for it in sorted(items, key=lambda i: (i.game['game_date'], -i.slot)):
                 by_date.setdefault(it.game['game_date'], []).append(it)
             for date, group in by_date.items():
-                frame, unresolved = signal.build_frames(ctx, date, group)
-                for it in group:
-                    existing = store.existing_bet_keys(conn, [it.game['game_id']])
-                    sig, new, detail = signal.evaluate_item(ctx, it, frame, existing)
-                    detail.update({'snapshot_ts_utc': it.snapshot_ts_utc, 'snapshot_minutes': round(it.snapshot_minutes, 1), 'bets': int(len(new)), 'signals': int(len(sig))})
-                    print(f"{it.game['game_id']} T-{it.slot}: {len(sig)} markets evaluated, {len(new)} new bets" + (' [dry run]' if a.dry_run else ''))
-                    if len(new):
-                        print(new[['player_name', 'stat', 'side', 'line', 'book', 'dec_best', 'dec_median', 'ev_best', 'ev_median']].round(3).to_string(index=False))
-                    if not a.dry_run:
-                        ns, nb = store.write_slot(conn, it.game['game_id'], it.slot, 'done', iso(utc_now()), run_id, sig, new, detail)
-                        written['signals'] += ns
-                        written['bets'] += nb
-                        written['slots'] += 1
+                work_date(ctx, date, group, conn, run_id, a.dry_run, written, failed)
         if not a.dry_run:
             for gid, T, status, detail, _, _ in log:
                 store.write_slot(conn, gid, T, status, iso(utc_now()), run_id, detail=detail)
-            store.health(conn, run_id, job, started, iso(utc_now()), 'ok', written['bets'], {**written, 'missed_or_no_quotes': len(log)})
-        return 0
+            detail = {**written, 'missed_or_no_quotes': len(log)}
+            if failed:                           # the other slots are written above; these have no slot-log row and are retried by the next run until missed
+                detail['failed_slots'] = failed
+                detail['error'] = (f'{len(failed)} slot(s) failed: ' + '; '.join(f"{f['game_id']} T-{f['slot']} {f['error']}" for f in failed))[:500]
+                store.health(conn, run_id, job, started, iso(utc_now()), 'error', written['bets'], detail)
+            else:
+                store.health(conn, run_id, job, started, iso(utc_now()), 'ok', written['bets'], detail)
+        return 1 if failed else 0
     except Exception as e:                       # noqa: BLE001 - the job must leave a health row whatever happens
         logging.error(traceback.format_exc())
         store.health(conn, run_id, job, started, iso(utc_now()), 'error', 0, {'error': repr(e)[:500]})
