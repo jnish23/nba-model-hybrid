@@ -42,7 +42,7 @@ SEGMENTS = {
         'secondary_min_stakes': 300,
         'n_boot': 2000,                     # descriptive tables; the decision rule uses 2 x n_boot = 4,000 with seed 20261112
     },
-    2: {                                    # reports/props/forward_test_preregistration_segment2.md, DRAFT
+    2: {                                    # reports/props/forward_test_preregistration_segment2.md, signed 2026-11-13
         'rule': 'dates',                    # game-date horizon, three looks with early success, Z boundaries, futility at looks 1 and 2
         'effective_date': None,             # E2 is the first game date on which all three slots run under the candidate: must be given with --since (proposed 2026-11-14, not assumed)
         'horizon_date': '2027-04-12',
@@ -474,7 +474,7 @@ def build_report_segment2(db, nba_db=None, since=None, today=None, expected_date
            f'Database `{db}` (read-only). Bets {len(bets)} ({bets["game_date"].min()} to {bets["game_date"].max()}), settled {len(prep)}, signals {len(signals)}. '
            f'Model versions: {", ".join(f"{k} ({v})" for k, v in bets["model_version"].value_counts().sort_index().items())}. '
            f'Minutes before tip of the bets: {", ".join(f"T-{k}: {v}" for k, v in bets["minutes_before"].value_counts().sort_index(ascending=False).items())}.\n',
-           '**Reading guide.** Segment 2 (DRAFT pre-registration). Primary: median-price ROI of the UNCAPPED recorded bets from E2, decided by Z = ROI / date-clustered SE at three looks counted in game dates. '
+           '**Reading guide.** Segment 2 (pre-registration signed 2026-11-13). Primary: median-price ROI of the UNCAPPED recorded bets from E2, decided by Z = ROI / date-clustered SE at three looks counted in game dates. '
            'The capped subset (`rules.cap_per_player_game_causal(recorded bets, 1)`), best-price ROI and CLV are secondary and never decisive. Intervals are 95% bootstraps over game dates.\n',
            f'## A. Forward test: game_date >= {since} (E2)\n', '### Configuration integrity (bets placed in the forward test)\n']
     if len(fwd_bets):
@@ -487,7 +487,7 @@ def build_report_segment2(db, nba_db=None, since=None, today=None, expected_date
             out.append('\nNote: at least one (model_version, model sha256) differs from the registered one; a refit by the same recipe is allowed (section 11), anything else ends the segment: check the retrain log.\n')
     else:
         out.append('_no bets yet_\n')
-    out.append('\n### Decision rule (segment 2, DRAFT pre-registration)\n')
+    out.append('\n### Decision rule (segment 2)\n')
     out.append(decision2_md(s, spec, exp_n, exp_src, pending, stale))
     if test_prep.empty or test_prep['stake'].sum() == 0:
         out.append('_No settled forward-test bets yet._\n')

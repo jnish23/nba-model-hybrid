@@ -215,8 +215,14 @@ def page_board(D, mode, treatment):
             if s_['bets']:
                 sb_ = L.roi_summary(sel_, 'best', treatment, n_boot=300)
                 st.caption(f"Live record so far for settled bets with EV of at least {100 * min_ev:.1f}% at the chosen price: {s_['bets']} bets, ROI at the median price {pct(s_['roi'])} "
-                           f"(95% date-clustered interval {pct(s_['lo'])} to {pct(s_['hi'])}); at the best quoted price (not an assumed fill) {pct(sb_['roi'])} "
-                           f"({pct(sb_['lo'])} to {pct(sb_['hi'])}). {L.noise_note(s_['bets'], (s_['lo'], s_['hi']), s_['clusters'])}")
+                           f"(95% date-clustered interval {ci_text(s_)}); at the best quoted price (not an assumed fill) {pct(sb_['roi'])} "
+                           f"({ci_text(sb_)}). {L.noise_note(s_['bets'], (s_['lo'], s_['hi']), s_['clusters'])}")
+                segs_ = L.clean_segments(D['meta'].get('segments'))
+                cur_ = L.current_segment(segs_)
+                if cur_ is not None:
+                    sc_ = L.roi_summary(sel_[(L.assign_segments(sel_, segs_) == cur_['key']).to_numpy()], 'median', treatment, n_boot=300)
+                    st.caption(f"Current segment ({cur_['label']}, {L.segment_period_text(cur_)}): " + (f"{sc_['bets']} settled bets, ROI at the median price {pct(sc_['roi'])} "
+                               f"(95% date-clustered interval {ci_text(sc_)}). Only the segment is forward-test evidence; the record above mixes configurations." if sc_['bets'] else 'no settled bets yet.'))
     if reveal:
         render_day_record(L.day_record(shown, L.results_for_display(shown, results_now, mode, treatment)), day)
     t = board_table(shown, mode, treatment, reveal, cur, results_now, now, live)
@@ -279,6 +285,11 @@ def detail(D, r, mode, treatment, reveal):
             st.info(f"Result: {status} · actual {r['y']} (no stake)")
 
 
+def ci_text(r):
+    """'-2.3% to +9.0%' for a summary dict with lo and hi; a plain note when the interval does not exist yet (one game date)."""
+    return f"{pct(r['lo'])} to {pct(r['hi'])}" if np.isfinite(r.get('lo', np.nan)) and np.isfinite(r.get('hi', np.nan)) else 'not available yet (it needs at least two game dates)'
+
+
 def pct_ci(r, lo, hi):
     """'+3.3% [-2.3%, +9.0%]' (blank when the ROI is undefined)."""
     if r is None or not np.isfinite(r):
@@ -286,7 +297,7 @@ def pct_ci(r, lo, hi):
     return f'{pct(r)} [{pct(lo)}, {pct(hi)}]' if np.isfinite(lo) and np.isfinite(hi) else pct(r)
 
 
-DIAG_LABELS = {'side': 'Side', 'slot': 'Slot', 'stat': 'Stat', 'model_version': 'Model version', 'ev_bucket': 'EV claimed (best price)'}
+DIAG_LABELS = {'segment': 'Segment', 'side': 'Side', 'slot': 'Slot', 'stat': 'Stat', 'model_version': 'Model version', 'ev_bucket': 'EV claimed (best price)'}
 
 
 def diag_display(t, keys):
@@ -357,6 +368,53 @@ def render_diagnostics(d, treatment):
         st.caption('Bets flagged at T-5 have no later close and are not counted. A line that moved against the bet before the close is a sign the market disagrees; CLV (above) skips moved lines.')
 
 
+def roi_text(s):
+    """'+3.3% [-2.3%, +9.0%] on 412 settled bets, 9 dates' (or a plain 'no settled bets yet') from a `roi_summary` dict."""
+    if not s['bets']:
+        return 'no settled bets yet'
+    return f"{pct_ci(s['roi'], s['lo'], s['hi'])} on {s['bets']:,} settled bets, {s['clusters']} dates"
+
+
+def render_segments(D, d_all, treatment):
+    """Record by forward-test segment (definitions from meta.json `segments`) plus an overall row. Nothing is drawn for an older export without segments."""
+    segs = L.clean_segments(D['meta'].get('segments'))
+    if not segs:
+        return
+    ss = L.segment_summary(d_all, segs, treatment, n_boot=1000)          # the same resamples as the headline, so the intervals agree
+    disp, small = diag_display(ss.assign(segment=ss['label']), ['segment'])
+    disp.insert(1, 'First date', ss['first_game_date'].to_numpy())
+    disp.insert(2, 'Last date', ss['last_game_date'].to_numpy())
+    disp.insert(3, 'Bets recorded', ss['bets'].to_numpy())
+    disp.insert(4, 'Game dates', ss['game_dates'].to_numpy())
+    disp['ROI flat -110 [95% CI]'] = [pct_ci(*x) for x in zip(ss['roi_flat'], ss['roi_flat_lo'], ss['roi_flat_hi'])]
+    disp['Model version'] = [mv or 'mixed' for mv in ss['model_version']]
+    disp['Mismatched'] = ss['mismatched'].to_numpy()
+    disp = disp[[c for c in disp.columns if c != 'Readable?'] + ['Readable?']]
+    st.markdown('**By forward-test segment**')
+    st.caption('A segment is a stretch of game dates played under one fixed model, rule and roster rule (see the Rules & about page); only the segment rows are forward-test evidence, '
+               'while the overall row mixes configurations and the earlier record.')
+    st.dataframe(grey_small(disp, small), hide_index=True, width='stretch')
+    n_bad = int(ss.loc[ss['segment'] == L.OVERALL_KEY, 'mismatched'].sum())
+    if n_bad:
+        st.warning(f"{n_bad} bets carry a model version, rule or roster rule that differs from their segment's definition. They are counted in their segment, not dropped: check the configuration switch.", icon='⚠️')
+
+
+def render_headline(D, d, treatment):
+    """First thing on the Tracker: the pooled ROI next to the current (open-ended) segment's ROI, both at the median price, whatever the filters below are set to."""
+    segs = L.clean_segments(D['meta'].get('segments'))
+    cur = L.current_segment(segs)
+    if cur is None or D['meta'].get('mode') != 'live':
+        return
+    settled = d[d[f'status_{treatment}'].notna()]
+    overall = L.roi_summary(settled, 'median', treatment)
+    seg = L.roi_summary(settled[(L.assign_segments(settled, segs) == cur['key']).to_numpy()], 'median', treatment)
+    c1, c2 = st.columns(2)
+    c1.metric('Overall ROI, median price (all segments)', pct(overall['roi']) or 'n/a', help=f"Every settled bet in the selected seasons: {roi_text(overall)}. Mixes configurations and the earlier record.")
+    c2.metric(f"{cur['label']} ROI, median price (current segment)", pct(seg['roi']) or 'no settled bets yet', help=f"Settled bets {L.segment_period_text(cur)}: {roi_text(seg)}.")
+    st.caption(f"Overall: {roi_text(overall)}. {cur['label']} ({L.segment_period_text(cur)}, model {cur.get('model_version') or 'n/a'}): {roi_text(seg)}. "
+               f"Only the segment is forward-test evidence; the overall figure mixes configurations and the earlier record. The numbers below follow the filters you pick.")
+
+
 def render_versions(D, d_all, treatment):
     """Per-model-version summary: provenance from meta.json (or 'unknown' for an older export) next to the version's own settled record."""
     vt = L.version_meta_table(D['meta'], D['bets'])
@@ -381,8 +439,20 @@ def page_tracker(D, mode, treatment):
     vt = L.version_meta_table(D['meta'], bets)
     versions = list(vt['version'])
     d_all_versions = d
-    if len(versions) > 1 or (len(versions) == 1 and versions[0] != 'unknown'):
-        pick = st.selectbox('Model version', ['All'] + versions, index=0, help='The record mixes model versions (see "By model version" below). Default: all of them.')
+    segs = L.clean_segments(D['meta'].get('segments'))
+    render_headline(D, d, treatment)
+    has_versions = len(versions) > 1 or (len(versions) == 1 and versions[0] != 'unknown')
+    seg_col, ver_col = st.columns(2) if segs and has_versions else (st.container(), st.container())
+    if segs:
+        seg_of = L.assign_segments(d, segs)
+        seg_names = {s_['key']: s_['label'] for s_ in segs} | {L.UNASSIGNED_KEY: L.UNASSIGNED_LABEL}
+        present = [k for k in [s_['key'] for s_ in segs] + [L.UNASSIGNED_KEY] if (seg_of == k).any()]
+        seg_pick = seg_col.selectbox('Segment', ['All'] + [seg_names[k] for k in present], index=0,
+                                     help='Filters every chart and table below, like the model version. Default: all segments. The segment table is always shown in full.')
+        if seg_pick != 'All':
+            d = d[(seg_of == next(k for k in present if seg_names[k] == seg_pick)).to_numpy()]
+    if has_versions:
+        pick = ver_col.selectbox('Model version', ['All'] + versions, index=0, help='The record mixes model versions (see "By model version" below). Default: all of them.')
         if pick != 'All':
             d = d[L.version_series(d) == pick]
         shown_versions = versions if pick == 'All' else [pick]
@@ -392,7 +462,7 @@ def page_tracker(D, mode, treatment):
             st.info(f'{n_r:,} of the {len(d):,} bets in this selection ({", ".join(restored)}) were {L.RESTORED_PROVENANCE}: snapshot time, quote age and code commit were not recorded for them, '
                     f'and their results came from the export. Pick another model version above to leave them out.', icon='ℹ️')
     if d.empty:
-        st.info('No bets for this model version.')
+        st.info('No bets for this selection.')
         return
     if D['meta']['mode'] == 'live':
         pending = int(d[f'status_{treatment}'].isna().sum())
@@ -407,12 +477,12 @@ def page_tracker(D, mode, treatment):
     units = float(L.with_profit(d, mode, treatment)['profit'].sum())
     t1, t2, t3, t4, t5 = st.columns(5)
     t1.metric('Settled bets', f"{s_med['bets']:,}", help=f"{s_med['player_games']:,} distinct player-games on {s_med['clusters']} dates")
-    t2.metric('ROI, median price (primary)', pct(s_med['roi']), help=f"95% date-clustered interval {pct(s_med['lo'])} to {pct(s_med['hi'])}. The median bettable price is what an ordinary bettor gets.")
-    t3.metric('ROI, best quoted price (not an assumed fill)', pct(s_best['roi']), help=f"95% date-clustered interval {pct(s_best['lo'])} to {pct(s_best['hi'])}. The best quote of the bettable books: a target "
+    t2.metric('ROI, median price (primary)', pct(s_med['roi']), help=f"95% date-clustered interval {ci_text(s_med)}. The median bettable price is what an ordinary bettor gets.")
+    t3.metric('ROI, best quoted price (not an assumed fill)', pct(s_best['roi']), help=f"95% date-clustered interval {ci_text(s_best)}. The best quote of the bettable books: a target "
               f"for limit orders, not a price you can assume you get.")
-    t4.metric('ROI, flat -110', pct(s_flat['roi']), help=f"95% date-clustered interval {pct(s_flat['lo'])} to {pct(s_flat['hi'])}")
+    t4.metric('ROI, flat -110', pct(s_flat['roi']), help=f"95% date-clustered interval {ci_text(s_flat)}")
     t5.metric('Win rate', f"{100 * s_med['win_rate']:.1f}%")
-    st.caption(f"95% date-clustered intervals: median price {pct(s_med['lo'])} to {pct(s_med['hi'])}; best quoted price (not an assumed fill) {pct(s_best['lo'])} to {pct(s_best['hi'])}. "
+    st.caption(f"95% date-clustered intervals: median price {ci_text(s_med)}; best quoted price (not an assumed fill) {ci_text(s_best)}. "
                f"Units at the chosen price ({L.PRICE_MODES[mode].split(':')[0]}): {units:+.1f}. " + L.noise_note(s_med['bets'], (s_med['lo'], s_med['hi']), s_med['clusters']))
     fig = go.Figure()
     deff = 1.0
@@ -441,6 +511,7 @@ def page_tracker(D, mode, treatment):
     b4.markdown('**By decision time**'); b4.dataframe(L.breakdown(dd, 'decision', mode, treatment).style.format(fmt), hide_index=True, width='stretch')
     render_diagnostics(d, treatment)
     if D['meta']['mode'] == 'live':
+        render_segments(D, d_all_versions, treatment)
         render_versions(D, d_all_versions, treatment)
     st.subheader('Season summary' if D['meta']['mode'] != 'live' else 'Live record summary (placebo CLV and the information slope need a longer record)')
     sm = D['summary'].copy()
@@ -493,14 +564,16 @@ def page_health(D):
 
 def page_about(D):
     meta, rule = D['meta'], D['meta']['rule']
+    seg_md = L.segments_markdown(meta.get('segments'))
+    seg_note = ('\n\nThe record is also split into forward-test segments, each run under one fixed configuration. The Tracker shows them in a table and has a segment filter:\n' + seg_md) if seg_md else ''
     st.markdown(f"""
 ### What this is
-A **paper-trading** view of one frozen rule. No real money, no bet placement. Mode: **{meta['mode']}** ({'the live paper record, one row per rule-qualified bet at first qualification, flat 1 unit' if meta['mode'] == 'live' else 'historical replay'}), built {meta.get('built_at_utc', 'unknown')}.
+A **paper-trading** view of one fixed rule (see the segments below for which rule applied when). No real money, no bet placement. Mode: **{meta['mode']}** ({'the live paper record, one row per rule-qualified bet at first qualification, flat 1 unit' if meta['mode'] == 'live' else 'historical replay'}), built {meta.get('built_at_utc', 'unknown')}.
 
-### The frozen rule
+### The rule
 - Stats: {', '.join(L.STAT_LABEL[s] for s in rule['stats'])}; edge threshold {rule['primary']['e']:.0%} expected value at the best price; earliest decision time (T-4h, T-1h, T-5m) at which a market qualifies;
   at least {rule['primary']['min_books']} books agreeing on the line; one bet per player-game-stat; flat 1 unit.
-- Model probability shrunk toward the market: p* = market + k x (model - market), k by stat: {', '.join(f"{L.STAT_LABEL[s]} {v:.2f}" for s, v in rule['k_by_stat'].items())}.
+- {L.pstar_text(rule)}
 - No rolling recalibration (declared sensitivity only). Rule file hash `{L.short_hash(meta.get('rule_sha256'), 12)}`, dataset hash `{L.short_hash(meta.get('features_db_sha256'), 12)}`, code `{L.short_hash(meta.get('code_commit'), 8)}`.
 - Decision slots: T-4h, T-1h and T-5m. The **T-5m slot uses the snapshot taken about 10 minutes before tip** (it started working on 2026-11-12), not a snapshot at exactly 5 minutes.
 
@@ -518,7 +591,7 @@ approximation, not a bootstrap. Table cells with fewer than {L.MIN_STAKES} settl
 ### Model versions and CLV
 The live record mixes model versions. The first version (`v3_live_2026-27`, October 22-31) was **restored from a dashboard export in November 2026 after a data loss**: its snapshot time, quote age and code
 commit are not recorded and it cannot be re-derived; its results came from the export. The Tracker has a model-version filter and a note whenever restored rows are included. CLV for bets before
-2026-11-12 was **backfilled on 2026-11-12 from snapshots about 9-10 minutes before tip**, not recorded at the time.
+2026-11-12 was **backfilled on 2026-11-12 from snapshots about 9-10 minutes before tip**, not recorded at the time.{seg_note}
 
 ### What the history says (reports/props/phase5_final_report.md)
 The model's signal replicated across three seasons, but the profit depends on price: best-price ROI was about +4.9%, +3.3% and +4.6%; at the median price +0.8%, -1.7% and -0.5%. The approved gate
@@ -557,7 +630,7 @@ def main():
     source = st.sidebar.radio('Source', list(sources), index=0)
     D = load(str(sources[source]), (sources[source] / 'meta.json').stat().st_mtime)
     if D['meta']['mode'] == 'live':
-        st.warning('LIVE PAPER RECORD: frozen rule, no real money. ' + D['meta'].get('disclosure', ''), icon='⚠️')
+        st.warning('LIVE PAPER RECORD: no real money. ' + D['meta'].get('disclosure', ''), icon='⚠️')
         st.sidebar.caption(f"Record started {D['meta'].get('record_started_utc') or 'not yet'} · model {D['meta'].get('model_version', 'n/a')} · built {D['meta'].get('built_at_utc', 'unknown')}")
     else:
         st.warning('BACKTEST MODE: historical replays of the frozen rule, not live bets. 2023-24 and 2024-25 are in-sample for k and the rule; 2025-26 was scored once, failed the median-price gate (-0.5%) and is no longer a clean held-out season for this rule.', icon='⚠️')
