@@ -16,7 +16,7 @@ import pandas as pd
 from core import injury_report_features as irf
 from core.odds_clean import load_clean_odds
 from props import schedule as sched_mod
-from props.features import context, history, injury_at_t, market_env, rows as rows_mod
+from props.features import context, history, injury_at_t, market_env, pregame_roster, rows as rows_mod
 
 GRID = (240, 60, 5)
 MARKET_ERA_FIRST_SEASON = '2023-24'              # first season with our own market snapshots
@@ -69,8 +69,16 @@ def build_base(db_path, first_season=rows_mod.FIRST_DATASET_SEASON, max_date=Non
     return base, labels
 
 
-def build_at_t(base, labels, db_path, props_db, grid=GRID, reports=None):
-    """T-dependent features for every base row and every decision time."""
+def build_at_t(base, labels, db_path, props_db, grid=GRID, reports=None, membership='box', hist=None, pos=None, only_game_ids=None):
+    """
+    T-dependent features for every base row and every decision time.
+    membership: the teammate set of the av_* / opp_av_* columns (props.features.pregame_roster): 'box' (default, today's behaviour: the box-score rows),
+    'v2nq' or 'pregame_all' (pre-game sets; need the listed history `hist` and positions `pos`, loaded from db_path when not given).
+    only_game_ids: development only; output rows of these games (the play-rate tables still come from every base row).
+    """
+    if membership not in pregame_roster.MEMBERSHIPS:
+        raise ValueError(f'unknown membership {membership!r}')
+    rows = base if only_game_ids is None else base[base['game_id'].isin(set(only_game_ids))].reset_index(drop=True)
     seasons = sorted(base['season'].unique())
     tips = reference_tips_et(seasons)
     reports = load_linked_reports(db_path) if reports is None else reports
@@ -81,14 +89,27 @@ def build_at_t(base, labels, db_path, props_db, grid=GRID, reports=None):
     proxy = market_env.sbr_proxy(load_clean_odds(Path(db_path)))
     pre_market = set(base.loc[base['season'] < MARKET_ERA_FIRST_SEASON, 'game_id'])
     env = market_env.combine(snap, proxy[proxy['game_id'].isin(pre_market)])
+    pre = None
+    if membership != 'box':
+        hist = rows_mod.load_history(db_path) if hist is None else hist
+        pos = history.position_groups(db_path) if pos is None else pos
+        pre, summary = pregame_roster.prepare_members(rows, hist, pos, reports, tips, grid, membership)
+        logging.info(f'membership {membership}: {summary}')
     out = []
     for x in grid:
         chosen, games = injury_at_t.latest_report_rows(reports, tips, x)
         status = injury_at_t.status_for_rows(base[['game_id', 'player_id', 'team_id']], chosen, games)
         keyed = status.merge(base[['game_id', 'player_id', 'season', 'm_bucket']], on=['game_id', 'player_id'], validate='one_to_one').merge(lab, on=['game_id', 'player_id'], validate='one_to_one')
         table = injury_at_t.play_rate_table(keyed, x, rows_mod.FIRST_DATASET_SEASON)
-        env_x = market_env.team_view(base[['game_id', 'player_id', 'is_home']], env, x)
-        t = injury_at_t.at_t_block(base, status, table).merge(env_x, on=['game_id', 'player_id'], validate='one_to_one')
+        status_rows = status if only_game_ids is None else status[status['game_id'].isin(set(rows['game_id']))].reset_index(drop=True)
+        env_x = market_env.team_view(rows[['game_id', 'player_id', 'is_home']], env, x)
+        if pre is None:
+            block = injury_at_t.at_t_block(rows, status_rows, table)
+        else:
+            members, member_feat = pre[x]
+            member_status = injury_at_t.status_for_rows(members[['game_id', 'player_id', 'team_id']], chosen, games)
+            block = pregame_roster.at_t_members_block(rows, status_rows, table, members, member_status, member_feat)
+        t = block.merge(env_x, on=['game_id', 'player_id'], validate='one_to_one')
         t.insert(2, 'minutes_before', x)
         out.append(t)
     return pd.concat(out, ignore_index=True)
@@ -118,10 +139,17 @@ def read_tables(out_db=OUT_DB, game_ids=None):
         return {n: pd.read_sql(f'SELECT * FROM {n}{where}', conn) for n in ('player_game_base', 'player_game_labels', 'player_game_at_T')}
 
 
-def build_all(db_path='data/nba_stats.db', props_db='data/props_odds.db', out_db=OUT_DB, grid=GRID, max_date=None, refresh_reports=False):
+def build_all(db_path='data/nba_stats.db', props_db='data/props_odds.db', out_db=OUT_DB, grid=GRID, max_date=None, refresh_reports=False, membership='box',
+              reports=None):
+    """membership: the teammate set of av_* (see build_at_t; default 'box'). reports: the linked report rows, when already loaded (then refresh_reports is not used)."""
     base, labels = build_base(db_path, max_date=max_date)
-    reports = load_linked_reports(db_path, refresh=refresh_reports)
-    at_t = build_at_t(base, labels, db_path, props_db, grid, reports=reports)
+    reports = load_linked_reports(db_path, refresh=refresh_reports) if reports is None else reports
+    hist = pos = None
+    if membership != 'box':                                   # the same listed history build_base used (same max_date cut)
+        hist = rows_mod.load_history(db_path)
+        hist = hist if max_date is None else hist[hist['game_date'] <= max_date]
+        pos = history.position_groups(db_path)
+    at_t = build_at_t(base, labels, db_path, props_db, grid, reports=reports, membership=membership, hist=hist, pos=pos)
     write_tables(out_db, player_game_base=base, player_game_labels=labels, player_game_at_T=at_t)
     logging.info(f'wrote {len(base)} base rows, {len(at_t)} at-T rows, {len(labels)} label rows to {out_db}')
     return base, labels, at_t

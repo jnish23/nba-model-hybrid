@@ -18,6 +18,13 @@ EARLY_STOP = 50
 CONFIG_LOG = Path('data/props_models/config_log.jsonl')
 
 
+def set_config_log(path):
+    """Point the configuration log somewhere else (a research run with --registry-root keeps its entries under its own root). Returns the previous path."""
+    global CONFIG_LOG
+    previous, CONFIG_LOG = CONFIG_LOG, Path(path)
+    return previous
+
+
 def log_config(kind, **info):
     """Every model configuration tried is appended here, so the number of looks at the data can be counted and corrected for."""
     CONFIG_LOG.parent.mkdir(parents=True, exist_ok=True)

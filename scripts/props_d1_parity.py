@@ -21,13 +21,14 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 from props import schedule as S  # noqa: E402
 from props.betting import evaluate as be, export, rules  # noqa: E402
 from props.features import build, history, rows as rows_mod  # noqa: E402
-from props.live import at_t as A, parity, roster  # noqa: E402
+from props.live import at_t as A, parity, pregame_frames, roster  # noqa: E402
 from props.live.base import build_live_base  # noqa: E402
 from props.live.frame import live_frame  # noqa: E402
 from props.live.predict import predict_rows  # noqa: E402
 from props.models import data, outcome as oc, registry  # noqa: E402
 
 DB, FDB = 'data/nba_stats.db', 'data/props_features_v3.db'
+FDB_DEFAULT = FDB
 RULE = 'reports/props/phase5_revised_rule.frozen_rule.json'
 SEASON = '2025-26'
 
@@ -63,6 +64,32 @@ def build_live_frames(dates, hist, pos, reports, tips, tables, sched, cons, rule
     return pd.concat(bases, ignore_index=True), blocks, unresolved_all
 
 
+def build_live_frames_pregame(dates, hist, pos, reports, tips, tables, sched, rule, cons=None, skipped_out=None):
+    """
+    Live frames under a pre-game teammate rule ('v2nq', 'pregame_all'), through props/live/pregame_frames.build_pregame_date: the function the production signal job calls.
+    The members are the rule's set (props/live/roster.rule_member_teams, shared with the training builder); quotes never change it. cons: the price file's consensus table; when given,
+    every quoted player gets a target row (a quoted non-member too: his teammate columns are aggregated over his team's members with no self-subtraction); None keeps the members only.
+    skipped_out: a list that receives (date, game_id, slot, player_id, reason) of the quoted players that got no row.
+    """
+    bases, blocks, unresolved_all = [], [], []
+    for date in dates:
+        t0 = time.time()
+        g = sched[sched['et_game_date'] == date].rename(columns={'et_game_date': 'game_date'}).assign(season=SEASON)
+        quoted = {}
+        if cons is not None:
+            cd = cons[cons['game_id'].isin(set(g['game_id']))]
+            quoted = {(k[0], int(k[1])): tuple(int(p) for p in v) for k, v in cd.groupby(['game_id', 'minutes_before'])['player_id'].unique().items()}
+        views = [pregame_frames.PregameView(str(gid), T, float(T), quoted.get((gid, T), ())) for T in build.GRID for gid in g['game_id']]
+        base_all, bl, unresolved, skipped = pregame_frames.build_pregame_date(rule, hist, pos, date, g, views, reports, tips, tables, DB, date_games=g)
+        unresolved_all += [(date,) + u for u in unresolved]
+        if skipped_out is not None:
+            skipped_out += [{'date': date, **r} for r in skipped]
+        blocks += bl
+        bases.append(base_all)
+        logging.info(f'{date}: {len(g)} games, {len(base_all)} live rows, {len(skipped)} quoted players skipped, {time.time() - t0:.0f}s')
+    return pd.concat(bases, ignore_index=True), blocks, unresolved_all
+
+
 def roi_diagnostic(sel_live, sel_train):
     """Realised ROI per unit staked (settlement 'stands', the selected quote's price) of the bets made with live features, with training features, and of the bets only one side makes."""
     lab = export.labels_table(FDB)
@@ -77,30 +104,41 @@ def roi_diagnostic(sel_live, sel_train):
     return {'live': roi(sel_live), 'training': roi(sel_train), 'live_shared': roi(sel_live.merge(sel_train[key], on=key)), 'live_only': roi(only(sel_live, sel_train)), 'training_only': roi(only(sel_train, sel_live))}
 
 
-def main():
+def parse_args(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument('--attempt', type=int, required=True)
     ap.add_argument('--dates', default='reports/props/d1_parity_dates.json')
     ap.add_argument('--season', default='2025-26')
     ap.add_argument('--roster-rule', default='registered', choices=roster.RULES)
+    ap.add_argument('--with-quotes', action='store_true', help='pre-game rules only: give every quoted player of the price file a target row (default: the members only, as before)')
     ap.add_argument('--no-model', action='store_true', help='development: only A1-A4')
     ap.add_argument('--model', default='v3_final_2025-26')
     ap.add_argument('--prices', default=None)
     ap.add_argument('--n-sims', type=int, default=20000)
     ap.add_argument('--seed', type=int, default=21)
     ap.add_argument('--limit-dates', type=int, default=None, help='development only: use the first N dates')
-    a = ap.parse_args()
+    ap.add_argument('--features-db', default=FDB, help='training dataset compared against (and source of the play-rate tables)')
+    ap.add_argument('--out', default=None, help='output folder (default data/props_live_parity/attempt<N>)')
+    ap.add_argument('--db', default=DB, help='box-score database')
+    ap.add_argument('--linked-cache', default=None, help='read the linked injury reports from this pickle (default: build.load_linked_reports)')
+    return ap.parse_args(argv)
+
+
+def main(argv=None):
+    a = parse_args(argv)
+    global FDB, DB
+    FDB, DB = a.features_db, a.db
     global SEASON
     SEASON = a.season
     a.prices = a.prices or f'data/props_betting/prices_{SEASON}.pkl'
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
-    out = Path(f'data/props_live_parity/attempt{a.attempt}')
+    out = Path(a.out) if a.out else Path(f'data/props_live_parity/attempt{a.attempt}')
     out.mkdir(parents=True, exist_ok=True)
     dates = sorted(sum(json.loads(Path(a.dates).read_text())['dates'].values(), []))[:a.limit_dates]
     logging.info(f'{len(dates)} dates; rule file sha256 {sha(RULE)[:12]}')
     hist = rows_mod.load_history(DB)
     pos = history.position_groups(DB)
-    reports = build.load_linked_reports(DB)
+    reports = build.load_linked_reports(DB) if a.linked_cache is None else pd.read_pickle(a.linked_cache)
     tips = build.reference_tips_et([SEASON])
     tables = A.play_tables(FDB, build.GRID)
     sched = S.load_schedule(SEASON)
@@ -110,16 +148,26 @@ def main():
     cons, bets = cons[cons['game_id'].isin(gids)].reset_index(drop=True), bets[bets['game_id'].isin(gids)].reset_index(drop=True)
 
     cache = out / 'live_frames.pkl'
+    skipped = []
     if cache.exists():                                           # the build takes ~30 minutes; a later crash must not repeat it (the cache is keyed by the attempt directory, i.e. rule and dates)
-        base_live, blocks, unresolved = pickle.load(open(cache, 'rb'))
+        loaded = pickle.load(open(cache, 'rb'))
+        base_live, blocks, unresolved = loaded[:3]
+        skipped = loaded[3] if len(loaded) > 3 else []
     else:
-        base_live, blocks, unresolved = build_live_frames(dates, hist, pos, reports, tips, tables, sched, cons, a.roster_rule)
-        pickle.dump((base_live, blocks, unresolved), open(cache, 'wb'))
+        if a.roster_rule in roster.PREGAME_RULES:
+            base_live, blocks, unresolved = build_live_frames_pregame(dates, hist, pos, reports, tips, tables, sched, a.roster_rule, cons=cons if a.with_quotes else None, skipped_out=skipped)
+        else:
+            base_live, blocks, unresolved = build_live_frames(dates, hist, pos, reports, tips, tables, sched, cons, a.roster_rule)
+        pickle.dump((base_live, blocks, unresolved, skipped), open(cache, 'wb'))
+    if skipped:
+        pd.DataFrame(skipped).to_csv(out / 'skipped_quoted.csv', index=False)
     live = live_frame(base_live, blocks)
     train = data.load_frame(FDB, gids)
     train['game_id'] = train['game_id'].astype(str)
     logging.info(f'live frame {live.shape}, training frame {train.shape}')
-    res, cols = {'attempt': a.attempt, 'roster_rule': a.roster_rule, 'season': SEASON, 'dates': dates, 'model': a.model, 'rule_sha256': sha(RULE), 'n_sims': a.n_sims, 'seed': a.seed}, list(train.columns)
+    res, cols = {'attempt': a.attempt, 'roster_rule': a.roster_rule, 'with_quotes': bool(a.with_quotes), 'quoted_skipped': len(skipped), 'season': SEASON, 'dates': dates, 'model': a.model, 'rule_sha256': sha(RULE), 'n_sims': a.n_sims, 'seed': a.seed}, list(train.columns)
+    if FDB != FDB_DEFAULT:
+        res['features_db'] = str(FDB)
 
     traded = cons[parity.KEY].drop_duplicates()
     r1 = parity.a1_coverage(traded, live, train, cols)

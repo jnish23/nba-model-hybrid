@@ -1,0 +1,69 @@
+{
+ "attempt": 0,
+ "roster_rule": "pregame_all",
+ "season": "2024-25",
+ "dates": [
+  "2024-11-01",
+  "2024-11-03",
+  "2024-11-06",
+  "2024-11-08",
+  "2024-11-12",
+  "2024-11-22",
+  "2024-11-26",
+  "2024-11-29",
+  "2024-12-15",
+  "2024-12-23",
+  "2024-12-28",
+  "2025-01-17",
+  "2025-01-20",
+  "2025-01-29",
+  "2025-02-01",
+  "2025-02-04",
+  "2025-02-12",
+  "2025-02-21",
+  "2025-02-26",
+  "2025-02-28",
+  "2025-03-10",
+  "2025-03-18",
+  "2025-03-21",
+  "2025-03-26",
+  "2025-04-02",
+  "2025-04-05",
+  "2025-04-09",
+  "2025-04-13",
+  "2025-05-04",
+  "2025-05-10"
+ ],
+ "model": "v3_final_2025-26",
+ "rule_sha256": "b597763ab3b13fd9cf295b1de802255ac87fe6e9bbf065103171db49eec2b6fb",
+ "n_sims": 20000,
+ "seed": 21,
+ "features_db": "data/props_experiments/audit_2026-11/features/props_features_a11_pg2.db",
+ "unresolved_players": 0,
+ "intersection_rows": 19954,
+ "live_rows": 26436,
+ "training_rows": 20709,
+ "A1": {
+  "traded": 9696,
+  "complete": 9538,
+  "share": 0.9837046204620462,
+  "required_columns": 210,
+  "pass": false
+ },
+ "A2": {
+  "columns": 191,
+  "failing_columns": 0,
+  "pass": true
+ },
+ "A3": {
+  "rows": 19954,
+  "status_share": 1.0,
+  "p_play_share": 1.0,
+  "pass": true
+ },
+ "A4": {
+  "worst_share": 1.0,
+  "failing_columns": 0,
+  "pass": true
+ }
+}

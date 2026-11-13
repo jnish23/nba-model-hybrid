@@ -1,0 +1,171 @@
+{
+  "experiment": "6a",
+  "choice": "A2",
+  "version": "a11_pg2",
+  "database": "data/props_experiments/audit_2026-11/features/props_features_a11_pg2.db",
+  "database_sha256": "1de15681b3f3a92ee14f9e056bdf2350db6009f234a7233a5a968aeef43a797c",
+  "manifest": "data\\props_experiments\\audit_2026-11\\models\\a11_pg2\\manifest.json",
+  "reference_for_7b": "a11_pg2",
+  "roster_rule": "pregame_all",
+  "needs_live_builder_change": true,
+  "reference": "a11_r0_on_pg1",
+  "candidates": {
+    "a11_pg1": "A1",
+    "a11_pg2": "A2"
+  },
+  "leaky": "a11_r0",
+  "folds": [
+    "2021-22",
+    "2022-23",
+    "2023-24"
+  ],
+  "seen": [
+    "2024-25"
+  ],
+  "clauses": [
+    {
+      "item": "B.9.1",
+      "clause": "A1 (a11_pg1) vs comparator, rebounds: 95% upper bound of the paired CRPS difference at most +0.10% of comparator mean CRPS",
+      "value": 0.00039760363191148555,
+      "threshold": 0.001,
+      "holds": true
+    },
+    {
+      "item": "B.9.1",
+      "clause": "A1 (a11_pg1) vs comparator, assists: 95% upper bound of the paired CRPS difference at most +0.10% of comparator mean CRPS",
+      "value": 0.0010748931854838069,
+      "threshold": 0.001,
+      "holds": false
+    },
+    {
+      "item": "B.9.1",
+      "clause": "A1 (a11_pg1) vs comparator, threes: 95% upper bound of the paired CRPS difference at most +0.10% of comparator mean CRPS",
+      "value": 0.0011354265413955527,
+      "threshold": 0.001,
+      "holds": false
+    },
+    {
+      "item": "B.9.1",
+      "clause": "A1 (a11_pg1) vs comparator, ra: 95% upper bound of the paired CRPS difference at most +0.10% of comparator mean CRPS",
+      "value": 0.0008887096591116045,
+      "threshold": 0.001,
+      "holds": true
+    },
+    {
+      "item": "B.9.1",
+      "clause": "A1 (a11_pg1): 2023-24 pooled slope with intercept at least comparator's minus 0.02 (value = arm minus comparator)",
+      "value": 0.002572895506586681,
+      "threshold": -0.02,
+      "holds": true
+    },
+    {
+      "item": "B.9.1",
+      "clause": "A2 (a11_pg2) vs comparator, rebounds: 95% upper bound of the paired CRPS difference at most +0.10% of comparator mean CRPS",
+      "value": -0.006777796193167718,
+      "threshold": 0.001,
+      "holds": true
+    },
+    {
+      "item": "B.9.1",
+      "clause": "A2 (a11_pg2) vs comparator, assists: 95% upper bound of the paired CRPS difference at most +0.10% of comparator mean CRPS",
+      "value": -0.0065438117546603464,
+      "threshold": 0.001,
+      "holds": true
+    },
+    {
+      "item": "B.9.1",
+      "clause": "A2 (a11_pg2) vs comparator, threes: 95% upper bound of the paired CRPS difference at most +0.10% of comparator mean CRPS",
+      "value": -0.0011842416019452163,
+      "threshold": 0.001,
+      "holds": true
+    },
+    {
+      "item": "B.9.1",
+      "clause": "A2 (a11_pg2) vs comparator, ra: 95% upper bound of the paired CRPS difference at most +0.10% of comparator mean CRPS",
+      "value": -0.009274684871521399,
+      "threshold": 0.001,
+      "holds": true
+    },
+    {
+      "item": "B.9.1",
+      "clause": "A2 (a11_pg2): 2023-24 pooled slope with intercept at least comparator's minus 0.02 (value = arm minus comparator)",
+      "value": 0.03384158421765948,
+      "threshold": -0.02,
+      "holds": true
+    },
+    {
+      "item": "B.9.2",
+      "clause": "A2 passes item 1",
+      "value": null,
+      "threshold": null,
+      "holds": true
+    },
+    {
+      "item": "B.9.2",
+      "clause": "pooled four stats, A2 - A1: 95% upper bound below 0 (relative units)",
+      "value": -0.006558897789039587,
+      "threshold": 0.0,
+      "holds": true
+    },
+    {
+      "item": "B.9.2",
+      "clause": "A2 - A1, rebounds: point difference at most +0.05% of A1 mean CRPS",
+      "value": -0.007878328834829406,
+      "threshold": 0.0005,
+      "holds": true
+    },
+    {
+      "item": "B.9.2",
+      "clause": "A2 - A1, assists: point difference at most +0.05% of A1 mean CRPS",
+      "value": -0.00834230658531102,
+      "threshold": 0.0005,
+      "holds": true
+    },
+    {
+      "item": "B.9.2",
+      "clause": "A2 - A1, threes: point difference at most +0.05% of A1 mean CRPS",
+      "value": -0.002813116089077241,
+      "threshold": 0.0005,
+      "holds": true
+    },
+    {
+      "item": "B.9.2",
+      "clause": "A2 - A1, ra: point difference at most +0.05% of A1 mean CRPS",
+      "value": -0.011010144457806735,
+      "threshold": 0.0005,
+      "holds": true
+    }
+  ],
+  "decision_detail": {
+    "passed": {
+      "A1": {
+        "item1": false
+      },
+      "A2": {
+        "item1": true,
+        "item2": true
+      }
+    }
+  },
+  "slope_source": {
+    "2023-24": "_p5",
+    "2024-25": "_p5"
+  },
+  "pmarket": {
+    "devig_method": "shin",
+    "consensus_set": "all_mean",
+    "choice_file": "data/props_experiments/audit_2026-11/results/7a/choice.json"
+  },
+  "key_mismatch_override": false,
+  "rows_dropped_by_key_mismatch": {
+    "a11_r0_on_pg1": 0,
+    "a11_pg1": 0,
+    "a11_pg2": 0,
+    "a11_r0": 0
+  },
+  "preconditions": "L1-L6 (B.9) and the control check (B.6.3) are not verifiable from these inputs; this script assumes they passed",
+  "n_boot": 2000,
+  "n_boot_bonf": 10000,
+  "bonferroni_alpha": 0.002173913043478261,
+  "code_commit": "48a7f00921606f4e44eceda82f6fde9fc5c151e4"
+}

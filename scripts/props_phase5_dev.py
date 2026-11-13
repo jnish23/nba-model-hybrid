@@ -106,7 +106,15 @@ def placebo_and_caps(q, cons, k_by_stat, sel_primary, real_clv, n_boot, alpha_ad
     return pl, excess, pd.concat(caps, ignore_index=True)
 
 
-def main():
+def load_rows_light(version, season, features_db, root=None):
+    """Predictions joined to the labels. root=None is props.models.evaluate.load_rows_light exactly (production registry); a research root reads that root only."""
+    if root is None:
+        return ev.load_rows_light(version, season, features_db)
+    idx, pmfs = registry.load_predictions(version, season, root=root)
+    return idx.merge(load_labels(features_db), on=['game_id', 'player_id'], how='left', validate='many_to_one'), pmfs
+
+
+def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument('--season', required=True)
     ap.add_argument('--p5-version', required=True)
@@ -119,15 +127,21 @@ def main():
     ap.add_argument('--n-boot', type=int, default=1000)
     ap.add_argument('--frozen-rule', default=None, help='VALIDATION mode: read k and the rule from this file (written by a development run); no grid, nothing re-estimated')
     ap.add_argument('--no-r2b', action='store_true', help='skip the rolling recalibration (sensitivity: how much do the betting results depend on R2b?)')
-    a = ap.parse_args()
+    ap.add_argument('--registry-root', default=None, help='RESEARCH mode: --p5-version, --full-version and --carry-version are read from this folder only (never from data/props_models); refuses 2025-26 and later')
+    a = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
+    root = registry.resolve_root(a.registry_root)
+    if a.registry_root is not None:
+        registry.refuse_holdout([a.season], '--season')
+        registry.refuse_holdout([a.carry_season], '--carry-season')
+    root_arg = root if a.registry_root is not None else None
     prices_path = a.prices or f'data/props_betting/prices_{a.season}.pkl'
     cons, bets = pickle.load(open(prices_path, 'rb'))
     labels = load_labels(a.features_db)
 
-    idx5, pm5 = registry.load_predictions(a.p5_version, a.season)
-    full_rows, full_pm = ev.load_rows_light(a.full_version, a.season, a.features_db)
-    carry = ev.load_rows_light(a.carry_version or a.full_version, a.carry_season, a.features_db) if a.carry_season else None
+    idx5, pm5 = registry.load_predictions(a.p5_version, a.season, root=root)
+    full_rows, full_pm = load_rows_light(a.full_version, a.season, a.features_db, root_arg)
+    carry = load_rows_light(a.carry_version or a.full_version, a.carry_season, a.features_db, root_arg) if a.carry_season else None
     if not a.no_r2b:
         ratios = be.r2b_ratio_by_date(full_rows, full_pm, carry)
         pm5 = be.apply_r2b(idx5, pm5, ratios)                               # the frozen configuration: R2b (per game type) on top of the saved 20,000-draw pmfs

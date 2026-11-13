@@ -60,3 +60,4 @@ pdfminer.six==20260107
 pypdfium2==5.14.0
 pypdf==6.21.0
 pytest==9.1.1
+pyarrow==26.0.0

@@ -1,0 +1,95 @@
+{
+  "experiment": "7b",
+  "choice": "no_change",
+  "version": "a11_pg2",
+  "database": "data/props_experiments/audit_2026-11/features/props_features_a11_pg2.db",
+  "database_sha256": "1de15681b3f3a92ee14f9e056bdf2350db6009f234a7233a5a968aeef43a797c",
+  "manifest": "data\\props_experiments\\audit_2026-11\\models\\a11_pg2\\manifest.json",
+  "needs_live_builder_change": false,
+  "reference": "a11_pg2",
+  "candidates": {
+    "a11_env": "with_env"
+  },
+  "leaky": null,
+  "folds": [
+    "2021-22",
+    "2022-23",
+    "2023-24"
+  ],
+  "seen": [
+    "2024-25"
+  ],
+  "clauses": [
+    {
+      "item": "7b.6",
+      "clause": "pooled four stats over the dev folds, with_env - reference: 95% upper bound below 0 (relative units)",
+      "value": 0.0002469006708287984,
+      "threshold": 0.0,
+      "holds": false
+    },
+    {
+      "item": "7b.6",
+      "clause": "pooled four stats, 2023-24 fold alone: point estimate below 0 (relative units)",
+      "value": 0.00028344023708515927,
+      "threshold": 0.0,
+      "holds": false
+    },
+    {
+      "item": "7b.6",
+      "clause": "with_env vs comparator, rebounds: 95% upper bound of the paired CRPS difference at most +0.10% of comparator mean CRPS",
+      "value": -7.904491799046806e-05,
+      "threshold": 0.001,
+      "holds": true
+    },
+    {
+      "item": "7b.6",
+      "clause": "with_env vs comparator, assists: 95% upper bound of the paired CRPS difference at most +0.10% of comparator mean CRPS",
+      "value": -0.0001449590041431525,
+      "threshold": 0.001,
+      "holds": true
+    },
+    {
+      "item": "7b.6",
+      "clause": "with_env vs comparator, threes: 95% upper bound of the paired CRPS difference at most +0.10% of comparator mean CRPS",
+      "value": 0.0020415286516004354,
+      "threshold": 0.001,
+      "holds": false
+    },
+    {
+      "item": "7b.6",
+      "clause": "with_env vs comparator, ra: 95% upper bound of the paired CRPS difference at most +0.10% of comparator mean CRPS",
+      "value": -0.00021458757174851905,
+      "threshold": 0.001,
+      "holds": true
+    },
+    {
+      "item": "7b.6",
+      "clause": "with_env: 2023-24 pooled slope with intercept at least comparator's minus 0.02 (value = arm minus comparator)",
+      "value": 0.00979187009735194,
+      "threshold": -0.02,
+      "holds": true
+    }
+  ],
+  "decision_detail": {
+    "adopt": false
+  },
+  "slope_source": {
+    "2023-24": "_p5",
+    "2024-25": "_p5"
+  },
+  "pmarket": {
+    "devig_method": "shin",
+    "consensus_set": "all_mean",
+    "choice_file": "data/props_experiments/audit_2026-11/results/7a/choice.json"
+  },
+  "key_mismatch_override": false,
+  "rows_dropped_by_key_mismatch": {
+    "a11_pg2": 0,
+    "a11_env": 0
+  },
+  "preconditions": "L1-L6 (B.9) and the control check (B.6.3) are not verifiable from these inputs; this script assumes they passed",
+  "n_boot": 2000,
+  "n_boot_bonf": 10000,
+  "bonferroni_alpha": 0.002173913043478261,
+  "code_commit": "48a7f00921606f4e44eceda82f6fde9fc5c151e4"
+}

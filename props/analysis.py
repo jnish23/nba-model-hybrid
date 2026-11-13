@@ -51,17 +51,26 @@ def load_flagged(conn, where='1=1', params=(), method='multiplicative'):
     return flag_main_lines(add_devig(df, method))
 
 
-def consensus(flagged, min_books=3, exclude_stale=True, exclude_flagged=True):
+def consensus(flagged, min_books=3, exclude_stale=True, exclude_flagged=True, agg='mean', books=None):
     """
     One row per (snapshot, event, player, market): consensus_line, n_books (quoting any main line), n_at_line,
     book_spread (max - min of main lines), consensus_fair_over (NaN unless n_at_line >= min_books).
+
+    agg    'mean' (default) or 'median' of the books' de-vigged over probabilities at the consensus line.
+    books  None (default) uses every book; an iterable of book names restricts the whole computation to those books: the consensus line, n_books,
+           n_at_line, book_spread and the min_books rule are all recomputed on the restricted set (7a: bettable books only).
+    The defaults reproduce the earlier behaviour exactly.
     """
+    if agg not in ('mean', 'median'):
+        raise ValueError(f"agg must be 'mean' or 'median', got {agg!r}")
     m = flagged[flagged['is_main_line']].copy()
     ok = ~m['one_sided']
     if exclude_flagged:
         ok &= ~m['no_margin'] & ~m['wide']
     if exclude_stale:
         ok &= ~m['stale']
+    if books is not None:
+        ok &= m['book'].isin(list(books))
     m = m[ok]
     if m.empty:
         return pd.DataFrame(columns=GROUP + ['consensus_line', 'n_books', 'n_at_line', 'book_spread', 'consensus_fair_over'])
@@ -78,6 +87,6 @@ def consensus(flagged, min_books=3, exclude_stale=True, exclude_flagged=True):
     res['book_spread'] = g['line'].max() - g['line'].min()
     ag = at.groupby(GROUP)
     res['n_at_line'] = ag['book'].nunique()
-    res['consensus_fair_over'] = ag['fair_over'].mean()
+    res['consensus_fair_over'] = ag['fair_over'].mean() if agg == 'mean' else ag['fair_over'].median()
     res.loc[res['n_at_line'] < min_books, 'consensus_fair_over'] = np.nan
     return res.reset_index()
