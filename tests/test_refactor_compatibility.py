@@ -35,12 +35,11 @@ def test_relocated_frozen_rule_is_exact_and_config_changes_only_its_path():
     # The legacy report copy is stored with LF in Git and checked out per platform (CRLF on Windows); the canonical copy is pinned byte for byte
     # by its SHA-256 below. Content must match once line endings are normalized.
     assert old.replace(b'\r\n',b'\n')==new.replace(b'\r\n',b'\n')
-    original=json.loads((ROOT/'reports/props/live_config.json').read_text(encoding='utf-8'))
-    relocated=json.loads((ROOT/'config/props_live.json').read_text(encoding='utf-8'))
-    assert hashlib.sha256(new).hexdigest()==relocated['rule_sha256']
-    assert relocated.pop('rule_file')=='config/props_frozen_rule.json'
-    original.pop('rule_file')
-    assert relocated==original
+    # The frozen rule stays pinned byte for byte. Since the switch of 2026-11-14 (forward test segment 2) the live configuration names another rule file;
+    # whatever it names must exist and match the hash it pins.
+    assert hashlib.sha256(new).hexdigest()=='b597763ab3b13fd9cf295b1de802255ac87fe6e9bbf065103171db49eec2b6fb'
+    live=json.loads((ROOT/'config/props_live.json').read_text(encoding='utf-8'))
+    assert hashlib.sha256((ROOT/live['rule_file']).read_bytes()).hexdigest()==live['rule_sha256']
 
 
 def test_generated_bundle_imports_logic_without_source_packages(tmp_path):

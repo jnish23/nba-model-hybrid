@@ -1,0 +1,29 @@
+[
+ {
+  "key": "pre",
+  "label": "Before the forward test",
+  "to_game_date": "2026-11-12",
+  "note": "Descriptive record only. Mixed model versions (part of it restored from a dashboard export after the 2026-10-31 data loss); no pre-registered test applies to it."
+ },
+ {
+  "key": "seg1",
+  "label": "Segment 1",
+  "from_game_date": "2026-11-13",
+  "to_game_date": "2026-11-13",
+  "model_version": "v3_live_2026-27r1",
+  "rule_sha256": "b597763ab3b13fd9cf295b1de802255ac87fe6e9bbf065103171db49eec2b6fb",
+  "roster_rule": "v2",
+  "preregistration": "reports/props/forward_test_preregistration.md",
+  "note": "Frozen rule, roster rule v2. Closed when the owner switched to the segment 2 configuration."
+ },
+ {
+  "key": "seg2",
+  "label": "Segment 2",
+  "from_game_date": "2026-11-14",
+  "model_version": "v4_live_2026-27c1",
+  "rule_sha256": "fd026afd076e728cf38ea8a1aaf2321cce21ad1837256dd55b6a670878dd941d",
+  "roster_rule": "pregame_all",
+  "preregistration": "reports/props/forward_test_preregistration_segment2.md",
+  "note": "Candidate rule C3 (reports/props/audit_2026-11/candidate_rule_a11.json), roster rule pregame_all. Open: it runs until the horizon of its pre-registration."
+ }
+]

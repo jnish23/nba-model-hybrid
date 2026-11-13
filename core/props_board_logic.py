@@ -172,8 +172,10 @@ def cluster_bootstrap_ratio(num, den, clusters, n_boot=1000, seed=0, alpha=0.05)
     g = len(uniq)
     sn = np.bincount(codes, weights=np.asarray(num, float), minlength=g)
     sd = np.bincount(codes, weights=np.asarray(den, float), minlength=g)
-    if sd.sum() <= 0 or g < 2:
+    if sd.sum() <= 0:
         return np.nan, np.nan, np.nan
+    if g < 2:                                        # one cluster (the first day of a segment, or a one-day segment): the ratio is known, an interval is not
+        return sn.sum() / sd.sum(), np.nan, np.nan
     w = np.random.default_rng(seed).multinomial(g, np.full(g, 1.0 / g), size=n_boot).astype(float)
     denom = w @ sd
     draws = np.where(denom > 0, (w @ sn) / np.where(denom > 0, denom, 1.0), np.nan)
@@ -594,3 +596,149 @@ def live_view(bets, board, lines):
                      'Player': r['player_name'], 'Bet': f"{r['side'].upper()} {STAT_LABEL.get(r['stat'], r['stat'])} {r['line']:g}",
                      'Now': cur, 'Min': r['minutes'], 'Status': text, 'On pace': on_pace(cur, r['minutes'], r.get('expected_minutes')), 'kind': kind})
     return pd.DataFrame(rows, columns=LIVE_COLS).sort_values(['Game', 'Player'], kind='stable').reset_index(drop=True)
+
+
+# Forward-test segments. A segment is a span of game dates run under one model, rule file and roster rule. The definitions are data (config/props_forward_segments.json, copied by the exporter into
+# meta.json as `segments`), so a new segment is a new row there, not a code change. Everything here is pure: the inputs are the bets table and that list.
+OVERALL_KEY = 'all'
+OVERALL_LABEL = 'All segments (overall)'
+UNASSIGNED_KEY = 'unassigned'
+UNASSIGNED_LABEL = 'Unassigned (no segment covers the date)'
+SEGMENT_CHECKS = (('model_version', 'model_version'), ('rule_sha256', 'rule_sha256'), ('roster_rule', 'roster_rule'))      # (definition field, bets column)
+SEGMENT_COLS = ['segment', 'label', 'first_game_date', 'last_game_date', 'bets', 'game_dates', 'mismatched', 'model_version'] + DIAG_COLS + ['roi_flat', 'roi_flat_lo', 'roi_flat_hi']
+
+
+def clean_segments(segments):
+    """The usable segment definitions of a meta.json `segments` value, oldest first as given: dicts with a `key`; anything else (None, an old export, junk) gives []. A missing label is the key."""
+    if not isinstance(segments, (list, tuple)):
+        return []
+    out = []
+    for s in segments:
+        if isinstance(s, dict) and str(s.get('key') or '').strip():
+            out.append({**s, 'key': str(s['key']), 'label': str(s.get('label') or s['key'])})
+    return out
+
+
+def _date_text(x):
+    return '' if x is None or (isinstance(x, float) and np.isnan(x)) else str(x)[:10]
+
+
+def assign_segments(df, segments):
+    """
+    Segment key of every bet, by game_date (inclusive `from_game_date` / `to_game_date`; a missing bound is open; the first matching segment in list order wins). A bet outside every range, or
+    with no readable game_date, gets 'unassigned' (never dropped). Returns a Series aligned with `df`.
+    """
+    segs = clean_segments(segments)
+    out = pd.Series(UNASSIGNED_KEY, index=df.index, dtype=object)
+    if 'game_date' not in df.columns or not len(df):
+        return out
+    dates = df['game_date'].map(_date_text)
+    todo = dates != ''
+    for s in segs:
+        lo, hi = _date_text(s.get('from_game_date')), _date_text(s.get('to_game_date'))
+        m = todo & ((dates >= lo) if lo else True) & ((dates <= hi) if hi else True)
+        out[m] = s['key']
+        todo = todo & ~m
+    return out
+
+
+def current_segment(segments):
+    """The open-ended segment (no `to_game_date`; the last one if several): the configuration the record is being built under now. None when there is none."""
+    open_ = [s for s in clean_segments(segments) if not _date_text(s.get('to_game_date'))]
+    return open_[-1] if open_ else None
+
+
+def segment_mismatch(df, segments):
+    """
+    Boolean Series aligned with `df`: True for a bet whose stored model_version / rule_sha256 / roster_rule differs from the definition of the segment its date falls in. Only fields the definition
+    states and columns the export has are compared; a blank stored value counts as a difference. Such bets stay in their segment (they are flagged, never dropped).
+    """
+    segs = {s['key']: s for s in clean_segments(segments)}
+    key = assign_segments(df, list(segs.values()))
+    bad = pd.Series(False, index=df.index)
+    for field, col in SEGMENT_CHECKS:
+        if col not in df.columns:
+            continue
+        want = key.map(lambda k, f=field: (segs.get(k) or {}).get(f))
+        has = want.notna() & (want.astype(str).str.strip() != '')
+        got = df[col].astype(object).where(df[col].notna(), None)
+        bad |= has & (got.isna() | (got.astype(str) != want.astype(str)))
+    return bad
+
+
+def segment_summary(df, segments, treatment='stands', n_boot=300, seed=0, min_stakes=MIN_STAKES):
+    """
+    One row per defined segment (oldest first, also a segment with no bets yet), an 'unassigned' row only if some bet falls outside every range, then the overall row ('all', every bet).
+    Columns SEGMENT_COLS: first/last game_date, bets (recorded, settled or not), game_dates, mismatched (see segment_mismatch), the segment's model_version ('' for the descriptive and the
+    overall rows), the diagnostics columns of `_diag_row` (stakes, win rate, ROI at the median and best price with date-clustered 95% intervals, CLV, too_small) and roi_flat (+ interval).
+    Each row is the same computation `version_summary` makes for one version, applied to the segment's bets.
+    """
+    segs = clean_segments(segments)
+    df = df.reset_index(drop=True)
+    key = assign_segments(df, segs)
+    bad = segment_mismatch(df, segs)
+    staked = _staked(df, treatment)
+    skey = key.loc[staked.index]
+    groups = [(s['key'], s['label'], str(s.get('model_version') or ''), key == s['key']) for s in segs]
+    if (key == UNASSIGNED_KEY).any():
+        groups.append((UNASSIGNED_KEY, UNASSIGNED_LABEL, '', key == UNASSIGNED_KEY))
+    groups.append((OVERALL_KEY, OVERALL_LABEL, '', pd.Series(True, index=df.index)))
+    rows = []
+    for k, label, mv, m in groups:
+        g_all = df[m]
+        g_st = staked[(skey == k).to_numpy()] if k != OVERALL_KEY else staked
+        dates = g_all['game_date'].astype(str).str[:10] if 'game_date' in g_all.columns and len(g_all) else pd.Series(dtype=str)
+        flat = date_cluster_roi(g_st, 'flat', treatment, n_boot, seed) if len(g_st) else {'roi': np.nan, 'lo': np.nan, 'hi': np.nan}
+        rows.append({'segment': k, 'label': label, 'first_game_date': dates.min() if len(dates) else '', 'last_game_date': dates.max() if len(dates) else '', 'bets': int(len(g_all)),
+                     'game_dates': int(dates.nunique()), 'mismatched': int(bad[m].sum()), 'model_version': mv, **_diag_row(g_st, treatment, n_boot, seed, min_stakes),
+                     'roi_flat': flat['roi'], 'roi_flat_lo': flat['lo'], 'roi_flat_hi': flat['hi']})
+    return pd.DataFrame(rows, columns=SEGMENT_COLS)
+
+
+def segment_period_text(seg):
+    """'up to 2026-11-12' / 'on 2026-11-13' / '2026-11-13 to 2026-11-15' / 'from 2026-11-14 onward'."""
+    lo, hi = _date_text(seg.get('from_game_date')), _date_text(seg.get('to_game_date'))
+    if lo and hi:
+        return f'on {lo}' if lo == hi else f'{lo} to {hi}'
+    return f'up to {hi}' if hi else (f'from {lo} onward' if lo else 'all dates')
+
+
+def segments_markdown(segments):
+    """Bullet list of the segments for the About page: label, dates, model version (and roster rule when stated). '' when there are none."""
+    lines = []
+    for s in clean_segments(segments):
+        parts = [segment_period_text(s)]
+        parts.append(f"model `{s['model_version']}`" if s.get('model_version') else 'mixed model versions')
+        if s.get('roster_rule'):
+            parts.append(f"roster rule `{s['roster_rule']}`")
+        lines.append(f"- **{s['label']}**: " + ', '.join(parts) + '.')
+    return '\n'.join(lines)
+
+
+PMARKET_TEXT = {'shin': 'Shin de-vig', 'multiplicative': 'multiplicative de-vig', 'additive': 'additive de-vig', 'power': 'power de-vig'}
+CONSENSUS_TEXT = {'all_mean': 'mean over all books', 'all': 'all books', 'bettable_mean': 'mean over the bettable books'}
+
+
+def _k_text(rule):
+    return ', '.join(f'{STAT_LABEL.get(s, s)} {v:.2f}' for s, v in (rule.get('k_by_stat') or {}).items())
+
+
+def pstar_text(rule):
+    """
+    The sentence of the About page that says how the model probability is turned into the probability the EV uses (p*), from the exported rule file. Reads the keys directly (the dashboard
+    bundle does not ship props.betting.rules). No `candidate`: the frozen k-only form, worded as it always was. 'C3': the market probability plus a per-stat intercept that depends on whether the
+    model is above or below the market, plus k times the gap, clipped. Any other form: its name and the k values, no formula.
+    """
+    cand = rule.get('candidate')
+    if cand is None:
+        return f'Model probability shrunk toward the market: p* = market + k x (model - market), k by stat: {_k_text(rule)}.'
+    if cand != 'C3':
+        return f'Model probability combined with the market by candidate form {cand} of the rule file (no formula is printed here for this form); k by stat: {_k_text(rule)}.'
+    pm = rule.get('pmarket') if isinstance(rule.get('pmarket'), dict) else {}
+    market = f"{PMARKET_TEXT.get(pm.get('devig_method'), pm.get('devig_method') or 'the usual de-vig')}, {CONSENSUS_TEXT.get(pm.get('consensus_set'), pm.get('consensus_set') or 'the consensus of the books')}"
+    clip = rule.get('p_star_clip')
+    clip_txt = f'{clip[0]:g} and {clip[1]:g}' if isinstance(clip, (list, tuple)) and len(clip) == 2 else 'the range in the rule file'
+    icpt = rule.get('intercept_by_stat') or {}
+    parts = [f"{STAT_LABEL.get(s, s)} {v['a_pos']:+.3f} / {v['a_neg']:+.3f}" for s, v in icpt.items() if isinstance(v, dict) and {'a_pos', 'a_neg'} <= set(v)]
+    return (f'Model probability combined with the market (candidate rule {cand}): p* = market probability ({market}) + a small intercept per stat + k x (model - market), '
+            f'then clipped to between {clip_txt}. The intercept depends on whether the model is above or below the market (above / below: {"; ".join(parts)}). k by stat: {_k_text(rule)}.')

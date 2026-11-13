@@ -1,6 +1,6 @@
 # Pre-registration: forward (paper) test of the props candidate, segment 2
 
-**DRAFT, NOT IN FORCE. Nothing here applies until the owner dates the signature in section 8 and the switch has happened.** Redrafted 2026-11-13 at the owner's request (sections 1, 4, 6, 7 and 11: uncapped primary record, date horizon, early-success looks, same-recipe refits). The owner's name was entered before the redraft, so the date on the signature line is what puts this text in force.
+**IN FORCE: signed by the owner on 2026-11-13, effective date E2 = 2026-11-14 (section 8).** The text below is as signed; the last edits before the signature (2026-11-13) set the 137-date schedule count and the implementation notes of section 7.
 
 Segment 1 (`reports/props/forward_test_preregistration.md`, signed 2026-11-12, effective 2026-11-13) is closed by this change under its section 11 (items 1, 2 and 4: new model, new rule file, new roster rule and price definition). Its bets never count towards segment 2. Every section of the segment 1 text applies here unchanged unless this document replaces it. Replaced: sections 1, 4, 6, 7, 11 and 14.
 
@@ -84,6 +84,6 @@ Primary metric: median-price ROI of the **uncapped** recorded bets, date-cluster
 
 ## 8. Signature (replaces section 14)
 
-Effective date E2: **OWNER:** the first game date on which all three slots run under the configuration of section 11 (proposed 2026-11-14 if the switch is done before that day's first slot; otherwise the next game date).
+Effective date E2: **2026-11-14** (the switch commit sets `effective_from` in `config/props_live.json`; it applies if the main checkout runs that commit before the first slot of 2026-11-14, otherwise E2 is the next game date and this line and the segments file are corrected). As proposed: the first game date on which all three slots run under the configuration of section 11 (proposed 2026-11-14 if the switch is done before that day's first slot; otherwise the next game date).
 
 Signed: Jordan Nishimura   Date: 2026-11-13

@@ -15,6 +15,40 @@ from props.live import settle as live_settle
 DISCLOSURE = ('Paper record of the frozen rule with the live model and roster rule v2. The live inputs do not reproduce the training inputs (teammate availability cannot be rebuilt '
               'before the game): in the parity test on 40 held-out 2025-26 dates the live-feature bets earned about 1.7 points less than the training-feature bets (+3.9% vs +5.6% at the '
               'selected price), A1/A4/A5/A6 were waived by the owner, and October coverage is about 60%. See reports/props/d1_parity_report.md.')
+PREGAME_ROSTER_RULES = ('v2nq', 'pregame_all')                  # props.live.roster.PREGAME_RULES: the teammate set is known before the game and training builds it with the same code
+PARITY_REPORT = 'reports/props/audit_2026-11/6a_roster/report.md'
+SEGMENTS_PATH = Path(__file__).resolve().parents[2] / 'config' / 'props_forward_segments.json'
+
+
+def disclosure(config, rule=None):
+    """
+    The warning text of the live dashboard, a function of the pinned configuration. Roster rule v2 (and any rule that is not a pre-game one): the original text, unchanged. A pre-game roster
+    rule (v2nq, pregame_all): the paper record, model version, the form of the rule file (`rule`: the loaded rule file; its `candidate` name, or "frozen rule"), the roster rule and the parity
+    report, the waivers LISTED IN THE CONFIGURATION (not a fixed list), and that the record before `effective_from` came from earlier configurations.
+    """
+    roster = config.get('roster_rule', 'v2')
+    if roster not in PREGAME_ROSTER_RULES:
+        return DISCLOSURE
+    form = f"candidate rule {rule['candidate']}" if isinstance(rule, dict) and rule.get('candidate') else 'frozen rule'
+    waivers = [str(w) for w in (config.get('waivers') or [])]
+    waived = ('The owner waived: ' + '; '.join(waivers) + '.') if waivers else 'No waiver is recorded for this configuration.'
+    since = config.get('effective_from')
+    earlier = (f'The record before {since} was produced by earlier configurations (see the segment table on the Tracker page).' if since
+               else 'The record before this configuration took effect was produced by earlier configurations (see the segment table on the Tracker page).')
+    return (f"Model version {config.get('model_version', 'unknown')}, {form}, roster rule {roster}. Training and live build the teammate features with the same code "
+            f'(the teammates are the ones known before the game; parity report {PARITY_REPORT}). {waived} {earlier}')
+
+
+def load_segments(path=None):
+    """The forward-test segment definitions (config/props_forward_segments.json) as a list, or None when the file is missing or unreadable; the exporter copies them into meta.json."""
+    p = Path(path) if path is not None else SEGMENTS_PATH
+    try:
+        data = json.loads(p.read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, list) and data else None
+
+
 SUMMARY_COLS = ['season', 'kind', 'bets', 'player_games', 'roi_best_stands', 'roi_median_stands', 'roi_flat_stands', 'clv_real_pts', 'clv_placebo_mean_pts', 'clv_excess_pts',
                 'clv_excess_lower_pts', 'placebo_roi', 'slope4', 'slope4_lo', 'slope4_hi', 'model_version']
 RESULT_COLS = ['minutes_actual', 'y', 'played', 'status_stands', 'status_flagged', 'status_all', 'clv_prob', 'line_move_favour', 'close_line', 'line_240', 'line_60', 'line_5',
@@ -51,7 +85,8 @@ def model_versions_meta(bets):
     return sorted(out, key=lambda r: (r['first_game_date'], r['version']))
 
 
-def export_live(live_db, out_dir, config, n_boot=1000, checks=None, current=None, results_now=None):
+def export_live(live_db, out_dir, config, n_boot=1000, checks=None, current=None, results_now=None, segments=None):
+    """`segments`: the forward-test segment definitions copied into meta.json (default: config/props_forward_segments.json; none if that file is missing, and the dashboard then shows no segment table)."""
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(f'file:{live_db}?mode=ro', uri=True) as conn:
@@ -72,7 +107,7 @@ def export_live(live_db, out_dir, config, n_boot=1000, checks=None, current=None
     b['played'] = b['played'].fillna(0).astype(int)
     keep = ['bet_id', 'season', 'data_kind', 'game_id', 'game_date', 'tip_ref_utc', 'placed_at_utc', 'minutes_before', 'matchup', 'home_team', 'away_team', 'player_id', 'player_name', 'stat',
             'side', 'line', 'book', 'dec_best', 'dec_median', 'dec_flat', 'ev_best', 'ev_median', 'ev_flat', 'p_over_model', 'p_over_star', 'p_over_market', 'push', 'n_at_line', 'n_quotes',
-            'expected_minutes', 'created_utc', 'model_version', 'snapshot_minutes'] + RESULT_COLS
+            'expected_minutes', 'created_utc', 'model_version', 'rule_sha256', 'roster_rule', 'snapshot_minutes'] + RESULT_COLS
     b = b[[c for c in keep if c in b.columns]]
     b.to_csv(out / 'bets.csv', index=False)
     (out / 'pmf.json').write_text(json.dumps(pmf, separators=(',', ':')), encoding='utf-8')
@@ -97,7 +132,10 @@ def export_live(live_db, out_dir, config, n_boot=1000, checks=None, current=None
     rule = json.loads(Path(config['rule_file']).read_text(encoding='utf-8'))
     meta = {'mode': 'live', 'rule': rule, 'rule_sha256': config['rule_sha256'], 'code_commit': (bets['code_commit'].dropna().iloc[-1] if 'code_commit' in bets.columns and bets['code_commit'].notna().any() else ''), 'features_db_sha256': config['features_db_sha256'],
             'model_version': config['model_version'], 'model_versions': vmeta, 'roster_rule': config['roster_rule'], 'built_at_utc': pd.Timestamp.now(tz='UTC').strftime('%Y-%m-%dT%H:%M:%SZ'),
-            'record_started_utc': bets['created_utc'].min() if len(bets) else None, 'seasons': {config['model_season']: 'live paper record'}, 'disclosure': DISCLOSURE,
+            'record_started_utc': bets['created_utc'].min() if len(bets) else None, 'seasons': {config['model_season']: 'live paper record'}, 'disclosure': disclosure(config, rule),
             'pending': int(len(b) - len(settled)), 'pricing': {'median': 'median over the bettable books at the consensus line', 'best': 'best quote among the bettable books', 'flat': 'flat -110'}}
+    segs = load_segments() if segments is None else segments
+    if segs:
+        meta['segments'] = segs                                       # the published app reads the definitions from here, so the bundle needs no extra file
     (out / 'meta.json').write_text(json.dumps(meta, indent=2), encoding='utf-8')
     return b
