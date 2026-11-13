@@ -478,3 +478,173 @@ def sequential_status(profit, stake, cluster, horizon_stakes, horizon_date=None,
     last_cp = base['looks'][-1]['cp'] if base['looks'] else np.nan
     return {**base, 'status': 'CONTINUE', 'reason': 'horizon not reached, no futility trigger', 'roi': roi, 'lo': r['lo'], 'hi': r['hi'], 'p_le0': r['p_le0'], 't': n_stakes / horizon_stakes,
             'cp': last_cp}
+
+
+# ----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+# Segment 2: group-sequential rule on game dates, capped subset, configuration integrity
+# (reports/props/forward_test_preregistration_segment2.md sections 1, 6, 7, 11; the parameters live in scripts/props_forward_monitor.py SEGMENTS)
+# ----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+def look_passes(z, n_dates, boundary, min_dates=30):
+    """PASS at a look: Z strictly above the boundary and at least `min_dates` game dates included."""
+    return bool(np.isfinite(z) and n_dates >= min_dates and z > boundary)
+
+
+def _gs_stats(num_g, den_g):
+    """ROI, analytic cluster-robust SE (clusters = game dates) and Z = ROI / SE of per-date profit and stake sums."""
+    num_g, den_g = np.asarray(num_g, float), np.asarray(den_g, float)
+    if len(den_g) == 0 or den_g.sum() <= 0:
+        return np.nan, np.nan, np.nan
+    roi = float(num_g.sum() / den_g.sum())
+    se = _ratio_se(num_g, den_g)
+    return roi, se, (roi / se if np.isfinite(se) and se > 0 else np.nan)
+
+
+def group_sequential_dates(dates, num_g, den_g, look_dates, boundaries, expected_dates, alt_roi=0.03, cp_floor=0.10, min_dates=30, horizon_date=None, today=None, pending_dates=()):
+    """
+    Segment 2 decision rule on per-game-date sums (pure; no bootstrap, the Z uses the analytic clustered SE of `_ratio_se`).
+    dates: 'YYYY-MM-DD', one per game date with at least one settled stake; num_g / den_g: profit and stakes of that date.
+    look_dates: game-date counts of the interim looks, e.g. (50, 100); boundaries: Z thresholds for those looks and then the final look (one more entry than look_dates).
+    Look i uses the first look_dates[i] game dates, through that date's cut-off and never later data. Looks are taken in order and the first terminating event ends the test:
+    PASS (Z above the boundary and >= min_dates dates), or at an interim look STOP-FUTILITY (conditional power of Z_final > boundaries[-1] below cp_floor, true ROI alt_roi on the remaining
+    dates, information fraction t = dates so far / expected_dates). The final look uses every date through horizon_date once today >= horizon_date: PASS or FAIL.
+    pending_dates: game dates with recorded bets not yet settled. A look whose cut-off date is on or after a pending date waits (its data would still change), so a reported outcome
+    is always computed from complete dates. Returns dict(status, reason, decided_at, looks, n_dates, n_stakes, roi, se, z, waiting).
+    """
+    if len(boundaries) != len(look_dates) + 1:
+        raise ValueError('boundaries needs one more entry than look_dates (the final look)')
+    order = np.argsort(np.asarray(dates).astype(str), kind='mergesort')
+    dts = np.asarray(dates).astype(str)[order]
+    num = np.asarray(num_g, float)[order]
+    den = np.asarray(den_g, float)[order]
+    pending = sorted(set(str(p) for p in pending_dates))
+    out = {'looks': [], 'waiting': [], 'decided_at': None, 'expected_dates': float(expected_dates)}
+    horizon_hit = horizon_date is not None and today is not None and str(today) >= str(horizon_date)
+
+    def finish(status, reason, decided_at=None):
+        roi, se, z = _gs_stats(num, den)
+        out.update(status=status, reason=reason, decided_at=decided_at, n_dates=int(len(dts)), n_stakes=int(den.sum()), roi=roi, se=se, z=z)
+        return out
+
+    for i, nl in enumerate(look_dates):
+        if len(dts) < nl:
+            break
+        cut = dts[nl - 1]
+        blocked = [p for p in pending if p <= cut]
+        if blocked:
+            out['waiting'] = blocked
+            out['looks'].append({'look': i + 1, 'n_dates_target': int(nl), 'cutoff': cut, 'waiting': blocked})
+            return finish('CONTINUE', f'look {i + 1} reached on {cut} but dates through it are not fully settled ({", ".join(blocked)})')
+        roi, se, z = _gs_stats(num[:nl], den[:nl])
+        row = {'look': i + 1, 'n_dates_target': int(nl), 'cutoff': cut, 'n_dates': int(nl), 'n_stakes': int(den[:nl].sum()), 'roi': roi, 'se': se, 'z': z, 'boundary': float(boundaries[i])}
+        row['passed'] = look_passes(z, nl, boundaries[i], min_dates)
+        t = nl / float(expected_dates)
+        row['t'] = float(t)
+        row['cp'] = conditional_power(roi, se, t, alt_roi, z_crit=boundaries[-1])
+        out['looks'].append(row)
+        if row['passed']:
+            return finish('PASS', f'look {i + 1}: Z {z:.3f} > {boundaries[i]} on the first {nl} game dates (through {cut})', f'look {i + 1}')
+        if np.isfinite(row['cp']) and row['cp'] < cp_floor:
+            return finish('STOP-FUTILITY', f'look {i + 1}: conditional power {row["cp"]:.3f} < {cp_floor:.2f} (true ROI {alt_roi:+.3f} on the remaining dates, final boundary {boundaries[-1]})', f'look {i + 1}')
+    if horizon_hit:
+        blocked = [p for p in pending if p <= str(horizon_date)]
+        if blocked:
+            out['waiting'] = blocked
+            return finish('CONTINUE', f'final look due ({horizon_date} reached) but dates through it are not fully settled ({", ".join(blocked)})')
+        keep = dts <= str(horizon_date)
+        dts, num, den = dts[keep], num[keep], den[keep]
+        roi, se, z = _gs_stats(num, den)
+        passed = look_passes(z, len(dts), boundaries[-1], min_dates)
+        out['looks'].append({'look': 'final', 'n_dates_target': None, 'cutoff': str(horizon_date), 'n_dates': int(len(dts)), 'n_stakes': int(den.sum()), 'roi': roi, 'se': se, 'z': z,
+                             'boundary': float(boundaries[-1]), 'passed': passed, 't': np.nan, 'cp': np.nan})
+        why = 'PASS' if passed else ('FAIL' if len(dts) >= min_dates else f'FAIL (only {len(dts)} game dates, < {min_dates})')
+        return finish('PASS' if passed else 'FAIL', f'final look through {horizon_date}: Z {z:.3f} vs boundary {boundaries[-1]} on {len(dts)} game dates: {why}', 'final')
+    return finish('CONTINUE', 'no look terminated the test')
+
+
+def group_sequential_status(profit, stake, cluster, look_dates, boundaries, expected_dates, **kw):
+    """`group_sequential_dates` on per-bet arrays (profit per bet, stake per bet, cluster = game date). Rows without a stake (voids, pushes) are dropped, so a date counts when it has a settled stake."""
+    d = pd.DataFrame({'c': np.asarray(cluster).astype(str), 'p': np.asarray(profit, float), 's': np.asarray(stake, float)}).dropna()
+    d = d[d['s'] > 0]
+    g = d.groupby('c').agg(stakes=('s', 'sum'), profit=('p', 'sum')).sort_index()
+    return group_sequential_dates(g.index.to_numpy(), g['profit'].to_numpy(), g['stakes'].to_numpy(), look_dates, boundaries, expected_dates, **kw)
+
+
+CAP_COLUMNS = {'ev_best': 'best_ev'}                 # prop_bets column -> the name rules.cap_per_player_game_causal expects
+
+
+def capped_bet_ids(bets, n=1):
+    """
+    bet_ids of the capped subset of the RECORDED bets (all rows of prop_bets, settled or not): props.betting.rules.cap_per_player_game_causal(bets, n). Column mapping: game_id, player_id,
+    stat, minutes_before as stored; best_ev = ev_best (the EV at the best bettable price). Slots in time order (largest minutes_before first); a player-game with a bet takes no later bet;
+    within one slot the highest best_ev wins, ties go to the stat that sorts first (the function's own order).
+    """
+    from props.betting import rules
+    sel = bets[['bet_id', 'game_id', 'player_id', 'stat', 'minutes_before', 'ev_best']].rename(columns=CAP_COLUMNS).reset_index(drop=True)
+    return set(rules.cap_per_player_game_causal(sel, n)['bet_id'])
+
+
+def paired_roi_comparison(a, b, n_boot=4000, seed=20261112, alpha=0.05, profit='profit_median'):
+    """
+    ROI of record `a` (the uncapped bets), of record `b` (a subset of a, the capped bets) and the paired difference b - a on the SAME date resamples. a, b: frames with game_date, stake and `profit`.
+    The date axis is the dates of `a` with a stake, so a's interval equals cluster_bootstrap_roi(a) with the same seed; a date with no stake in b stays on the axis with zero sums.
+    Returns dict(n_dates, roi_a, lo_a, hi_a, roi_b, lo_b, hi_b, diff, diff_lo, diff_hi, diff_se_boot, p_diff_le0).
+    """
+    ga = a[a['stake'] > 0].groupby('game_date').agg(num=(profit, 'sum'), den=('stake', 'sum'))
+    ga = ga[ga['den'] > 0]
+    gb = b.groupby('game_date').agg(num=(profit, 'sum'), den=('stake', 'sum')).reindex(ga.index).fillna(0.0)
+    out = {'n_dates': int(len(ga))}
+    if ga.empty:
+        return out
+    counts = _boot_counts(len(ga), n_boot, seed)
+    na, da, nb, db_ = ga['num'].to_numpy(), ga['den'].to_numpy(), gb['num'].to_numpy(), gb['den'].to_numpy()
+    with np.errstate(divide='ignore', invalid='ignore'):
+        ra = (counts @ na) / (counts @ da)
+        rb = (counts @ nb) / (counts @ db_)
+    q = [100 * alpha / 2, 100 * (1 - alpha / 2)]
+    ok_a, ok_b = np.isfinite(ra), np.isfinite(rb)
+    out['roi_a'], out['roi_b'] = float(na.sum() / da.sum()), (float(nb.sum() / db_.sum()) if db_.sum() > 0 else np.nan)
+    out['lo_a'], out['hi_a'] = (float(x) for x in np.percentile(ra[ok_a], q))
+    out['lo_b'], out['hi_b'] = (float(x) for x in np.percentile(rb[ok_b], q)) if ok_b.any() else (np.nan, np.nan)
+    both = ok_a & ok_b
+    diff = rb[both] - ra[both]
+    out['diff'] = float(out['roi_b'] - out['roi_a']) if np.isfinite(out['roi_b']) else np.nan
+    if both.any():
+        out['diff_lo'], out['diff_hi'] = (float(x) for x in np.percentile(diff, q))
+        out['diff_se_boot'] = float(diff.std(ddof=1))
+        out['p_diff_le0'] = float(np.mean(diff <= 0))
+    else:
+        out['diff_lo'] = out['diff_hi'] = out['diff_se_boot'] = out['p_diff_le0'] = np.nan
+    return out
+
+
+def segment_integrity(bets, expected_rule_sha=None, expected_roster=None):
+    """
+    Segment 2 section 11. The configuration table (config_segments) plus the verdict: the segment ENDS at the first game date on which a bet carries a rule sha256 or roster rule other than the
+    reference one (the registered values when given, else those of the earliest bets); a second (model_version, model sha256) under the same rule sha256 and roster rule does NOT end it (a refit
+    by the same recipe; the recipe itself is not recorded in the store, so the retrain log is the check). Returns dict(table, ended, end_date, reference, n_model_rows, reason).
+    """
+    table = config_segments(bets)
+    if bets.empty:
+        return {'table': table, 'ended': False, 'end_date': None, 'reference': (None, None), 'n_model_rows': 0, 'reason': 'no bets'}
+    d = bets[['game_date', 'rule_sha256', 'roster_rule', 'model_version', 'model_sha256']].copy()
+    d[['rule_sha256', 'roster_rule']] = d[['rule_sha256', 'roster_rule']].fillna('(blank)')
+    if expected_rule_sha is None or expected_roster is None:
+        first = d[d['game_date'] == d['game_date'].min()]
+        mode = first.groupby(['rule_sha256', 'roster_rule']).size().sort_values(ascending=False).index[0]
+        ref = (expected_rule_sha or mode[0], expected_roster or mode[1])
+    else:
+        ref = (expected_rule_sha, expected_roster)
+    off = (d['rule_sha256'] != ref[0]) | (d['roster_rule'] != ref[1])
+    end_date = str(d.loc[off, 'game_date'].min()) if off.any() else None
+    used = d[d['game_date'] < end_date] if end_date else d
+    n_models = int(used[['model_version', 'model_sha256']].fillna('(blank)').drop_duplicates().shape[0])
+    if end_date:
+        reason = (f'SEGMENT ENDED: from {end_date} bets carry a rule sha256 / roster rule other than the reference (rule {str(ref[0])[:12]}, roster {ref[1]}); '
+                  f'the confirmatory test uses only game dates before {end_date}')
+    elif n_models > 1:
+        reason = (f'{n_models} (model_version, model sha256) rows under one rule sha256 and roster rule: the segment continues (a same-recipe refit is assumed; the store does not record the recipe, '
+                  f'check the retrain log); results are shown per model version')
+    else:
+        reason = 'one configuration'
+    return {'table': table, 'ended': bool(end_date), 'end_date': end_date, 'reference': ref, 'n_model_rows': n_models, 'reason': reason}

@@ -4,6 +4,9 @@ Opens every database with mode=ro and writes nothing to data/. Prints markdown, 
 
   python scripts/props_forward_monitor.py --db data/props_live.db --since 2026-11-20
   python scripts/props_forward_monitor.py --db data/props_live.db --nba-db data/nba_stats.db --out reports/props/monitor
+  python scripts/props_forward_monitor.py --segment 2 --db data/props_live.db --since 2026-11-14 --nba-db data/nba_stats.db --schedule-csv data/raw/nba_schedule/schedule_2026-27.csv
+
+--segment 1 (default) is the signed segment 1 rule; --segment 2 is the segment 2 draft rule (game-date looks, Z boundaries; needs --since E2). The parameters of each are the SEGMENTS table below.
 
 --since is the registration effective date: bets with game_date before it are shown as "pre-registration record, descriptive only"; the forward test and the decision rule use the rest.
 Without --since the whole record is shown as one descriptive block. --nba-db (optional) supplies box scores for outcomes of non-bet signals (market-level slope) and game margins.
@@ -24,13 +27,48 @@ if str(ROOT) not in sys.path:
 from props.live import monitor as mon  # noqa: E402
 
 FROZEN_STATS = ('rebounds', 'assists', 'threes', 'ra')
-# DRAFT design constants (see the pre-registration); the owner confirms them there.
-HORIZON_STAKES = 8800
-HORIZON_DATE = '2027-04-12'
-ALT_ROI = 0.03
-CP_FLOOR = 0.10
-SECONDARY_MIN_STAKES = 300
-N_BOOT = 2000
+
+# One table of decision parameters per forward-test segment (the pre-registration of each segment is the authority; the owner confirms the values there).
+SEGMENTS = {
+    1: {                                    # reports/props/forward_test_preregistration.md, signed 2026-11-12
+        'rule': 'stakes',                   # stake horizon, futility-only interim looks at fractions of it, final test on the bootstrap lower bound
+        'effective_date': None,             # given with --since
+        'horizon_stakes': 8800,
+        'horizon_date': '2027-04-12',
+        'alt_roi': 0.03,
+        'cp_floor': 0.10,
+        'looks': (1 / 3, 2 / 3),
+        'min_dates': 30,
+        'secondary_min_stakes': 300,
+        'n_boot': 2000,                     # descriptive tables; the decision rule uses 2 x n_boot = 4,000 with seed 20261112
+    },
+    2: {                                    # reports/props/forward_test_preregistration_segment2.md, DRAFT
+        'rule': 'dates',                    # game-date horizon, three looks with early success, Z boundaries, futility at looks 1 and 2
+        'effective_date': None,             # E2 is the first game date on which all three slots run under the candidate: must be given with --since (proposed 2026-11-14, not assumed)
+        'horizon_date': '2027-04-12',
+        'look_dates': (50, 100),            # game dates with at least one settled stake
+        'boundaries': (3.471, 2.454, 2.004),  # look 1, look 2, final: PASS when Z is above
+        'min_dates': 30,
+        'alt_roi': 0.03,
+        'cp_floor': 0.10,
+        'n_boot': 4000,                     # primary and secondary intervals and the paired difference
+        'seed': 20261112,
+        'descriptive_n_boot': 2000,
+        'primary': 'uncapped recorded bets, median-price ROI, Z = ROI / analytic date-clustered SE',
+        'cap_n': 1,                         # secondary: rules.cap_per_player_game_causal(recorded bets, 1)
+        'expected_dates_fallback': 150,     # segment 2 section 6: "about 150 game dates remain"; used only when neither --expected-dates nor a schedule file is available
+        'schedule_csv': 'data/raw/nba_schedule/schedule_2026-27.csv',   # props.schedule cache (column et_game_date); never fetched from the network here
+        'settle_grace_days': 3,             # an unsettled bet older than this is listed as stale (postponed or unsettled) and no longer holds a look back
+        'registered': {'model_version': 'v4_live_2026-27c1', 'model_sha256': '4cc85ee601c261ee0c82c71f649638b8d93243816c8f403653041563e750fdf0',
+                       'rule_sha256': 'fd026afd076e728cf38ea8a1aaf2321cce21ad1837256dd55b6a670878dd941d', 'roster_rule': 'pregame_all'},
+    },
+}
+HORIZON_STAKES = SEGMENTS[1]['horizon_stakes']
+HORIZON_DATE = SEGMENTS[1]['horizon_date']
+ALT_ROI = SEGMENTS[1]['alt_roi']
+CP_FLOOR = SEGMENTS[1]['cp_floor']
+SECONDARY_MIN_STAKES = SEGMENTS[1]['secondary_min_stakes']
+N_BOOT = SEGMENTS[1]['n_boot']
 
 
 # ----------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -256,7 +294,8 @@ def secondary_md(prep):
 # Report
 # ----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-def build_report(db, nba_db=None, since=None, today=None):
+def load_inputs(db, nba_db):
+    """Everything the report reads, all through read-only connections: bets, results, signals, fills, the settled/prepared bets, box-score outcomes and game margins (the last two need nba_db)."""
     conn = open_ro(db)
     try:
         bets, results, signals, fills = load_live(conn)
@@ -273,6 +312,13 @@ def build_report(db, nba_db=None, since=None, today=None):
         finally:
             nconn.close()
         signals = signals.assign(game_id=signals['game_id'].astype(str))
+    return bets, results, signals, fills, prep, outcomes, margins
+
+
+def build_report(db, nba_db=None, since=None, today=None, segment=1, expected_dates=None, schedule_csv=None):
+    if segment == 2:
+        return build_report_segment2(db, nba_db, since, today, expected_dates, schedule_csv)
+    bets, results, signals, fills, prep, outcomes, margins = load_inputs(db, nba_db)
     today = today or datetime.now().strftime('%Y-%m-%d')
     out = [f'# Props forward-test monitor, {today}\n',
            f'Database `{db}` (read-only). Bets {len(bets)} ({bets["game_date"].min()} to {bets["game_date"].max()}), settled {len(prep)}, signals {len(signals)}. '
@@ -319,6 +365,151 @@ def build_report(db, nba_db=None, since=None, today=None):
     return '\n'.join(out)
 
 
+# ----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+# Segment 2 (reports/props/forward_test_preregistration_segment2.md, sections 1, 6, 7, 11)
+# ----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+def expected_game_dates(since, horizon_date, override=None, schedule_csv=None, fallback=150, explicit_csv=False):
+    """
+    Expected number of game dates from `since` through `horizon_date` (the denominator of the futility rule's information fraction). Order: --expected-dates; the cached NBA schedule file
+    (distinct et_game_date in the window); else the constant of the pre-registration (about 150). Returns (value, text saying which source was used). Never touches the network.
+    """
+    if override:
+        return float(override), f'--expected-dates {override} (given on the command line)'
+    p = Path(schedule_csv) if schedule_csv else None
+    if p is not None and not p.is_absolute():
+        p = ROOT / p
+    if p is not None and p.exists():
+        dates = pd.read_csv(p, usecols=['et_game_date'])['et_game_date'].astype(str).str[:10]
+        n = int(dates[(dates >= since) & (dates <= horizon_date)].nunique())
+        if n > 0:
+            return float(n), f'NBA schedule file `{p.as_posix()}`: {n} distinct game dates from {since} through {horizon_date} (schedule dates; a date without any settled bet will not count towards the looks)'
+    if explicit_csv:
+        raise SystemExit(f'schedule file not found or without dates in the window: {p}')
+    return float(fallback), (f'FALLBACK constant {fallback} from the pre-registration (section 6, "about {fallback} game dates remain"): no --expected-dates and no usable schedule file; '
+                             f'it affects only the futility rule\'s information fraction, never the PASS boundaries')
+
+
+def _roi_ci(p, lo, hi):
+    return pct_ci(p, lo, hi, 2) if p is not None and np.isfinite(p) else ''
+
+
+def decision2_md(s, spec, exp_dates, exp_source, pending, stale):
+    b = spec['boundaries']
+    rows = [['Status', f"**{s['status']}**"], ['Reason', s['reason']], ['Decided at', s['decided_at'] or '(not decided)'],
+            ['Game dates with a settled stake / stakes (test data to date)', f"{s['n_dates']} / {s['n_stakes']}"],
+            ['Median-price ROI to date, SE, Z (descriptive once decided)', f"{pct(s['roi'], 2)}, SE {100 * s['se']:.2f} pts, Z {num(s['z'], 3)}" if np.isfinite(s['roi']) else ''],
+            ['Expected game dates, E2 through ' + spec['horizon_date'], f'{exp_dates:.0f}'], ['Source of the expected dates', exp_source],
+            ['Boundaries (look 1, look 2, final)', f'Z above {b[0]}, {b[1]}, {b[2]}; at least {spec["min_dates"]} game dates; futility at looks 1 and 2 only (conditional power < {spec["cp_floor"]:.0%} at true ROI {spec["alt_roi"]:+.1%})']]
+    out = table(rows, ['item', 'value'])
+    lrows = []
+    reached = {lk['look'] for lk in s['looks']}
+    for lk in s['looks']:
+        if 'z' not in lk:
+            lrows.append([lk['look'], num(b[lk['look'] - 1], 3), lk['n_dates_target'], lk['cutoff'], '', '', '', '', 'WAITING for settlement of ' + ', '.join(lk['waiting']), '', ''])
+            continue
+        res = 'PASS' if lk['passed'] else ('below boundary' if lk['look'] == 'final' else ('futile' if (np.isfinite(lk['cp']) and lk['cp'] < spec['cp_floor']) else 'continue'))
+        lrows.append([lk['look'], num(lk['boundary'], 3), lk['n_dates'], lk['cutoff'], lk['n_stakes'], pct(lk['roi'], 2), f"{100 * lk['se']:.2f}", num(lk['z'], 3), res, num(lk['t'], 3), num(lk['cp'], 3)])
+    for i, nl in enumerate(spec['look_dates']):
+        if (i + 1) not in reached and s['status'] in ('CONTINUE', 'SEGMENT-ENDED'):
+            lrows.append([i + 1, num(b[i], 3), nl, '(not reached)', '', '', '', '', f'{s["n_dates"]} of {nl} game dates', '', ''])
+    out += '\n**Looks** (each uses only the data through its own cut-off date; stakes per look are shown because dates differ in size and the boundaries are not adjusted for it)\n\n'
+    out += table(lrows, ['look', 'boundary Z', 'game dates', 'through', 'stakes', 'ROI median', 'SE (pts)', 'Z', 'result', 'info fraction t', 'cond. power'])
+    if s['status'] in ('PASS', 'STOP-FUTILITY') and s['decided_at'] != 'final':
+        out += (f"\nThe confirmatory test ended at {s['decided_at']}. Every run recomputes that outcome from the first {s['looks'][-1]['n_dates']} game dates only (never later data); "
+                f'the record below keeps running and is descriptive.\n')
+    if pending:
+        out += f"\nGame dates with recorded bets not yet settled (hold back any look at or after them): {', '.join(sorted(pending))}.\n"
+    if len(stale):
+        out += f"\nUnsettled bets older than {spec['settle_grace_days']} days (postponed or not settled; excluded, listed for the final report): {len(stale)} bets on {', '.join(sorted(set(stale['game_date'])))}.\n"
+    return out + '\n'
+
+
+def secondary2_md(test_prep, capped_ids, slices, spec):
+    """Capped subset and uncapped record at each reached look and to date: ROI at median and best price (same 4,000 date resamples for both records), paired differences, CLV."""
+    rows = []
+    for label, cut in slices:
+        a = test_prep[test_prep['game_date'] <= cut]
+        c = a[a['bet_id'].isin(capped_ids)]
+        med = mon.paired_roi_comparison(a, c, spec['n_boot'], spec['seed'], profit='profit_median')
+        best = mon.paired_roi_comparison(a, c, spec['n_boot'], spec['seed'], profit='profit_best')
+        if not med.get('n_dates'):
+            continue
+        clv_a = mon.cluster_bootstrap_mean(a['clv_points'], a['game_date'], n_boot=200, seed=0)
+        clv_c = mon.cluster_bootstrap_mean(c['clv_points'], c['game_date'], n_boot=200, seed=0)
+        clv = lambda r: f"{r['point']:+.2f} (n {r['n']}, se {r['se']:.2f})" if np.isfinite(r['point']) else ''
+        rows.append([f'{label} (through {cut})', 'uncapped (primary)', med['n_dates'], int(a['stake'].sum()), _roi_ci(med['roi_a'], med['lo_a'], med['hi_a']), '',
+                     _roi_ci(best['roi_a'], best['lo_a'], best['hi_a']), '', clv(clv_a)])
+        rows.append(['', 'capped subset', med['n_dates'], int(c['stake'].sum()), _roi_ci(med['roi_b'], med['lo_b'], med['hi_b']), _roi_ci(med['diff'], med['diff_lo'], med['diff_hi']),
+                     _roi_ci(best['roi_b'], best['lo_b'], best['hi_b']), _roi_ci(best['diff'], best['diff_lo'], best['diff_hi']), clv(clv_c)])
+    head = ['look', 'record', 'dates', 'stakes', 'ROI median [95% CI]', 'diff vs uncapped, median [95% CI]', 'ROI best [95% CI]', 'diff vs uncapped, best [95% CI]', 'CLV pts']
+    return table(rows, head) + (f"\nIntervals: date-clustered bootstrap, {spec['n_boot']} resamples, seed {spec['seed']}; the uncapped record, the capped subset and the paired difference use the same resamples "
+                                f"(date axis = dates of the uncapped record with a stake). Never decisive.\n")
+
+
+def build_report_segment2(db, nba_db=None, since=None, today=None, expected_dates=None, schedule_csv=None):
+    spec = SEGMENTS[2]
+    if not since:
+        raise SystemExit('--segment 2 needs --since E2 (the effective date; the document proposes 2026-11-14 but E2 is the first game date under the full configuration, so it is not assumed)')
+    bets, results, signals, fills, prep, outcomes, margins = load_inputs(db, nba_db)
+    today = today or datetime.now().strftime('%Y-%m-%d')
+    reg = spec['registered']
+    fwd_bets = bets[bets['game_date'] >= since]
+    integ = mon.segment_integrity(fwd_bets, reg['rule_sha256'], reg['roster_rule'])
+    end = integ['end_date']
+    test_bets = fwd_bets[fwd_bets['game_date'] < end] if end else fwd_bets
+    test_prep = prep[prep['bet_id'].isin(set(test_bets['bet_id']))]
+    exp_n, exp_src = expected_game_dates(since, spec['horizon_date'], expected_dates, schedule_csv or spec['schedule_csv'], spec['expected_dates_fallback'], explicit_csv=bool(schedule_csv))
+    grace_cut = (pd.Timestamp(today) - pd.Timedelta(days=spec['settle_grace_days'])).strftime('%Y-%m-%d')
+    unsettled = test_bets[~test_bets['bet_id'].isin(set(results['bet_id']))]
+    pending = sorted(set(unsettled.loc[unsettled['game_date'] >= grace_cut, 'game_date']))
+    stale = unsettled[unsettled['game_date'] < grace_cut]
+    f = test_prep[test_prep['stake'] > 0]
+    s = mon.group_sequential_status(f['profit_median'], f['stake'], f['game_date'], spec['look_dates'], spec['boundaries'], exp_n, alt_roi=spec['alt_roi'], cp_floor=spec['cp_floor'],
+                                    min_dates=spec['min_dates'], horizon_date=spec['horizon_date'], today=today, pending_dates=pending)
+    if end and s['status'] == 'CONTINUE':
+        s['status'], s['reason'] = 'SEGMENT-ENDED', f"{integ['reason']}; no look had terminated the test before it"
+    capped_ids = mon.capped_bet_ids(test_bets, spec['cap_n']) if len(test_bets) else set()
+    out = [f'# Props forward-test monitor, segment 2, {today}\n',
+           f'Database `{db}` (read-only). Bets {len(bets)} ({bets["game_date"].min()} to {bets["game_date"].max()}), settled {len(prep)}, signals {len(signals)}. '
+           f'Model versions: {", ".join(f"{k} ({v})" for k, v in bets["model_version"].value_counts().sort_index().items())}. '
+           f'Minutes before tip of the bets: {", ".join(f"T-{k}: {v}" for k, v in bets["minutes_before"].value_counts().sort_index(ascending=False).items())}.\n',
+           '**Reading guide.** Segment 2 (DRAFT pre-registration). Primary: median-price ROI of the UNCAPPED recorded bets from E2, decided by Z = ROI / date-clustered SE at three looks counted in game dates. '
+           'The capped subset (`rules.cap_per_player_game_causal(recorded bets, 1)`), best-price ROI and CLV are secondary and never decisive. Intervals are 95% bootstraps over game dates.\n',
+           f'## A. Forward test: game_date >= {since} (E2)\n', '### Configuration integrity (bets placed in the forward test)\n']
+    if len(fwd_bets):
+        seg = integ['table']
+        rows = [[r.model_version, str(r.model_sha256)[:12], str(r.rule_sha256)[:12], r.roster_rule, r.n_bets, r.first_date, r.last_date, r.slots] for r in seg.itertuples(index=False)]
+        out.append(table(rows, ['model_version', 'model sha', 'rule sha', 'roster rule', 'bets', 'first date', 'last date', 'slots']))
+        out.append(f"\nRegistered: model_version {reg['model_version']}, model sha256 {reg['model_sha256'][:12]}, rule sha256 {reg['rule_sha256'][:12]}, roster rule {reg['roster_rule']}.\n")
+        out.append(f"\n**{integ['reason']}.**\n" if (integ['ended'] or integ['n_model_rows'] > 1) else '\nOne configuration.\n')
+        if (seg['model_version'] != reg['model_version']).any() or (seg['model_sha256'].astype(str) != reg['model_sha256']).any():
+            out.append('\nNote: at least one (model_version, model sha256) differs from the registered one; a refit by the same recipe is allowed (section 11), anything else ends the segment: check the retrain log.\n')
+    else:
+        out.append('_no bets yet_\n')
+    out.append('\n### Decision rule (segment 2, DRAFT pre-registration)\n')
+    out.append(decision2_md(s, spec, exp_n, exp_src, pending, stale))
+    if test_prep.empty or test_prep['stake'].sum() == 0:
+        out.append('_No settled forward-test bets yet._\n')
+    else:
+        slices = [(f"look {lk['look']}", lk['cutoff']) for lk in s['looks'] if 'z' in lk and lk['look'] != 'final'] + ([('final', spec['horizon_date'])] if any(lk['look'] == 'final' for lk in s['looks']) else [])
+        slices.append(('to date (descriptive)', test_prep['game_date'].max()))
+        out.append('### Secondary (never decisive): capped subset, paired difference, best price, CLV\n')
+        out.append('Capped subset: all recorded bets of the test window go through `rules.cap_per_player_game_causal(sel, 1)` with the columns game_id, player_id, stat, minutes_before as stored and best_ev = ev_best '
+                   f'(EV at the best price); {len(capped_ids)} of {len(test_bets)} recorded bets are kept. Slots run T-240, T-60, T-5; within one slot the highest ev_best wins, ties go to the stat that sorts first.\n')
+        out.append(secondary2_md(test_prep, capped_ids, slices, spec))
+        out.append('\n' + period_report('Forward-test record, uncapped, all game dates to date (descriptive; after a PASS or STOP the outcome above is not revisited)', test_prep, signals[signals['game_date'] >= since],
+                                         outcomes, margins, fills[fills['bet_id'].isin(set(test_prep['bet_id']))] if fills is not None else None, '###'))
+    if end:
+        late = prep[prep['bet_id'].isin(set(fwd_bets[fwd_bets['game_date'] >= end]['bet_id']))]
+        out.append(f'\n### After the segment ended ({end} on): {len(late)} settled bets, descriptive only\n')
+    out.append(f'\n## B. Record before E2 (game_date < {since}), descriptive only\n')
+    out.append('Segment 1 and earlier: never counts towards segment 2.\n')
+    out.append(period_report('Record before E2', prep[prep['game_date'] < since], signals[signals['game_date'] < since], outcomes, margins,
+                             fills[fills['bet_id'].isin(set(prep[prep['game_date'] < since]['bet_id']))] if fills is not None else None, '###'))
+    return '\n'.join(out)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--db', default='data/props_live.db')
@@ -326,12 +517,18 @@ def main(argv=None):
     ap.add_argument('--since', default=None, help='registration effective date YYYY-MM-DD')
     ap.add_argument('--out', default=None, help='folder for a dated markdown report (default: print to stdout)')
     ap.add_argument('--today', default=None, help='override today (YYYY-MM-DD), for tests')
+    ap.add_argument('--segment', type=int, choices=(1, 2), default=1, help='which segment\'s decision rule to report (default 1, the signed segment 1 rule)')
+    ap.add_argument('--expected-dates', type=int, default=None, help='segment 2: expected number of game dates from E2 through the horizon (information fraction of the futility rule)')
+    ap.add_argument('--schedule-csv', default=None, help='segment 2: cached NBA schedule (props.schedule format, column et_game_date) to count the expected game dates')
     a = ap.parse_args(argv)
-    text = build_report(a.db, a.nba_db, a.since, a.today)
+    if a.segment == 1 and (a.expected_dates or a.schedule_csv):
+        ap.error('--expected-dates and --schedule-csv apply to --segment 2 only')
+    text = build_report(a.db, a.nba_db, a.since, a.today, segment=a.segment, expected_dates=a.expected_dates, schedule_csv=a.schedule_csv)
     if a.out:
         out_dir = Path(a.out)
         out_dir.mkdir(parents=True, exist_ok=True)
-        path = out_dir / f'props_forward_monitor_{a.today or datetime.now().strftime("%Y-%m-%d")}.md'
+        stem = 'props_forward_monitor' if a.segment == 1 else 'props_forward_monitor_seg2'
+        path = out_dir / f'{stem}_{a.today or datetime.now().strftime("%Y-%m-%d")}.md'
         path.write_text(text, encoding='utf-8')
         print(f'wrote {path}')
     else:
