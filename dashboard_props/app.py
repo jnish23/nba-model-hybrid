@@ -17,14 +17,14 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:                         # core/ sits at the repository root (here and in the published bundle); logic.py imports it, so this comes first
+    sys.path.insert(0, str(ROOT))
 try:
     from dashboard_props import logic as L
 except ImportError:                                   # `streamlit run dashboard_props/app.py` puts this folder on sys.path
     import logic as L
 
-ROOT = Path(__file__).resolve().parent.parent
-if str(ROOT) not in sys.path:                         # core/ sits at the repository root (here and in the published bundle)
-    sys.path.insert(0, str(ROOT))
 try:
     from core import live_feed as F
 except ImportError:                                   # an older bundle without core/: the board works, just without the live panel

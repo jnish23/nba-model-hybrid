@@ -1,4 +1,6 @@
 import subprocess
+import sys
+from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -68,3 +70,27 @@ def test_throttled_publish_skips_volatile_only_changes_until_the_interval_has_pa
     assert publish.publish(remote, clone, root, require_private=False, now=pd.Timestamp('2026-10-24T14:40:00Z'), min_interval_min=30) == 'pushed'     # 40 min since the last push
     (root / 'data' / 'props_dashboard_live' / 'bets.csv').write_text('bet_id\nb1\nb2\n')                   # a new bet is news: pushed at once
     assert publish.publish(remote, clone, root, require_private=False, now=pd.Timestamp('2026-10-24T14:45:00Z'), min_interval_min=30) == 'pushed'
+
+
+def test_the_published_app_finds_its_modules_when_only_its_own_folder_is_on_the_path(tmp_path):
+    """Streamlit Cloud runs `streamlit run dashboard_props/app.py`: the script's folder is importable, the bundle root is not until app.py adds it."""
+    repo = Path(__file__).resolve().parents[2]
+    bundle = tmp_path / 'bundle'
+    bundle.mkdir()
+    publish.build_bundle(bundle, repo, live_dir=tmp_path / 'none', backtest_dir=tmp_path / 'none')
+    app = bundle / 'dashboard_props' / 'app.py'
+    code = ("import sys\n"
+            f"app = {str(app)!r}\n"
+            "sys.path.insert(0, app.rsplit('dashboard_props', 1)[0] + 'dashboard_props')\n"
+            "src = open(app, encoding='utf-8').read()\n"
+            "head = src[:src.index('BACKTEST_DIR =')]                 # the imports and path set-up, before the page is drawn\n"
+            "ns = {'__file__': app, '__name__': 'app_head'}\n"
+            "exec(compile(head, app, 'exec'), ns)\n"
+            "import core.props_board_logic as m\n"
+            "assert ns['F'] is not None\n"
+            "print(ns['L'].__file__); print(m.__file__)\n")
+    r = subprocess.run([sys.executable, '-I', '-c', code], cwd=tmp_path, capture_output=True, text=True)      # -I: no PYTHONPATH, no current folder on the path
+    assert r.returncode == 0, r.stderr[-2000:]
+    logic_file, core_file = r.stdout.split()[-2:]
+    assert Path(logic_file).resolve() == (bundle / 'dashboard_props' / 'logic.py').resolve()
+    assert Path(core_file).resolve() == (bundle / 'core' / 'props_board_logic.py').resolve()
