@@ -71,7 +71,22 @@ def previous_game_rosters(hist, date, season):
     return current_team_only({int(t): set(map(int, g['player_id'])) for t, g in m.groupby('team_id')}, last_team(h, date, season))
 
 
-RULES = ('registered', 'v2')
+RULES = ('registered', 'v2', 'v2nq', 'pregame_all')
+PREGAME_RULES = ('v2nq', 'pregame_all')           # props.features.pregame_roster: the same teammate set in training (WP6a)
+
+
+def rule_member_teams(rule, games, hist, date, report):
+    """
+    Rules 'v2nq' and 'pregame_all' (reports/props/audit_2026-11/WP6_WP7_experiment_plan.md B.3) with each member's team: game_id, player_id, team_id, opp_team_id.
+    report: (game_id, player_id, team_id, status) of the usable report of EVERY game of the date at T (a player the date's reports place on a team is on that
+    team only). Quotes are not part of these rules. Delegates to the training implementation, so training and live share one definition.
+    """
+    from props.features import pregame_roster
+    date = str(date)[:10]
+    h = hist[hist['game_date'] < date]
+    g = games.assign(game_date=date) if 'game_date' not in games.columns else games
+    prev = pregame_roster.prev_frame_from_rosters(previous_game_rosters(h, date, str(g['season'].iloc[0])), g)
+    return pregame_roster.members_at_t(prev, report, g, h, rule)
 
 
 def _pairs(df):
@@ -96,6 +111,8 @@ def rule_members(rule, games, hist, date, report, quotes):
         base = base.merge(out.assign(_out=1), on=['game_id', 'player_id'], how='left')
         base = base[base['_out'].isna()][['game_id', 'player_id']]
         return _pairs(pd.concat([base, report[report['status'] != 'Out'][['game_id', 'player_id']], quotes[['game_id', 'player_id']]], ignore_index=True))
+    if rule in PREGAME_RULES:                      # 'v2nq', 'pregame_all': the quotes are ignored (see rule_member_teams)
+        return _pairs(rule_member_teams(rule, games, hist, date, report)[['game_id', 'player_id']])
     raise ValueError(f'unknown roster rule {rule}')
 
 

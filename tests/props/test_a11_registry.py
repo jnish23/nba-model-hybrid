@@ -404,4 +404,5 @@ def test_train_and_predict_in_research_mode_with_real_models(isolate, monkeypatc
                          '--registry-root', str(research)])
     idx, pred = registry.load_predictions('r0_raw', '2021-22', root=research)
     raw = registry.load_raw_predictions('r0_raw', '2021-22', root=research)
-    assert len(idx) == len(played_test_rows('2021-22')) and raw['points'].shape == pred['points'].shape
+    expected = frame[(frame['season'] == '2021-22') & (frame['lbl_played'] == 1) & (frame['lbl_minutes'] > 0)]      # this test's own frame, not the small module-level FRAME of the stub tests
+    assert len(idx) == len(expected) and raw['points'].shape == pred['points'].shape
