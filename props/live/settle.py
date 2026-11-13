@@ -49,3 +49,53 @@ def settle_bets(bets, labels, signals, settled_utc, run_id):
         for c in ('line_240', 'line_60', 'line_5', 'mkt_240', 'mkt_60', 'mkt_5'):
             out[c] = h[c].to_numpy() if c in h.columns else np.nan
     return out
+
+
+def clv_audit_rows(res, signals, written_utc, run_id):
+    """
+    prop_clv_audit rows (source 'signals') for the settled bets in `res` that have a closing quote. The snapshot time and minutes are those of the recorded slot-5 signal the CLV
+    was computed from (the same row signal_context pivots), so the provenance is the signal and not a re-derivation.
+    """
+    cols = ['bet_id', 'written_utc', 'source', 'close_snapshot_ts_utc', 'close_snapshot_minutes', 'close_line', 'mkt_close', 'clv_prob', 'line_move_favour', 'run_id']
+    if res is None or res.empty or signals is None or signals.empty:
+        return pd.DataFrame(columns=cols)
+    r = res[res['close_line'].notna()]
+    if r.empty:
+        return pd.DataFrame(columns=cols)
+    ids = r['bet_id'].str.split('|', expand=True)                          # bet_id = season|game_id|player_id|stat
+    keys = pd.DataFrame({'bet_id': r['bet_id'].to_numpy(), 'game_id': ids[1].astype(str).to_numpy(), 'player_id': ids[2].astype(int).to_numpy(), 'stat': ids[3].to_numpy()})
+    s5 = signals[signals['slot_minutes'] == 5].assign(game_id=lambda d: d['game_id'].astype(str))
+    s5 = s5.sort_values('snapshot_ts_utc').drop_duplicates(['game_id', 'player_id', 'stat'], keep='last')
+    s5 = s5[['game_id', 'player_id', 'stat', 'snapshot_ts_utc', 'snapshot_minutes']]
+    k = keys.merge(s5, on=['game_id', 'player_id', 'stat'], how='left')
+    return pd.DataFrame({'bet_id': r['bet_id'].to_numpy(), 'written_utc': written_utc, 'source': 'signals', 'close_snapshot_ts_utc': k['snapshot_ts_utc'].to_numpy(),
+                         'close_snapshot_minutes': k['snapshot_minutes'].to_numpy(), 'close_line': r['close_line'].to_numpy(), 'mkt_close': r['mkt_5'].to_numpy(),
+                         'clv_prob': r['clv_prob'].to_numpy(), 'line_move_favour': r['line_move_favour'].to_numpy(), 'run_id': run_id})[cols]
+
+
+def detect_corrections(bets, results, labels, detected_utc=None, run_id=None):
+    """
+    Re-settle the already-settled bets with the current box-score labels and return the rows where y or the 'stands' status differs from the stored prop_results row (which is never rewritten).
+    bets: prop_bets rows; results: prop_results rows (bet_id, y, status_stands, profit_stands_best); labels as for settle_bets. Bets whose game is not in `labels` are skipped.
+    Columns: bet_id, y_old, y_new, status_old, status_new, profit_best_old, profit_best_new, profit_median_new, profit_flat_new (+ detected_utc, run_id when given).
+    """
+    cols = ['bet_id', 'y_old', 'y_new', 'status_old', 'status_new', 'profit_best_old', 'profit_best_new', 'profit_median_new', 'profit_flat_new']
+    extra = (['detected_utc', 'run_id'] if detected_utc is not None or run_id is not None else [])
+    empty = pd.DataFrame(columns=cols + extra)
+    if bets is None or bets.empty or results is None or results.empty or labels is None or labels.empty:
+        return empty
+    b = bets[bets['bet_id'].isin(set(results['bet_id'])) & bets['game_id'].astype(str).isin(set(labels['game_id'].astype(str)))]
+    if b.empty:
+        return empty
+    new = settle_bets(b.assign(game_id=b['game_id'].astype(str)), labels.assign(game_id=labels['game_id'].astype(str)), None, detected_utc, run_id)
+    old = results[['bet_id', 'y', 'status_stands', 'profit_stands_best']].rename(columns={'y': 'y_old', 'status_stands': 'status_old', 'profit_stands_best': 'profit_best_old'})
+    m = new[['bet_id', 'y', 'status_stands', 'profit_stands_best', 'profit_stands_median', 'profit_stands_flat']].rename(
+        columns={'y': 'y_new', 'status_stands': 'status_new', 'profit_stands_best': 'profit_best_new', 'profit_stands_median': 'profit_median_new', 'profit_stands_flat': 'profit_flat_new'}
+    ).merge(old, on='bet_id', how='inner', validate='one_to_one')
+    y_old, y_new = m['y_old'].to_numpy(float), m['y_new'].to_numpy(float)
+    y_changed = ~((y_old == y_new) | (np.isnan(y_old) & np.isnan(y_new)))
+    s_changed = (m['status_old'].fillna('') != m['status_new'].fillna('')).to_numpy()
+    out = m[y_changed | s_changed][cols].reset_index(drop=True)
+    if extra:
+        out = out.assign(detected_utc=detected_utc, run_id=run_id)
+    return out
