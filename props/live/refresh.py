@@ -9,6 +9,7 @@ from props.live import config, current, export, health, scores, store
 
 ODDS_DB = 'data/props_odds.db'
 REPORT_DIR = 'data/raw/injury_reports'
+NBA_DB = 'data/nba_stats.db'
 
 
 ACTIVE_BEFORE_H, ACTIVE_AFTER_H = 8.0, 7.0
@@ -30,7 +31,7 @@ def refresh_live_export(out='data/props_dashboard_live', odds_db=ODDS_DB, n_boot
     tips = pd.to_datetime(sched['nba_tip_utc'], utc=True)
     soon = bool(((tips > now - pd.Timedelta(hours=1)) & (tips < now + pd.Timedelta(hours=6))).any())
     conn = store.connect(store.DEFAULT_PATH)
-    checks = health.checks(conn, odds_db, REPORT_DIR, now, soon)
+    checks = health.checks(conn, odds_db, REPORT_DIR, now, soon, nba_db=NBA_DB, season=cfg['model_season'])
     unsettled = pd.read_sql('SELECT * FROM prop_bets WHERE bet_id NOT IN (SELECT bet_id FROM prop_results)', conn)
     pending = unsettled[pd.to_datetime(unsettled['tip_ref_utc'], utc=True) > now]
     rule = json.loads(Path(cfg['rule_file']).read_text(encoding='utf-8'))

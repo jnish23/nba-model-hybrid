@@ -8,6 +8,7 @@ LABELS vs FEATURES: everything in this module that describes the game itself (mi
 for that game. It may be used as a feature only for LATER games of the same player, which is what features/history.py does with a strict shift.
 Label columns carry the prefixes `y_` (targets) or `lbl_` (other facts about the game), so a leakage test can find them by name.
 """
+import logging
 import sqlite3
 
 import numpy as np
@@ -53,6 +54,36 @@ def load_games(conn):
     return t.merge(guards.dedupe(m, ['game_id', 'team_id'], 'team margins'), on=['game_id', 'team_id'], how='left', validate='one_to_one')
 
 
+def _fmt_games(games, limit=12):
+    games = sorted(games)
+    return ', '.join(games[:limit]) + (f' (+{len(games) - limit} more)' if len(games) > limit else '')
+
+
+def _warn_on_incomplete_tables(df, tables):
+    """Warn (never raise: the live job must keep running) about games listed in the roster table but absent from a stat table. The history
+    features drop a played game that lacks a stat from that stat's rate (decay.decayed_rate_parts_before), but the data gap itself needs fixing."""
+    gaps = guards.table_coverage(df['game_id'].unique(), {name: t['game_id'].unique() for name, t in tables.items()})
+    for name, missing in gaps.items():
+        logging.warning(f'load_history: {len(missing)} game(s) in the roster table are missing from {name}: {_fmt_games(missing)}')
+
+
+def _warn_on_unplayed_games_and_null_stats(df):
+    """Warn about roster games with no played row at all (a lagging player_basic_stats marks every player did-not-play) and about played rows with null stats."""
+    played_by_game = df.groupby('game_id')['lbl_played'].sum()
+    empty = played_by_game[played_by_game == 0].index
+    if len(empty):
+        logging.warning(f'load_history: {len(empty)} game(s) listed in the roster have zero played rows (player_basic_stats may lag the roster table): '
+                        f'{_fmt_games(empty)}')
+    cols = [c for c in list(BASIC_COLS.values()) + list(TRACK_COLS.values()) + list(USAGE_COLS.values()) if c != 'minutes']
+    nulls = guards.played_null_report(df, cols)
+    if nulls:
+        played = df[df['lbl_played'].astype(bool)]
+        games = set()
+        for c in nulls:
+            games |= set(played.loc[played[c].isna(), 'game_id'])
+        logging.warning(f'load_history: played rows with null stats {nulls} in game(s) {_fmt_games(games)}; the rate features exclude those games per stat')
+
+
 def load_history(db_path, first_season=FIRST_HISTORY_SEASON, game_types=GAME_TYPES):
     """
     Roster rows with box-score stats, from `first_season` on, sorted by (player, date, game). Columns:
@@ -77,7 +108,9 @@ def load_history(db_path, first_season=FIRST_HISTORY_SEASON, game_types=GAME_TYP
     df = df.merge(guards.dedupe(track, keys, 'tracking stats'), on=keys, how='left', validate='one_to_one')
     df = df.merge(guards.dedupe(usage, keys, 'usage stats'), on=keys, how='left', validate='one_to_one')
     df = df[df['game_type'].isin(game_types) & (df['season'] >= first_season)].copy()
+    _warn_on_incomplete_tables(df, {'player_basic_stats': basic, 'player_track_stats_v3': track, 'player_usage_stats_v3': usage})
     df['lbl_played'] = (df['minutes'].fillna(0) > 0).astype(int)
+    _warn_on_unplayed_games_and_null_stats(df)
     df['lbl_started'] = df['pos_flag'].fillna('').astype(str).str.len().gt(0).astype(int)
     df.loc[df['lbl_played'] == 0, df.columns.intersection(
         list(BASIC_COLS.values()) + list(TRACK_COLS.values()) + list(USAGE_COLS.values()))] = np.nan

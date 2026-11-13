@@ -118,7 +118,9 @@ def evaluate_item(ctx, it, frame, existing):
         'p_market': best['consensus_fair_over'], 'p_model': best['p_mod'], 'p_star': best['p_star'], 'push': best['push'], 'side': best['best_side'], 'book': best['book'],
         'dec_best': best['dec_price'], 'dec_median': best['dec_median'], 'ev_best': best['best_ev'], 'ev_median': best['ev_median'], 'ev_flat': best['ev_flat'],
         'expected_minutes': best['expected_minutes'], 'qualified': best['qualified'], 'already_bet': best['already_bet'], 'model_version': ctx.model_version})
-    new = sel[[tuple(r) not in existing for r in sel[['game_id', 'player_id', 'stat']].itertuples(index=False, name=None)]]
+    # A boolean NumPy mask, never a plain list: when sel is empty (no market qualified) `sel[[]]` is read by pandas as "select no columns", the merge below then has no game_id and raised KeyError('game_id')
+    is_new = np.array([tuple(r) not in existing for r in sel[['game_id', 'player_id', 'stat']].itertuples(index=False, name=None)], dtype=bool)
+    new = sel[is_new]
     new = new.merge(m, on=key, how='left', validate='many_to_one')
     if new.empty:
         return sig, pd.DataFrame(), detail

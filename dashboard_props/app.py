@@ -76,7 +76,7 @@ def board_table(d, mode, treatment, reveal, cur=None, results_now=None, now=None
         'Bet': (d['side'].str.upper() + ' ' + d['stat'].map(lambda s: L.STAT_LABEL.get(s, s)) + ' ' + d['line'].map(lambda v: f'{v:g}')).to_numpy(),
         'Price': L.american(d[dec_c]),
         'Best': [f'{a} {b}' for a, b in zip(L.american(d['dec_best']), d['book'])],
-        'Model': side_model, 'Market': side_mkt, 'EV': d[ev_c].to_numpy(),
+        'Shrunk P': side_model, 'Market': side_mkt, 'EV': d[ev_c].to_numpy(),
         'Flagged': d['minutes_before'].map(T_LABEL).to_numpy(), 'Books': d['n_at_line'].to_numpy()})
     if live:
         t = L.with_odds_now(t, d, cur, mode, now if now is not None else pd.Timestamp.now(tz='UTC'))
@@ -210,14 +210,18 @@ def page_board(D, mode, treatment):
             st.caption('Green = win, red = loss, grey = push or void. "(prov.)" is a provisional grade from the final box score; the official settlement follows the next morning sync.')
         settled = bets[bets[f'status_{treatment}'].notna()]
         if len(settled):
-            s_ = L.roi_summary(settled[settled[L.ev_col(mode)] >= min_ev], mode, treatment, n_boot=300)
+            sel_ = settled[settled[L.ev_col(mode)] >= min_ev]
+            s_ = L.roi_summary(sel_, 'median', treatment, n_boot=300)
             if s_['bets']:
-                st.caption(f"Live record so far for settled bets with EV of at least {100 * min_ev:.1f}% at this price: {s_['bets']} bets, ROI {pct(s_['roi'])} "
-                           f"(95% interval {pct(s_['lo'])} to {pct(s_['hi'])}). {L.noise_note(s_['bets'])}")
+                sb_ = L.roi_summary(sel_, 'best', treatment, n_boot=300)
+                st.caption(f"Live record so far for settled bets with EV of at least {100 * min_ev:.1f}% at the chosen price: {s_['bets']} bets, ROI at the median price {pct(s_['roi'])} "
+                           f"(95% date-clustered interval {pct(s_['lo'])} to {pct(s_['hi'])}); at the best quoted price (not an assumed fill) {pct(sb_['roi'])} "
+                           f"({pct(sb_['lo'])} to {pct(sb_['hi'])}). {L.noise_note(s_['bets'], (s_['lo'], s_['hi']), s_['clusters'])}")
     if reveal:
         render_day_record(L.day_record(shown, L.results_for_display(shown, results_now, mode, treatment)), day)
     t = board_table(shown, mode, treatment, reveal, cur, results_now, now, live)
-    cfg = {'Model': st.column_config.ProgressColumn('Model P', min_value=0.0, max_value=1.0, format='%.2f'), 'Market': st.column_config.NumberColumn('Market P', format='%.2f'),
+    cfg = {'Shrunk P': st.column_config.ProgressColumn('Shrunk P', min_value=0.0, max_value=1.0, format='%.2f', help='Probability of the bet side after shrinking the raw model toward the market (p*, the probability the EV is computed from). The raw model probability is in the bet detail.'),
+           'Market': st.column_config.NumberColumn('Market P', format='%.2f'),
            'EV': st.column_config.NumberColumn('EV', format='%.3f'), 'EV now': st.column_config.NumberColumn('EV now', format='%.3f'),
            'Units': st.column_config.NumberColumn('Units', format='%+.2f')}
     st.dataframe(colour_results(t), width='stretch', hide_index=True, column_config=cfg)
@@ -236,8 +240,13 @@ def page_board(D, mode, treatment):
 def detail(D, r, mode, treatment, reveal):
     pmf = np.array(D['pmf'].get(r['bet_id'], []))
     book_px = D['books'].get(r['bet_id'], {})
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric('Model P(side)', f"{L.side_prob(pd.DataFrame([r]), 'p_over_star')[0]:.3f}")
+    has_raw = 'p_over_model' in r.index and pd.notna(r['p_over_model'])
+    m1, m1b, m2, m3, m4 = st.columns(5)
+    m1.metric('Shrunk P(side)', f"{L.side_prob(pd.DataFrame([r]), 'p_over_star')[0]:.3f}", help='The raw model probability shrunk toward the market (p*). The EV is computed from this.')
+    if has_raw:
+        m1b.metric('Raw model P(side) (before shrinking)', f"{L.side_prob(pd.DataFrame([r]), 'p_over_model')[0]:.3f}", help='The model output before the shrink toward the market. Shown for reference only: the rule does not bet on it.')
+    else:
+        m1b.metric('Raw model P(side)', 'not in this export')
     m2.metric('Market P(side)', f"{L.side_prob(pd.DataFrame([r]), 'p_over_market')[0]:.3f}")
     m3.metric(f'EV ({L.PRICE_MODES[mode].split(":")[0]})', f"{r[L.ev_col(mode)]:+.3f}")
     m4.metric('Flagged', f"{T_LABEL.get(r['minutes_before'], r['minutes_before'])} before tip")
@@ -270,12 +279,120 @@ def detail(D, r, mode, treatment, reveal):
             st.info(f"Result: {status} · actual {r['y']} (no stake)")
 
 
+def pct_ci(r, lo, hi):
+    """'+3.3% [-2.3%, +9.0%]' (blank when the ROI is undefined)."""
+    if r is None or not np.isfinite(r):
+        return ''
+    return f'{pct(r)} [{pct(lo)}, {pct(hi)}]' if np.isfinite(lo) and np.isfinite(hi) else pct(r)
+
+
+DIAG_LABELS = {'side': 'Side', 'slot': 'Slot', 'stat': 'Stat', 'model_version': 'Model version', 'ev_bucket': 'EV claimed (best price)'}
+
+
+def diag_display(t, keys):
+    """Human-readable view of a `L.diagnostic_table` frame: intervals folded into one text cell; returns (display frame, too_small mask)."""
+    out = pd.DataFrame({DIAG_LABELS.get(k, k): t[k].to_numpy() for k in keys})
+    out['Stakes'] = t['stakes'].to_numpy()
+    out['Win %'] = (100 * t['win_rate']).round(1).to_numpy()
+    out['Mkt P(side)'] = t['p_market'].round(3).to_numpy()
+    out['Shrunk P(side)'] = t['p_shrunk'].round(3).to_numpy()
+    out['ROI median price [95% CI]'] = [pct_ci(*x) for x in zip(t['roi_median'], t['roi_median_lo'], t['roi_median_hi'])]
+    out['ROI best quoted price [95% CI]'] = [pct_ci(*x) for x in zip(t['roi_best'], t['roi_best_lo'], t['roi_best_hi'])]
+    out['CLV pts (n)'] = [f'{c:+.2f} ({n})' if np.isfinite(c) else f'n/a ({n})' for c, n in zip(t['clv_pts'], t['clv_n'])]
+    small = t['too_small'].to_numpy(dtype=bool)
+    out['Readable?'] = np.where(small, f'too small (<{L.MIN_STAKES} stakes)', '')
+    return out, small
+
+
+def grey_small(t, small):
+    """Styler greying the rows flagged too small to read (they stay in the table)."""
+    return t.style.apply(lambda row: ['color: #8a8a8a; font-style: italic' if small[row.name] else ''] * len(row), axis=1)
+
+
+def show_diag(t, keys):
+    disp, small = diag_display(t, keys)
+    if disp.empty:
+        st.caption('No settled bets in this selection.')
+        return
+    st.dataframe(grey_small(disp, small), hide_index=True, width='stretch')
+
+
+def render_diagnostics(d, treatment):
+    """Tables for spotting a broken model early: by side and slot, by stat, claimed versus realised EV, line moves. Computed by core/props_board_logic from bets.csv."""
+    st.subheader('Diagnostics: is the model breaking?')
+    st.caption(f'Settled stakes only (pushes and voids are not stakes). "Mkt P" and "Shrunk P" are the mean probabilities of the bet side: compare them with the win rate. ROI intervals are 95%, resampling whole '
+               f'dates. CLV is in points of consensus probability toward the bet side by T-5 and exists only where the consensus line did not move. Grey italic rows have fewer than {L.MIN_STAKES} stakes: '
+               f'too small to read, shown anyway.')
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown('**By side**')
+        show_diag(L.diagnostic_table(d, 'side', treatment), ['side'])
+    with c2:
+        st.markdown('**By slot**')
+        show_diag(L.diagnostic_table(d, 'slot', treatment), ['slot'])
+    st.markdown('**Side x slot**')
+    show_diag(L.diagnostic_table(d, ['side', 'slot'], treatment), ['side', 'slot'])
+    st.markdown('**By stat**')
+    show_diag(L.diagnostic_table(d, 'stat', treatment), ['stat'])
+    st.markdown('**Claimed versus realised, by EV claimed at the best price when flagged**')
+    ev = L.ev_claim_table(d, treatment)
+    if ev.empty:
+        st.caption('No settled bets in this selection.')
+    else:
+        view = pd.DataFrame({'EV claimed (best price)': ev['ev_bucket'], 'Stakes': ev['stakes'], 'Mean claimed EV': [pct(x) for x in ev['claimed_ev']],
+                             'Realised ROI, best quoted price [95% CI]': [pct_ci(*x) for x in zip(ev['roi_best'], ev['roi_best_lo'], ev['roi_best_hi'])],
+                             'Realised ROI, median price [95% CI]': [pct_ci(*x) for x in zip(ev['roi_median'], ev['roi_median_lo'], ev['roi_median_hi'])],
+                             'Readable?': np.where(ev['too_small'], f'too small (<{L.MIN_STAKES} stakes)', '')})
+        st.dataframe(grey_small(view, ev['too_small'].to_numpy(dtype=bool)), hide_index=True, width='stretch')
+        st.caption('If the edge were real and the claims right, realised ROI at the best price would rise with the claimed EV. Flat or falling realised ROI with a rising claim means the EV figure overstates the edge.')
+    st.markdown('**Line movement from the flag to the T-5 close**')
+    lm = L.line_move_summary(d)
+    if lm.empty:
+        st.caption('This export has no closing lines.')
+    else:
+        view = pd.DataFrame({'Group': lm['group'], 'Bets with a close': lm['bets_with_close'], 'Line moved': lm['moved'], 'Share moved': [f'{100 * x:.1f}%' if np.isfinite(x) else '' for x in lm['share_moved']],
+                             'Moved in the bettor favour': [f'{100 * x:.1f}%' if np.isfinite(x) else '' for x in lm['share_in_favour']],
+                             'Mean line move, points (+ = favour)': lm['mean_line_move_favour'].round(2)})
+        st.dataframe(view, hide_index=True, width='stretch')
+        st.caption('Bets flagged at T-5 have no later close and are not counted. A line that moved against the bet before the close is a sign the market disagrees; CLV (above) skips moved lines.')
+
+
+def render_versions(D, d_all, treatment):
+    """Per-model-version summary: provenance from meta.json (or 'unknown' for an older export) next to the version's own settled record."""
+    vt = L.version_meta_table(D['meta'], D['bets'])
+    vs = L.version_summary(d_all, treatment)
+    prov = dict(zip(vt['version'], vt['provenance']))
+    disp, small = diag_display(vs, ['model_version'])
+    disp.insert(1, 'First date', vs['first_game_date'].to_numpy())
+    disp.insert(2, 'Last date', vs['last_game_date'].to_numpy())
+    disp.insert(3, 'Bets recorded', vs['bets'].to_numpy())
+    disp['Provenance'] = ['all versions combined' if v == 'all' else prov.get(v, L.UNKNOWN_PROVENANCE) for v in vs['model_version']]
+    st.markdown('**By model version**')
+    st.dataframe(grey_small(disp, small), hide_index=True, width='stretch')
+
+
 def page_tracker(D, mode, treatment):
     bets = D['bets']
     seasons = st.multiselect('Seasons', sorted(bets['season'].unique()), default=sorted(bets['season'].unique()))
     d = bets[bets['season'].isin(seasons)]
     if d.empty:
         st.info('Select at least one season.')
+        return
+    vt = L.version_meta_table(D['meta'], bets)
+    versions = list(vt['version'])
+    d_all_versions = d
+    if len(versions) > 1 or (len(versions) == 1 and versions[0] != 'unknown'):
+        pick = st.selectbox('Model version', ['All'] + versions, index=0, help='The record mixes model versions (see "By model version" below). Default: all of them.')
+        if pick != 'All':
+            d = d[L.version_series(d) == pick]
+        shown_versions = versions if pick == 'All' else [pick]
+        restored = [v for v in L.restored_versions(vt) if v in shown_versions and (L.version_series(d) == v).any()]
+        if restored:
+            n_r = int(L.version_series(d).isin(restored).sum())
+            st.info(f'{n_r:,} of the {len(d):,} bets in this selection ({", ".join(restored)}) were {L.RESTORED_PROVENANCE}: snapshot time, quote age and code commit were not recorded for them, '
+                    f'and their results came from the export. Pick another model version above to leave them out.', icon='ℹ️')
+    if d.empty:
+        st.info('No bets for this model version.')
         return
     if D['meta']['mode'] == 'live':
         pending = int(d[f'status_{treatment}'].isna().sum())
@@ -284,24 +401,32 @@ def page_tracker(D, mode, treatment):
         if d.empty:
             st.info('No settled bets yet.')
             return
-    s = L.roi_summary(d, mode, treatment)
-    other = {m: L.roi_summary(d, m, treatment, n_boot=200)['roi'] for m in L.PRICE_MODES}
+    s_med = L.roi_summary(d, 'median', treatment)
+    s_best = L.roi_summary(d, 'best', treatment)
+    s_flat = L.roi_summary(d, 'flat', treatment, n_boot=300)
+    units = float(L.with_profit(d, mode, treatment)['profit'].sum())
     t1, t2, t3, t4, t5 = st.columns(5)
-    t1.metric('Settled bets', f"{s['bets']:,}", help=f"{s['player_games']:,} distinct player-games")
-    t2.metric(f'ROI ({L.PRICE_MODES[mode].split(":")[0]})', pct(s['roi']), help=f"95% interval {pct(s['lo'])} to {pct(s['hi'])} (game-clustered)")
-    t3.metric('Win rate', f"{100 * s['win_rate']:.1f}%")
-    t4.metric('Units', f"{s['units']:+.0f}")
-    t5.metric('ROI by price', ' · '.join(f"{k}: {pct(v)}" for k, v in other.items()))
-    st.caption(f"95% interval for ROI: {pct(s['lo'])} to {pct(s['hi'])}. " + L.noise_note(s['bets']))
+    t1.metric('Settled bets', f"{s_med['bets']:,}", help=f"{s_med['player_games']:,} distinct player-games on {s_med['clusters']} dates")
+    t2.metric('ROI, median price (primary)', pct(s_med['roi']), help=f"95% date-clustered interval {pct(s_med['lo'])} to {pct(s_med['hi'])}. The median bettable price is what an ordinary bettor gets.")
+    t3.metric('ROI, best quoted price (not an assumed fill)', pct(s_best['roi']), help=f"95% date-clustered interval {pct(s_best['lo'])} to {pct(s_best['hi'])}. The best quote of the bettable books: a target "
+              f"for limit orders, not a price you can assume you get.")
+    t4.metric('ROI, flat -110', pct(s_flat['roi']), help=f"95% date-clustered interval {pct(s_flat['lo'])} to {pct(s_flat['hi'])}")
+    t5.metric('Win rate', f"{100 * s_med['win_rate']:.1f}%")
+    st.caption(f"95% date-clustered intervals: median price {pct(s_med['lo'])} to {pct(s_med['hi'])}; best quoted price (not an assumed fill) {pct(s_best['lo'])} to {pct(s_best['hi'])}. "
+               f"Units at the chosen price ({L.PRICE_MODES[mode].split(':')[0]}): {units:+.1f}. " + L.noise_note(s_med['bets'], (s_med['lo'], s_med['hi']), s_med['clusters']))
     fig = go.Figure()
+    deff = 1.0
     for m in L.PRICE_MODES:
         c = L.cumulative(d, m, treatment)
         fig.add_trace(go.Scatter(x=c['game_date'], y=c['cum_units'], name=L.PRICE_MODES[m], line=dict(width=3 if m == mode else 1.2), opacity=1 if m == mode else 0.6))
         if m == mode:
+            deff = c.attrs.get('design_effect', 1.0)
             fig.add_trace(go.Scatter(x=list(c['game_date']) + list(c['game_date'])[::-1], y=list(c['hi']) + list(c['lo'])[::-1], fill='toself', fillcolor='rgba(31,119,180,0.12)',
-                                     line=dict(width=0), name='approx. 95% band', hoverinfo='skip'))
+                                     line=dict(width=0), name=f'approx. 95% band (x{np.sqrt(deff):.2f} for same-date clustering)', hoverinfo='skip'))
     fig.update_layout(title='Cumulative units (flat 1-unit bets)', height=360, margin=dict(l=10, r=10, t=40, b=10), yaxis_title='units')
     st.plotly_chart(fig, width='stretch')
+    st.caption(f'The shaded band is approximate, not a date-block bootstrap: it is the band for independent bets, widened by {np.sqrt(deff):.2f}x (square root of a design effect of {deff:.2f}, estimated from how '
+               f'much more the daily totals vary than independent bets would) because bets on one slate move together. Read it as a rough guide to the size of the noise.')
     b1, b2 = st.columns(2)
     fmt = {'roi': '{:+.1%}', 'units': '{:+.0f}', 'bets': '{:,.0f}'}
     b1.markdown('**By stat**'); b1.dataframe(L.breakdown(d, 'stat', mode, treatment).style.format(fmt), hide_index=True, width='stretch')
@@ -314,25 +439,36 @@ def page_tracker(D, mode, treatment):
     b3.markdown('**By book (best-price quote)**'); b3.dataframe(L.breakdown(d, 'book', mode, treatment).style.format(fmt), hide_index=True, width='stretch')
     dd = d.assign(decision=d['minutes_before'].map(T_LABEL))
     b4.markdown('**By decision time**'); b4.dataframe(L.breakdown(dd, 'decision', mode, treatment).style.format(fmt), hide_index=True, width='stretch')
+    render_diagnostics(d, treatment)
+    if D['meta']['mode'] == 'live':
+        render_versions(D, d_all_versions, treatment)
     st.subheader('Season summary' if D['meta']['mode'] != 'live' else 'Live record summary (placebo CLV and the information slope need a longer record)')
     sm = D['summary'].copy()
-    show = sm[['season', 'kind', 'bets', 'player_games', 'roi_best_stands', 'roi_median_stands', 'roi_flat_stands', 'clv_real_pts', 'clv_placebo_mean_pts', 'clv_excess_pts', 'clv_excess_lower_pts', 'placebo_roi',
-               'slope4', 'slope4_lo', 'slope4_hi']]
-    st.dataframe(show.style.format({'roi_best_stands': '{:+.1%}', 'roi_median_stands': '{:+.1%}', 'roi_flat_stands': '{:+.1%}', 'placebo_roi': '{:+.1%}', 'clv_real_pts': '{:+.2f}',
-                                    'clv_placebo_mean_pts': '{:+.2f}', 'clv_excess_pts': '{:+.2f}', 'clv_excess_lower_pts': '{:+.2f}', 'slope4': '{:.2f}', 'slope4_lo': '{:.2f}', 'slope4_hi': '{:.2f}'}),
-                 hide_index=True, width='stretch')
-    st.caption('CLV is in points of consensus probability toward the bet side by T-5; "excess" subtracts the no-information placebo (same k, rule, prices). Slope = realized-minus-market regressed on model-minus-market over the four traded stats.')
+    wanted = ['season', 'kind', 'model_version', 'bets', 'player_games', 'roi_median_stands', 'roi_best_stands', 'roi_flat_stands', 'clv_real_pts', 'clv_placebo_mean_pts', 'clv_excess_pts',
+              'clv_excess_lower_pts', 'placebo_roi', 'slope4', 'slope4_lo', 'slope4_hi']
+    show = sm[[c for c in wanted if c in sm.columns]]
+    formats = {'roi_best_stands': '{:+.1%}', 'roi_median_stands': '{:+.1%}', 'roi_flat_stands': '{:+.1%}', 'placebo_roi': '{:+.1%}', 'clv_real_pts': '{:+.2f}',
+               'clv_placebo_mean_pts': '{:+.2f}', 'clv_excess_pts': '{:+.2f}', 'clv_excess_lower_pts': '{:+.2f}', 'slope4': '{:.2f}', 'slope4_lo': '{:.2f}', 'slope4_hi': '{:.2f}'}
+    st.dataframe(show.style.format({k: v for k, v in formats.items() if k in show.columns}), hide_index=True, width='stretch')
+    st.caption('The median-price ROI is the primary figure; the best-price ROI is the best quoted price, a target and not an assumed fill. CLV is in points of consensus probability toward the bet side by T-5; '
+               '"excess" subtracts the no-information placebo (same k, rule, prices). Slope = realized-minus-market regressed on model-minus-market over the four traded stats.')
 
 
 def page_health(D):
     if D['meta']['mode'] == 'live':
-        st.warning(D['meta']['disclosure'], icon='⚠️')
+        st.warning(D['meta'].get('disclosure', ''), icon='⚠️')
         if len(D['checks']):
             st.markdown('**Checks at export time**')
             st.dataframe(D['checks'], hide_index=True, width='stretch')
         st.markdown('**Pipeline runs (latest first)**')
         st.dataframe(D['pipeline_health'].head(40), hide_index=True, width='stretch')
-        st.markdown('**Decision slots (done, missed, no quotes)**')
+        st.markdown('**Decision slots, last 7 days (done, missed, no quotes)**')
+        ss = L.slot_summary(D['slot_log'], pd.Timestamp.now(tz='UTC'), days=7)
+        st.dataframe(pd.DataFrame({'Slot': ss['slot'], 'Done': ss['done'], 'Missed': ss['missed'], 'No quotes': ss['no_quotes'], 'Total': ss['total'],
+                                   'Done share': [f'{100 * x:.0f}%' if np.isfinite(x) else '' for x in ss['done_share']]}), hide_index=True, width='stretch')
+        st.caption('A missed slot is a game whose decision time passed without a recorded run: those bets were never made, which also biases the record toward the slots that did run. '
+                   'The T-5m slot uses the snapshot taken about 10 minutes before tip.')
+        st.markdown('**Decision slots (latest first)**')
         st.dataframe(D['slot_log'].head(60), hide_index=True, width='stretch')
         st.caption('Forecast-bias and reliability charts need a few hundred settled forecasts; they appear in the backtest view meanwhile.')
         return
@@ -359,26 +495,56 @@ def page_about(D):
     meta, rule = D['meta'], D['meta']['rule']
     st.markdown(f"""
 ### What this is
-A **paper-trading** view of one frozen rule. No real money, no bet placement. Mode: **{meta['mode']}** ({'the live paper record, one row per rule-qualified bet at first qualification, flat 1 unit' if meta['mode'] == 'live' else 'historical replay'}), built {meta['built_at_utc']}.
+A **paper-trading** view of one frozen rule. No real money, no bet placement. Mode: **{meta['mode']}** ({'the live paper record, one row per rule-qualified bet at first qualification, flat 1 unit' if meta['mode'] == 'live' else 'historical replay'}), built {meta.get('built_at_utc', 'unknown')}.
 
 ### The frozen rule
 - Stats: {', '.join(L.STAT_LABEL[s] for s in rule['stats'])}; edge threshold {rule['primary']['e']:.0%} expected value at the best price; earliest decision time (T-4h, T-1h, T-5m) at which a market qualifies;
   at least {rule['primary']['min_books']} books agreeing on the line; one bet per player-game-stat; flat 1 unit.
 - Model probability shrunk toward the market: p* = market + k x (model - market), k by stat: {', '.join(f"{L.STAT_LABEL[s]} {v:.2f}" for s, v in rule['k_by_stat'].items())}.
-- No rolling recalibration (declared sensitivity only). Rule file hash `{meta['rule_sha256'][:12]}`, dataset hash `{meta['features_db_sha256'][:12]}`, code `{meta['code_commit'][:8]}`.
+- No rolling recalibration (declared sensitivity only). Rule file hash `{L.short_hash(meta.get('rule_sha256'), 12)}`, dataset hash `{L.short_hash(meta.get('features_db_sha256'), 12)}`, code `{L.short_hash(meta.get('code_commit'), 8)}`.
+- Decision slots: T-4h, T-1h and T-5m. The **T-5m slot uses the snapshot taken about 10 minutes before tip** (it started working on 2026-11-12), not a snapshot at exactly 5 minutes.
 
 ### Pricing views (choose in the sidebar)
-- **Generic (default)**: the median of the bettable books' quotes at the consensus line: what an ordinary bettor gets.
-- **Best available**: the best quote among the bettable books at the flag time. This is what the rule was selected on.
+- **Generic (default, primary)**: the median of the bettable books' quotes at the consensus line: what an ordinary bettor gets. Every single ROI headline on this dashboard is the median-price ROI.
+- **Best available**: the best quote among the bettable books at the flag time. This is what the rule was selected on. It is shown next to the median as the **best quoted price (not an assumed fill)**: a
+  target for working limit orders at the best sportsbook price on an exchange, not a price the record assumes you get.
 - **Flat -110**: the textbook generic bookie.
+
+### How to read the noise
+Bets are not independent: many share a player-game with another bet and whole slates move together. The ROI intervals are therefore 95% intervals from a **date-clustered bootstrap** (whole game dates are
+resampled), which is wider than the usual 1/sqrt(n) figure. The shaded band on the cumulative chart is the independent-bets band widened by a design effect estimated from the same-date clustering; it is an
+approximation, not a bootstrap. Table cells with fewer than {L.MIN_STAKES} settled stakes are shown greyed as too small to read.
+
+### Model versions and CLV
+The live record mixes model versions. The first version (`v3_live_2026-27`, October 22-31) was **restored from a dashboard export in November 2026 after a data loss**: its snapshot time, quote age and code
+commit are not recorded and it cannot be re-derived; its results came from the export. The Tracker has a model-version filter and a note whenever restored rows are included. CLV for bets before
+2026-11-12 was **backfilled on 2026-11-12 from snapshots about 9-10 minutes before tip**, not recorded at the time.
 
 ### What the history says (reports/props/phase5_final_report.md)
 The model's signal replicated across three seasons, but the profit depends on price: best-price ROI was about +4.9%, +3.3% and +4.6%; at the median price +0.8%, -1.7% and -0.5%. The approved gate
-(median-price ROI non-negative) was **not passed** on the final season. 2023-24 and 2024-25 are in-sample for k and the rule; 2025-26 is the single final holdout, scored once.
+(median-price ROI non-negative) was **not passed** on the final season (-0.5%). 2023-24 and 2024-25 are in-sample for k and the rule. 2025-26 was scored once with the frozen rule and failed the
+median-price gate, so it is **no longer a clean held-out season for this rule**.
 
 ### Limits
 Quotes can move or disappear before placement; prop limits are small; winning accounts get restricted; early-exit settlement differs by book (see the settlement selector). Unibet no longer quotes in 2025-26.
 """)
+
+
+def render_freshness(D, treatment):
+    """Top-of-page banner: a warning when the export is older than 45 minutes while an unsettled bet tips within the next 8 hours or the last 4 hours; otherwise a small caption."""
+    meta = D['meta']
+    built = meta.get('built_at_utc')
+    if meta.get('mode') != 'live':
+        st.caption(f'Backtest data built {built or "at an unknown time"}.')
+        return
+    fr = L.freshness_status(built, D['bets'], pd.Timestamp.now(tz='UTC'), treatment)
+    if fr['warn']:
+        st.warning(f"Data may be out of date: this export was built {L.age_text(fr['age_min'])} ago ({built}), and {fr['n_open_near']} unsettled bet{'s' if fr['n_open_near'] != 1 else ''} tip within the next "
+                   f"{L.FRESH_AHEAD_H} hours or in the last {L.FRESH_BEHIND_H} hours. Prices, 'odds now', slots and results below may not show the latest state.", icon='⏱️')
+    elif fr['age_min'] is None:
+        st.caption(f'Data built {built or "at an unknown time"}.')
+    else:
+        st.caption(f"Data built {built} ({L.age_text(fr['age_min'])} ago).")
 
 
 def main():
@@ -391,14 +557,15 @@ def main():
     source = st.sidebar.radio('Source', list(sources), index=0)
     D = load(str(sources[source]), (sources[source] / 'meta.json').stat().st_mtime)
     if D['meta']['mode'] == 'live':
-        st.warning('LIVE PAPER RECORD: frozen rule, no real money. ' + D['meta']['disclosure'], icon='⚠️')
-        st.sidebar.caption(f"Record started {D['meta'].get('record_started_utc') or 'not yet'} · model {D['meta']['model_version']} · built {D['meta']['built_at_utc']}")
+        st.warning('LIVE PAPER RECORD: frozen rule, no real money. ' + D['meta'].get('disclosure', ''), icon='⚠️')
+        st.sidebar.caption(f"Record started {D['meta'].get('record_started_utc') or 'not yet'} · model {D['meta'].get('model_version', 'n/a')} · built {D['meta'].get('built_at_utc', 'unknown')}")
     else:
-        st.warning('BACKTEST MODE: historical replays of the frozen rule, not live bets. 2023-24 and 2024-25 are in-sample for k and the rule; 2025-26 is the final holdout.', icon='⚠️')
+        st.warning('BACKTEST MODE: historical replays of the frozen rule, not live bets. 2023-24 and 2024-25 are in-sample for k and the rule; 2025-26 was scored once, failed the median-price gate (-0.5%) and is no longer a clean held-out season for this rule.', icon='⚠️')
     st.sidebar.header('Pricing')
     mode = st.sidebar.radio('Price used for EV and profit', list(L.PRICE_MODES), format_func=lambda m: L.PRICE_MODES[m], index=0)
     treatment = st.sidebar.selectbox('Early-exit settlement', list(L.TREATMENTS), format_func=lambda t: L.TREATMENTS[t], index=0)
     st.sidebar.caption('Team dashboard: `streamlit run dashboard/app.py`')
+    render_freshness(D, treatment)
     tab1, tab2, tab3, tab4 = st.tabs(['Board', 'Tracker', 'Model health', 'Rules & about'])
     with tab1:
         page_board(D, mode, treatment)
