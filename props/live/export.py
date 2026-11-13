@@ -16,10 +16,39 @@ DISCLOSURE = ('Paper record of the frozen rule with the live model and roster ru
               'before the game): in the parity test on 40 held-out 2025-26 dates the live-feature bets earned about 1.7 points less than the training-feature bets (+3.9% vs +5.6% at the '
               'selected price), A1/A4/A5/A6 were waived by the owner, and October coverage is about 60%. See reports/props/d1_parity_report.md.')
 SUMMARY_COLS = ['season', 'kind', 'bets', 'player_games', 'roi_best_stands', 'roi_median_stands', 'roi_flat_stands', 'clv_real_pts', 'clv_placebo_mean_pts', 'clv_excess_pts',
-                'clv_excess_lower_pts', 'placebo_roi', 'slope4', 'slope4_lo', 'slope4_hi']
+                'clv_excess_lower_pts', 'placebo_roi', 'slope4', 'slope4_lo', 'slope4_hi', 'model_version']
 RESULT_COLS = ['minutes_actual', 'y', 'played', 'status_stands', 'status_flagged', 'status_all', 'clv_prob', 'line_move_favour', 'close_line', 'line_240', 'line_60', 'line_5',
                'mkt_240', 'mkt_60', 'mkt_5']
 HISTORY_COLS = ['line_240', 'line_60', 'line_5', 'mkt_240', 'mkt_60', 'mkt_5']
+
+
+def summary_row(settled, season, kind, model_version, n_boot):
+    """One season_summary row (settled bets only) for `model_version` ('all' for the combined record); metrics that need a longer record stay blank."""
+    row = {'season': season, 'kind': kind, 'bets': 0, 'player_games': 0, 'model_version': model_version}
+    if len(settled):
+        for mode in ('best', 'median', 'flat'):
+            row[f'roi_{mode}_stands'] = logic.roi_summary(settled, mode, 'stands', n_boot)['roi']
+        s = logic.roi_summary(settled, 'median', 'stands', 10)
+        row.update({'bets': s['bets'], 'player_games': s['player_games'], 'clv_real_pts': float(settled['clv_prob'].mean() * 100) if settled['clv_prob'].notna().any() else np.nan})
+    return row
+
+
+def model_versions_meta(bets):
+    """
+    meta.json `model_versions`: one dict per model_version in the stored bets, oldest first: version, first_game_date, last_game_date, bets (all bets of the version, settled or not) and
+    provenance. Provenance is 'restored from dashboard export 2026-11 (not re-derivable)' when every bet of the version has a NULL snapshot_ts_utc (the rows restored after the 2026-10-31
+    data loss carry no snapshot time, quote age or code commit; their results came from the export), else 'recorded live'. A NULL model_version is reported as 'unknown'.
+    """
+    if bets is None or not len(bets):
+        return []
+    v = bets['model_version'].fillna('unknown').astype(str) if 'model_version' in bets.columns else pd.Series('unknown', index=bets.index)
+    snap = bets['snapshot_ts_utc'] if 'snapshot_ts_utc' in bets.columns else pd.Series(np.nan, index=bets.index)
+    out = []
+    for ver, g in bets.assign(_v=v, _snap=snap).groupby('_v', sort=False):
+        d = g['game_date'].astype(str)
+        out.append({'version': ver, 'first_game_date': d.min(), 'last_game_date': d.max(), 'bets': int(len(g)),
+                    'provenance': logic.RESTORED_PROVENANCE if g['_snap'].isna().all() else logic.LIVE_PROVENANCE})
+    return sorted(out, key=lambda r: (r['first_game_date'], r['version']))
 
 
 def export_live(live_db, out_dir, config, n_boot=1000, checks=None, current=None, results_now=None):
@@ -49,13 +78,12 @@ def export_live(live_db, out_dir, config, n_boot=1000, checks=None, current=None
     (out / 'pmf.json').write_text(json.dumps(pmf, separators=(',', ':')), encoding='utf-8')
     (out / 'books.json').write_text(json.dumps(books, separators=(',', ':')), encoding='utf-8')
     settled = b[b['status_stands'].notna()] if 'status_stands' in b.columns else b.iloc[0:0]
-    row = {'season': config['model_season'], 'kind': 'live paper record (settled bets only)', 'bets': 0, 'player_games': 0}
-    if len(settled):
-        for mode in ('best', 'median', 'flat'):
-            row[f'roi_{mode}_stands'] = logic.roi_summary(settled, mode, 'stands', n_boot)['roi']
-        s = logic.roi_summary(settled, 'median', 'stands', 10)
-        row.update({'bets': s['bets'], 'player_games': s['player_games'], 'clv_real_pts': float(settled['clv_prob'].mean() * 100) if settled['clv_prob'].notna().any() else np.nan})
-    pd.DataFrame([row]).reindex(columns=SUMMARY_COLS).to_csv(out / 'season_summary.csv', index=False)
+    rows = [summary_row(settled, config['model_season'], 'live paper record (settled bets only)', 'all', n_boot)]       # the combined row stays first (readers take iloc[0])
+    vmeta = model_versions_meta(bets)
+    vcol = b['model_version'].fillna('unknown') if 'model_version' in b.columns else pd.Series('unknown', index=b.index)
+    for ver in vmeta:
+        rows.append(summary_row(settled[vcol.loc[settled.index] == ver['version']], config['model_season'], f"live paper record (settled bets only), model {ver['version']}", ver['version'], n_boot))
+    pd.DataFrame(rows).reindex(columns=SUMMARY_COLS).to_csv(out / 'season_summary.csv', index=False)
     pd.DataFrame(columns=['season', 'mean_p_model', 'hit_rate']).to_csv(out / 'reliability.csv', index=False)
     pd.DataFrame(columns=['season', 'month', 'stat', 'ratio']).to_csv(out / 'bias_monthly.csv', index=False)
     health.to_csv(out / 'pipeline_health.csv', index=False)
@@ -67,8 +95,8 @@ def export_live(live_db, out_dir, config, n_boot=1000, checks=None, current=None
     if results_now is not None:
         results_now.to_csv(out / 'results_now.csv', index=False)
     rule = json.loads(Path(config['rule_file']).read_text(encoding='utf-8'))
-    meta = {'mode': 'live', 'rule': rule, 'rule_sha256': config['rule_sha256'], 'code_commit': bets['code_commit'].iloc[-1] if len(bets) else '', 'features_db_sha256': config['features_db_sha256'],
-            'model_version': config['model_version'], 'roster_rule': config['roster_rule'], 'built_at_utc': pd.Timestamp.now(tz='UTC').strftime('%Y-%m-%dT%H:%M:%SZ'),
+    meta = {'mode': 'live', 'rule': rule, 'rule_sha256': config['rule_sha256'], 'code_commit': (bets['code_commit'].dropna().iloc[-1] if 'code_commit' in bets.columns and bets['code_commit'].notna().any() else ''), 'features_db_sha256': config['features_db_sha256'],
+            'model_version': config['model_version'], 'model_versions': vmeta, 'roster_rule': config['roster_rule'], 'built_at_utc': pd.Timestamp.now(tz='UTC').strftime('%Y-%m-%dT%H:%M:%SZ'),
             'record_started_utc': bets['created_utc'].min() if len(bets) else None, 'seasons': {config['model_season']: 'live paper record'}, 'disclosure': DISCLOSURE,
             'pending': int(len(b) - len(settled)), 'pricing': {'median': 'median over the bettable books at the consensus line', 'best': 'best quote among the bettable books', 'flat': 'flat -110'}}
     (out / 'meta.json').write_text(json.dumps(meta, indent=2), encoding='utf-8')
