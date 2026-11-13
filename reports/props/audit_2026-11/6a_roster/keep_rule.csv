@@ -1,0 +1,17 @@
+item,clause,value,threshold,result
+B.9.1,"A1 (a11_pg1) vs comparator, rebounds: 95% upper bound of the paired CRPS difference at most +0.10% of comparator mean CRPS",0.00039760363191148555,0.001,PASS
+B.9.1,"A1 (a11_pg1) vs comparator, assists: 95% upper bound of the paired CRPS difference at most +0.10% of comparator mean CRPS",0.0010748931854838069,0.001,FAIL
+B.9.1,"A1 (a11_pg1) vs comparator, threes: 95% upper bound of the paired CRPS difference at most +0.10% of comparator mean CRPS",0.0011354265413955527,0.001,FAIL
+B.9.1,"A1 (a11_pg1) vs comparator, ra: 95% upper bound of the paired CRPS difference at most +0.10% of comparator mean CRPS",0.0008887096591116045,0.001,PASS
+B.9.1,A1 (a11_pg1): 2023-24 pooled slope with intercept at least comparator's minus 0.02 (value = arm minus comparator),0.002572895506586681,-0.02,PASS
+B.9.1,"A2 (a11_pg2) vs comparator, rebounds: 95% upper bound of the paired CRPS difference at most +0.10% of comparator mean CRPS",-0.006777796193167718,0.001,PASS
+B.9.1,"A2 (a11_pg2) vs comparator, assists: 95% upper bound of the paired CRPS difference at most +0.10% of comparator mean CRPS",-0.0065438117546603464,0.001,PASS
+B.9.1,"A2 (a11_pg2) vs comparator, threes: 95% upper bound of the paired CRPS difference at most +0.10% of comparator mean CRPS",-0.0011842416019452163,0.001,PASS
+B.9.1,"A2 (a11_pg2) vs comparator, ra: 95% upper bound of the paired CRPS difference at most +0.10% of comparator mean CRPS",-0.009274684871521399,0.001,PASS
+B.9.1,A2 (a11_pg2): 2023-24 pooled slope with intercept at least comparator's minus 0.02 (value = arm minus comparator),0.03384158421765948,-0.02,PASS
+B.9.2,A2 passes item 1,,,PASS
+B.9.2,"pooled four stats, A2 - A1: 95% upper bound below 0 (relative units)",-0.006558897789039587,0.0,PASS
+B.9.2,"A2 - A1, rebounds: point difference at most +0.05% of A1 mean CRPS",-0.007878328834829406,0.0005,PASS
+B.9.2,"A2 - A1, assists: point difference at most +0.05% of A1 mean CRPS",-0.00834230658531102,0.0005,PASS
+B.9.2,"A2 - A1, threes: point difference at most +0.05% of A1 mean CRPS",-0.002813116089077241,0.0005,PASS
+B.9.2,"A2 - A1, ra: point difference at most +0.05% of A1 mean CRPS",-0.011010144457806735,0.0005,PASS

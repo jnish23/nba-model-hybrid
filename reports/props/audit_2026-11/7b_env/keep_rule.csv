@@ -1,0 +1,8 @@
+item,clause,value,threshold,result
+7b.6,"pooled four stats over the dev folds, with_env - reference: 95% upper bound below 0 (relative units)",0.0002469006708287984,0.0,FAIL
+7b.6,"pooled four stats, 2023-24 fold alone: point estimate below 0 (relative units)",0.00028344023708515927,0.0,FAIL
+7b.6,"with_env vs comparator, rebounds: 95% upper bound of the paired CRPS difference at most +0.10% of comparator mean CRPS",-7.904491799046806e-05,0.001,PASS
+7b.6,"with_env vs comparator, assists: 95% upper bound of the paired CRPS difference at most +0.10% of comparator mean CRPS",-0.0001449590041431525,0.001,PASS
+7b.6,"with_env vs comparator, threes: 95% upper bound of the paired CRPS difference at most +0.10% of comparator mean CRPS",0.0020415286516004354,0.001,FAIL
+7b.6,"with_env vs comparator, ra: 95% upper bound of the paired CRPS difference at most +0.10% of comparator mean CRPS",-0.00021458757174851905,0.001,PASS
+7b.6,with_env: 2023-24 pooled slope with intercept at least comparator's minus 0.02 (value = arm minus comparator),0.00979187009735194,-0.02,PASS
