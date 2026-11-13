@@ -21,8 +21,8 @@ def alpha_for(half_life_games):
 
 def decayed_before(values, groups, played, alpha):
     """
-    values: array (NaN counts as 0 on played rows); groups: group ids (sorted, contiguous); played: boolean array.
-    Returns an array of the same length.
+    values: array (NaN counts as 0 on played rows; for a RATE use decayed_rate_parts_before, which drops such rows from the exposure too);
+    groups: group ids (sorted, contiguous); played: boolean array. Returns an array of the same length.
     """
     values = np.asarray(values, dtype=float)
     played = np.asarray(played, dtype=bool)
@@ -48,6 +48,28 @@ def decayed_before(values, groups, played, alpha):
             before = np.where(prev >= 0, state_after[np.maximum(prev, 0)], 0.0)
             out[lo:hi] = before
     return out
+
+
+def valid_rows(played, *arrays):
+    """Played rows on which no given array is NaN: the rows that may enter a rate built from those arrays."""
+    ok = np.asarray(played, dtype=bool).copy()
+    for a in arrays:
+        ok &= ~np.isnan(np.asarray(a, dtype=float))
+    return ok
+
+
+def decayed_rate_parts_before(values, exposure, groups, played, alpha):
+    """
+    Decayed numerator and matching decayed exposure (for example a stat and the minutes it was accumulated in) for a rate = numerator / exposure.
+
+    A PLAYED row whose value (or exposure) is missing is dropped from the pair altogether: it adds nothing to the numerator, nothing to the exposure, and does
+    not decay the earlier games, i.e. the pair equals what it would be had that game not existed for this stat. (decayed_before alone would count the missing
+    value as 0 while the game's minutes stayed in the denominator, biasing the rate low.) Other stats of the same game are unaffected: call this once per stat.
+    With no missing value on a played row the result is identical, float for float, to decayed_before(values, ...) and decayed_before(exposure, ...).
+    Returns (numerator, exposure), both strictly-before like decayed_before.
+    """
+    ok = valid_rows(played, values, exposure)
+    return decayed_before(values, groups, ok, alpha), decayed_before(exposure, groups, ok, alpha)
 
 
 def decayed_count_before(groups, played, alpha):

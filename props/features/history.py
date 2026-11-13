@@ -112,21 +112,26 @@ def add_history_features(hist, pos_by_player, first_dataset_season=FIRST_DATASET
         stats['usage_x_min'] = usage
     priors = _league_priors(h, keys_df, stats, minutes, played)
     k = HYPER['k_minutes']
+    complete = {s: not bool((played & np.isnan(vals)).any()) for s, vals in stats.items()}      # no played game lacks this stat
     for hl in HALF_LIVES:
         a = decay.alpha_for(hl)
         s_min = decay.decayed_before(minutes, g, played, a)
         for s, vals in stats.items():
-            s_stat = decay.decayed_before(vals, g, played, a)
+            if complete[s]:
+                s_stat, s_exp = decay.decayed_before(vals, g, played, a), s_min
+            else:                                                  # a played game with this stat missing leaves both the numerator and the minutes
+                s_stat, s_exp = decay.decayed_rate_parts_before(vals, minutes, g, played, a)
             pr = priors.lookup(s, keys_df)
             name = 'r_usage_pct' if s == 'usage_x_min' else f'r_{s}'
-            out[f'{name}_h{hl}'] = (s_stat + k * pr) / (s_min + k)
+            out[f'{name}_h{hl}'] = (s_stat + k * pr) / (s_exp + k)
     # shooting conversion: decayed made / decayed attempts, shrunk toward the league percentage for the cell
     ka = HYPER['k_attempts']
     for name, (made, att) in PCT_STATS.items():
         for hl in (15, 40):
             a = decay.alpha_for(hl)
-            s_m = decay.decayed_before(stats[made], g, played, a)
-            s_a = decay.decayed_before(stats[att], g, played, a)
+            ok = decay.valid_rows(played, stats[made], stats[att])          # a game missing either count is dropped from both
+            s_m = decay.decayed_before(stats[made], g, ok, a)
+            s_a = decay.decayed_before(stats[att], g, ok, a)
             pm, pa = priors.lookup(made, keys_df), priors.lookup(att, keys_df)
             league_pct = np.where(pa > 0, pm / np.where(pa > 0, pa, 1), np.nan)
             out[f'c_{name}_h{hl}'] = (s_m + ka * league_pct) / (s_a + ka)
@@ -164,9 +169,9 @@ def _expanding_prior(sums):
 
 def _league_priors(h, keys_df, stats, minutes, played):
     tables = {}
-    den = np.where(played, np.nan_to_num(minutes), 0.0)
     for s, vals in stats.items():
-        d = keys_df.assign(num=np.where(played, np.nan_to_num(vals), 0.0), den=den)
+        ok = decay.valid_rows(played, vals)                      # a played game missing this stat adds neither stat nor minutes
+        d = keys_df.assign(num=np.where(ok, np.nan_to_num(vals), 0.0), den=np.where(ok, np.nan_to_num(minutes), 0.0))
         tables[s] = {
             'cell': _expanding_prior(d.groupby(['season', 'pos', 'bucket'])[['num', 'den']].sum()),
             'bucket': _expanding_prior(d.groupby(['season', 'bucket'])[['num', 'den']].sum()),
