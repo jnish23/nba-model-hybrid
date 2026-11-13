@@ -1,2 +1,5 @@
 # Preserve pinned artifact bytes; CRLF is intentional for this existing hash.
 config/props_frozen_rule.json -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+# Pinned by sha256 in the live config: keep the committed bytes (LF) on every checkout.
+reports/props/audit_2026-11/candidate_rule_a11.json -text
+reports/props/audit_2026-11/candidate_rule_a11_cap1.json -text
